@@ -36,6 +36,12 @@ import urllib.request
 from pathlib import Path
 
 WURZEL = Path(__file__).resolve().parents[1]
+# Abstand zwischen jeder sichtbaren Trennlinie eines Abschnittskopfs und dem
+# Element davor, in px.
+TRENNLINIEN_JS = """() => [...document.querySelectorAll('.section-header-getrennt')]
+    .filter(k => k.offsetParent && k.previousElementSibling?.offsetParent)
+    .map(k => [k.innerText.split('\\n')[0],
+               k.getBoundingClientRect().top - k.previousElementSibling.getBoundingClientRect().bottom])"""
 BEREICHE = ['dashboard', 'properties', 'tenants', 'meters', 'invoices',
             'billing', 'payments', 'reports', 'settings']
 BREITEN = [(1440, 900), (768, 1024), (390, 844)]
@@ -55,6 +61,9 @@ DIALOGE = {
     'rechnungstabelle': 'oeffneRechnungstabelle()',  # NK-161
     'jahresassistent': 'oeffneJahrAssistent()',  # NK-160
 }
+
+RUECKFRAGE_BEJAHEN = ("() => { if (document.getElementById('frage-modal')"
+                      ".classList.contains('active')) frageAntwort(true); }")
 
 # Prüft im Browser: Überlauf, abgeschnittene Knöpfe, leerer Bereich.
 PRUEFUNG_JS = """
@@ -178,6 +187,11 @@ class Rundgang:
         self.seite.wait_for_timeout(700)
         self.aufnahme(f'{zustand}-{name}')
         self.pruefen(f'{zustand}/{name}', name)
+        # Fund 0.9.1: die Trennlinie vor „Historie“ klebte an der Karte darüber.
+        for kopf, luecke in self.seite.evaluate(TRENNLINIEN_JS):
+            if luecke < 16:
+                self.befunde.append(f'{self.breite}px {zustand}/{name}: „{kopf}“ nur {luecke:.0f}px '
+                                    'unter dem Inhalt darüber')
 
 
 def rundgang(chromium: str | None, ausgabe: Path) -> list[str]:
@@ -204,6 +218,16 @@ def rundgang(chromium: str | None, ausgabe: Path) -> list[str]:
                     seite.wait_for_timeout(500)
                     gang.aufnahme('einrichtung')
                     gang.pruefen('einrichtung')
+                    # Fund 0.9.1: Die offene Hinweisblase liest beim Tippen neu und
+                    # zeigte dann den Systemtext statt des deutschen Hinweises.
+                    seite.click('#password')
+                    seite.keyboard.type('a')
+                    seite.click('button[type=submit]')
+                    seite.press('#password', 'b')
+                    hinweis = seite.eval_on_selector('#password', 'e => e.validationMessage')
+                    if '(bisher 2)' not in hinweis:
+                        befunde.append(f'einrichtung: Hinweis beim Tippen „{hinweis}“')
+                    seite.fill('#password', '')
                     code = json.loads((datenordner / 'ersteinrichtung_code').read_text())['code']
                     seite.fill('#username', 'rundgang')
                     seite.fill('#password', 'rundgang-passwort-1')
@@ -242,6 +266,27 @@ def rundgang(chromium: str | None, ausgabe: Path) -> list[str]:
                     gang.pruefen(f'dialog/{name}')
                     seite.keyboard.press('Escape')
                     seite.wait_for_timeout(200)
+                    # Fragt die App „Eingaben verwerfen?“, bejahen -- wie
+                    # früher der Browserdialog über seite.on('dialog').
+                    seite.evaluate(RUECKFRAGE_BEJAHEN)
+                    seite.wait_for_timeout(200)
+                # Die Rückfrage selbst (frage-modal statt confirm()).
+                gang.schritt = 'rueckfrage'
+                seite.evaluate("() => { frageLoeschen('Möchten Sie diese Rechnung wirklich löschen?'); }")
+                seite.wait_for_timeout(300)
+                gang.aufnahme('dialog-rueckfrage')
+                gang.pruefen('dialog/rueckfrage')
+                seite.keyboard.press('Escape')
+                seite.wait_for_timeout(200)
+                # Die festgesetzte Beispiel-Abrechnung ansehen: der Schnappschuss
+                # liefert Beträge als Text (json_sicher), nicht als Zahl.
+                gang.schritt = 'abrechnung-ansehen'
+                seite.evaluate("async () => { const b = await (await fetch('/api/billing/reports')).json();"
+                               " await openReportDetails(b[0].id); }")
+                seite.wait_for_timeout(500)
+                gang.aufnahme('abrechnung-ansehen')
+                gang.pruefen('abrechnung-ansehen')
+                seite.keyboard.press('Escape')
                 befunde += gang.befunde
                 kontext.close()
             browser.close()

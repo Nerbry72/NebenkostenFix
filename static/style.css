@@ -1405,8 +1405,6 @@ input[type="number"] {
     font-size: 14px;
     margin-top: var(--space-1);
 }
-    padding-top: 24px;
-}
 
 .section-header-weit {
     margin-top: 48px;
@@ -2264,3 +2262,9 @@ td .btn-icon,
 }
 
 .jahr-warnungen { color: #B45309; }
+
+/* Die Rückfrage wechselt ihren Hauptknopf zwischen btn-primary und
+   btn-gefahr; ohne das blendete „Löschen“ beim Öffnen von Violett nach Rot. */
+#frage-ja {
+    transition: none;
+}

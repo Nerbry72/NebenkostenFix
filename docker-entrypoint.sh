@@ -11,11 +11,12 @@ PGID="${PGID:-1000}"
 
 if [ "$(id -u)" = "0" ]; then
     mkdir -p "$DATA_DIR"
-    # Nur wenn der Ordner (z. B. frisch vom Wirt eingehaengt) noch nicht dem
+    # Nur wenn etwas darin (z. B. frisch vom Wirt eingehaengt, oder Datenbank
+    # und Belege aus einem frueheren root-Container) noch nicht dem
     # Anwendungsnutzer gehoert -- sonst kostet jeder Start ein chown ueber
-    # alle Belege.
-    if [ "$(stat -c %u "$DATA_DIR")" != "$PUID" ]; then
-        echo "Datenordner $DATA_DIR gehört noch nicht Nutzer $PUID, passe an ..." >&2
+    # alle Belege. Geprueft wird der Inhalt, nicht nur der Ordner selbst.
+    if [ -n "$(find "$DATA_DIR" \( ! -user "$PUID" -o ! -group "$PGID" \) -print -quit)" ]; then
+        echo "Datenordner $DATA_DIR gehört nicht ganz Nutzer $PUID:$PGID, passe an ..." >&2
         chown -R "$PUID:$PGID" "$DATA_DIR"
     fi
     if [ "$PUID" = "0" ]; then

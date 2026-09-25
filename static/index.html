@@ -284,7 +284,8 @@
                     <!-- Suggestions rendered here -->
                 </div>
 
-                <div class="section-header section-header-weit">
+                <!-- Wie „Alle Rechnungen“: Abstand, Trennlinie, dann die Überschrift. -->
+                <div class="section-header section-header-getrennt section-header-weit">
                     <div>
                         <h2>Historie</h2>
                         <p class="section-untertitel">Bereits erstellte Abrechnungen</p>
@@ -2136,6 +2137,24 @@
         </div>
     </div>
 
+    <!-- Rückfrage im Design der App statt confirm() (frage() in app.js). Sie
+         steht als letzter Dialog im Dokument und liegt damit über jedem anderen. -->
+    <div class="modal-overlay" id="frage-modal">
+        <div class="modal glass-panel" style="max-width: 480px; width: 90%;">
+            <div class="modal-header">
+                <h2 id="frage-titel">Bitte bestätigen</h2>
+                <button class="btn-icon" aria-label="Schließen" onclick="frageAntwort(false)"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <p id="frage-text" style="margin-top: 0; line-height: 1.5; white-space: pre-line;"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" onclick="frageAntwort(false)">Abbrechen</button>
+                <button type="button" class="btn-primary" id="frage-ja" onclick="frageAntwort(true)">Weiter</button>
+            </div>
+        </div>
+    </div>
+
     <!-- NK-162: Hinweis vor der Leerlauf-Abmeldung und der gesicherte Entwurf. -->
     <div id="leerlauf-hinweis" class="hinweis-leiste" role="alert" hidden>
         <i class="ph ph-clock" aria-hidden="true"></i>
@@ -2155,6 +2174,7 @@
         <p id="begriff-blase-text"></p>
         <button type="button" class="btn-tint btn-klein" onclick="zeigeHilfe('hilfe-begriffe')">Alle Begriffe öffnen</button>
     </div>
+    <script src="/static/formular.js?v=2"></script>
     <script src="/static/umzug.js?v=1"></script>
     <script src="/static/app.js?v=28"></script>
 </body>

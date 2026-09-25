@@ -61,9 +61,10 @@ def datenordner() -> Path:
     if aus_db:
         return Path(aus_db)
     nas = (os.environ.get('NAS_MOUNT_PATH') or '').strip()
-    if nas:
+    if nas and os.path.isdir(nas):
         # Postgres im Entwicklerstapel ohne DATA_DIR: der alte Belegordner
-        # ist der einzige beständige Ort (Verhalten vor NK-132).
+        # ist der einzige beständige Ort (Verhalten vor NK-132). Nur wenn er
+        # noch existiert, sonst wie belegordner(): ignorieren.
         return Path(os.path.abspath(nas))
     raise DatenordnerFehler(
         'Es ist kein Datenordner festgelegt. Setzen Sie DATA_DIR auf den '
@@ -82,12 +83,21 @@ def datenbank_url() -> str:
 def belegordner() -> Path:
     """Die Wurzel der Belegablage.
 
-    ``NAS_MOUNT_PATH`` gilt eine Version lang als Alias (veraltet).
+    ``NAS_MOUNT_PATH`` gilt eine Version lang als Alias (veraltet), aber nur,
+    wenn der Ordner da ist: eine alte .env neben der neuen Compose-Datei
+    (nichts mehr unter /mnt eingehängt) ließe den Start sonst mit
+    PermissionError abbrechen. Siehe ``verwaister_nas_pfad``.
     """
     alt = (os.environ.get('NAS_MOUNT_PATH') or '').strip()
-    if alt:
+    if alt and os.path.isdir(alt):
         return Path(os.path.abspath(alt))
     return datenordner() / BELEGE
+
+
+def verwaister_nas_pfad() -> str | None:
+    """``NAS_MOUNT_PATH``, wenn gesetzt, aber kein Ordner -- er wird ignoriert."""
+    alt = (os.environ.get('NAS_MOUNT_PATH') or '').strip()
+    return alt if alt and not os.path.isdir(alt) else None
 
 
 def sicherungsordner() -> Path:

@@ -686,6 +686,11 @@ if _veraltet:
         'Veraltete Einstellungen gesetzt: %s. Seit NK-132 gibt es einen '
         'Datenordner DATA_DIR (Datenbank, Belege, Sicherungen); die alten '
         'Namen wirken nur noch eine Version lang.', ', '.join(_veraltet))
+if datenordner.verwaister_nas_pfad():
+    app.logger.warning(
+        'NAS_MOUNT_PATH=%s ist kein Ordner und wird ignoriert; die Belege '
+        'liegen in %s. Die Zeile kann aus der .env entfernt werden.',
+        datenordner.verwaister_nas_pfad(), datenordner.belegordner())
 
 
 with app.app_context():
@@ -732,7 +737,7 @@ def _index_mit_kennung(basis_verz) -> str:
     import hashlib
 
     html = (Path(basis_verz) / 'index.html').read_text(encoding='utf-8')
-    for name in ('app.js', 'style.css', 'umzug.js'):
+    for name in ('app.js', 'style.css', 'umzug.js', 'formular.js'):
         datei = Path(basis_verz) / name
         if not datei.is_file():
             continue

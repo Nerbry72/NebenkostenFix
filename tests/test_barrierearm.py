@@ -83,8 +83,9 @@ def test_dialoge_fokus_tab_und_rueckfrage():
                  "overlay.addEventListener('input'"):
         assert teil in SKRIPT, teil
     # Escape (nur der oberste Dialog, NK-160) und Klick daneben fragen, bevor sie schließen.
-    assert 'if (oben && darfDialogSchliessen(oben)) oben.classList.remove' in SKRIPT
-    assert 'e.target === overlay && darfDialogSchliessen(overlay)' in SKRIPT
+    assert "if (await darfDialogSchliessen(overlay)) overlay.classList.remove('active')" in SKRIPT
+    assert 'if (oben) schliessenNachFrage(oben)' in SKRIPT
+    assert 'if (e.target === overlay) schliessenNachFrage(overlay)' in SKRIPT
 
 
 def test_groessere_schrift_in_drei_stufen():

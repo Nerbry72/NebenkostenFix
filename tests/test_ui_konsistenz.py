@@ -171,7 +171,7 @@ def test_der_reset_traegt_das_geheimnis():
     """Der Aufruf schickt X-Debug-Secret und misshandelt 401/404 nicht."""
     app = _liest(APP)
     assert "'X-Debug-Secret': geheimnis" in app
-    assert "prompt(" in app.split("async function resetDatabase")[1].split(
+    assert "fragePassphrase(" in app.split("async function resetDatabase")[1].split(
         "await fetch('/api/debug/reset_db'")[0], (
         "Das Geheimnis wird abgefragt, bevor die Route gerufen wird")
 

@@ -37,9 +37,34 @@ def test_uebergang_ohne_data_dir(sauber, tmp_path):
     sauber.setenv('DATABASE_URL', f'sqlite:///{tmp_path}/alt/nebenkosten.db')
     assert datenordner.datenordner() == tmp_path / 'alt'
     assert datenordner.belegordner() == tmp_path / 'alt' / 'belege'
+    (tmp_path / 'mnt').mkdir()
     sauber.setenv('NAS_MOUNT_PATH', str(tmp_path / 'mnt'))
     assert datenordner.belegordner() == tmp_path / 'mnt'
     assert 'NAS_MOUNT_PATH' in datenordner.veraltete_variablen()
+
+
+def test_verwaister_nas_pfad_wird_ignoriert(sauber, tmp_path):
+    """Alte .env mit NAS_MOUNT_PATH, neue Compose-Datei ohne /mnt-Einbindung:
+    der Start brach mit PermissionError ab (Fund nach 0.9.1)."""
+    gesperrt = tmp_path / 'gesperrt'
+    gesperrt.mkdir(mode=0o500)
+    sauber.setenv('DATA_DIR', str(tmp_path / 'daten'))
+    sauber.setenv('NAS_MOUNT_PATH', str(gesperrt / 'nas' / 'belege'))
+    assert datenordner.belegordner() == tmp_path / 'daten' / 'belege'
+    assert datenordner.verwaister_nas_pfad() == str(gesperrt / 'nas' / 'belege')
+    datenordner.anlegen()
+    assert (tmp_path / 'daten' / 'belege').is_dir()
+
+
+def test_verwaister_nas_pfad_auch_nicht_als_datenordner(sauber, tmp_path):
+    """Postgres ohne DATA_DIR: datenordner() griff auf den toten Pfad zurück,
+    obwohl das Log „wird ignoriert“ meldete (Copilot-Review 0.9.2)."""
+    sauber.setenv('DATABASE_URL', 'postgresql://nk@db/nk')
+    sauber.setenv('NAS_MOUNT_PATH', str(tmp_path / 'weg'))
+    with pytest.raises(datenordner.DatenordnerFehler, match='DATA_DIR'):
+        datenordner.datenordner()
+    (tmp_path / 'weg').mkdir()
+    assert datenordner.datenordner() == tmp_path / 'weg'
 
 
 def test_ohne_jeden_hinweis_bricht_ab(sauber):

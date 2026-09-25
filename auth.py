@@ -88,7 +88,8 @@ PUBLIC_ENDPOINTS = frozenset({
 # muss -- ihr Stil, das Zeichen, die Schrift. Nichts davon verrät etwas über
 # den Bestand. Alles andere unter /static bleibt hinter der Anmeldung.
 # umzug.js: die Übernahme eines Umzugspakets auf der Einrichtungsseite (NK-164).
-OEFFENTLICHE_DATEIEN = ('anmeldung.css', 'umzug.js')
+# formular.js: deutsche Hinweise der Formularprüfung auf allen Anmeldeseiten.
+OEFFENTLICHE_DATEIEN = ('anmeldung.css', 'umzug.js', 'formular.js')
 OEFFENTLICHE_ORDNER = ('marke/', 'vendor/fonts/')
 
 
@@ -281,6 +282,7 @@ def _seitenkopf(titel: str) -> str:
         '<link rel="icon" href="/static/marke/favicon.ico" sizes="48x48">\n'
         '<link rel="stylesheet" href="/static/vendor/fonts/outfit/outfit.css">\n'
         '<link rel="stylesheet" href="/static/anmeldung.css">\n'
+        '<script src="/static/formular.js?v=2"></script>\n'
         '</head><body class="anmeldung">\n'
         '<div class="anmelde-marke"><img src="/static/marke/zeichen.svg" alt="" '
         'width="44" height="44"><span>Nebenkosten<b>Fix</b></span></div>\n')
