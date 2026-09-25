@@ -86,7 +86,7 @@ jobs:
         run: |
           mkdir -p probe && sudo chown 1000:1000 probe
           docker run -d --name probe -p 6060:6060 -v "$PWD/probe:/data" nebenkostenfix:probe
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:6060/api/health; then echo; exit 0; fi
             sleep 2
           done
@@ -106,7 +106,8 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - run: echo "- Docker: \`${ABBILD}:${VERSION}\` und \`:latest\`" >> "$GITHUB_STEP_SUMMARY"
+      - run: |
+          echo "- Docker: \`${ABBILD}:${VERSION}\` und \`:latest\`" >> "$GITHUB_STEP_SUMMARY"
 
   release:
     name: GitHub-Release
