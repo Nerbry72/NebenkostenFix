@@ -349,6 +349,9 @@ def selbsttest(datenordner: Path, bericht_datei: str | None = None) -> int:
         kennwort = secrets.token_urlsafe(16)
         ruf('POST', '/einrichtung', {'username': 'selbsttest', 'password': kennwort,
                                      'password2': kennwort})
+        # Die Startseite nach der Einrichtung: sie las static/ relativ zum
+        # Arbeitsverzeichnis und brach in der installierten App ab (0.9.0).
+        bericht['startseite'] = b'app.js' in ruf('GET', '/', roh=True)
         haus = ruf('POST', '/api/properties', {'name': 'Selbsttest-Haus'})['id']
         wohnung = ruf('POST', '/api/apartments', {'property_id': haus, 'name': 'EG', 'sqm': 50})['id']
         ruf('POST', '/api/apartments', {'property_id': haus, 'name': 'OG', 'sqm': 50})
@@ -373,6 +376,7 @@ def selbsttest(datenordner: Path, bericht_datei: str | None = None) -> int:
         (datenordner / 'nebenkosten.db-wal').stat().st_size
     bericht['sekunden'] = round(time.monotonic() - beginn, 2)
     ok = (bericht['ohne_schluessel'] == 403 and bericht['health'] == 'ok'
+          and bericht['startseite']
           and abs(float(bericht['summe'] or 0) - 600.0) < 0.01 and bericht['pdf_ok'])
     bericht['ergebnis'] = 'bestanden' if ok else 'fehlgeschlagen'
     bericht['eingefroren'] = bool(getattr(sys, 'frozen', False))
