@@ -76,3 +76,13 @@ def test_eine_geaenderte_datei_aendert_die_kennung(tmp_path):
     # Die unberührte style.css behält ihre Kennung.
     assert re.search(r"style\.css\?v=(\w+)", nachher).group(1) \
         == re.search(r"style\.css\?v=(\w+)", vorher).group(1)
+
+
+def test_startseite_haengt_nicht_am_arbeitsverzeichnis(auth_client, tmp_path,
+                                                       monkeypatch):
+    """Die installierte Windows-App startet nicht im Quellordner: index.html
+    muss aus dem Static-Ordner der App kommen, nicht aus ./static (0.9.0)."""
+    monkeypatch.chdir(tmp_path)
+    antwort = auth_client.get("/")
+    assert antwort.status_code == 200
+    assert "app.js?v=" in antwort.get_data(as_text=True)

@@ -198,11 +198,14 @@ class Bruecke:
     """Was die Oberfläche über window.pywebview.api aufruft."""
 
     def __init__(self):
-        self.fenster = None
+        # Mit Unterstrich: pywebview durchsucht nach jedem Seitenaufbau alle
+        # öffentlichen Attribute der Brücke rekursiv. Das Fenster samt seinen
+        # .NET-Objekten blockierte dabei die Oberfläche (0.9.0).
+        self._fenster = None
 
     def speichern(self, dateiname: str, inhalt_base64: str):
         import webview
-        ziel = self.fenster.create_file_dialog(
+        ziel = self._fenster.create_file_dialog(
             webview.SAVE_DIALOG, save_filename=Path(dateiname).name)
         if not ziel:
             return None
@@ -227,7 +230,7 @@ class Bruecke:
         import webview
 
         import umzug
-        auswahl = self.fenster.create_file_dialog(
+        auswahl = self._fenster.create_file_dialog(
             webview.OPEN_DIALOG,
             file_types=('NebenkostenFix-Paket (*.nkfix;*.nkbak;*.tar.gz)', 'Alle Dateien (*.*)'))
         if not auswahl:
@@ -238,7 +241,7 @@ class Bruecke:
         import webview
 
         import umzug
-        ziel = self.fenster.create_file_dialog(
+        ziel = self._fenster.create_file_dialog(
             webview.SAVE_DIALOG, save_filename=Path(dateiname).name)
         if not ziel:
             return None
@@ -246,7 +249,7 @@ class Bruecke:
 
     def ordner_waehlen(self):
         import webview
-        auswahl = self.fenster.create_file_dialog(webview.FOLDER_DIALOG)
+        auswahl = self._fenster.create_file_dialog(webview.FOLDER_DIALOG)
         if not auswahl:
             return None
         ordner = auswahl if isinstance(auswahl, str) else auswahl[0]
@@ -349,6 +352,9 @@ def selbsttest(datenordner: Path, bericht_datei: str | None = None) -> int:
         kennwort = secrets.token_urlsafe(16)
         ruf('POST', '/einrichtung', {'username': 'selbsttest', 'password': kennwort,
                                      'password2': kennwort})
+        # Die Startseite nach der Einrichtung: sie las static/ relativ zum
+        # Arbeitsverzeichnis und brach in der installierten App ab (0.9.0).
+        bericht['startseite'] = b'app.js' in ruf('GET', '/', roh=True)
         haus = ruf('POST', '/api/properties', {'name': 'Selbsttest-Haus'})['id']
         wohnung = ruf('POST', '/api/apartments', {'property_id': haus, 'name': 'EG', 'sqm': 50})['id']
         ruf('POST', '/api/apartments', {'property_id': haus, 'name': 'OG', 'sqm': 50})
@@ -373,6 +379,7 @@ def selbsttest(datenordner: Path, bericht_datei: str | None = None) -> int:
         (datenordner / 'nebenkosten.db-wal').stat().st_size
     bericht['sekunden'] = round(time.monotonic() - beginn, 2)
     ok = (bericht['ohne_schluessel'] == 403 and bericht['health'] == 'ok'
+          and bericht['startseite']
           and abs(float(bericht['summe'] or 0) - 600.0) < 0.01 and bericht['pdf_ok'])
     bericht['ergebnis'] = 'bestanden' if ok else 'fehlgeschlagen'
     bericht['eingefroren'] = bool(getattr(sys, 'frozen', False))
@@ -453,7 +460,7 @@ def fenster_starten(datenordner: Path) -> int:  # pragma: no cover - braucht GUI
     fenster = webview.create_window(
         TITEL, html=startseite(), js_api=bruecke,
         width=1440, height=900, min_size=(1024, 700), text_select=True)
-    bruecke.fenster = fenster
+    bruecke._fenster = fenster
 
     def nach_vorne():
         fenster.restore()

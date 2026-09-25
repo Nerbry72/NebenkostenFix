@@ -71,7 +71,10 @@ def probe_selbsttest(exe: Path, datenordner: Path, bericht: Path) -> bool:
     beginn = time.monotonic()
     lauf = subprocess.run(  # noqa: S603 -- feste Argumente aus der CI
         [str(exe), '--selbsttest', '--datenordner', str(datenordner),
-         '--bericht', str(bericht)], timeout=300)
+         '--bericht', str(bericht)], timeout=300,
+        # Wie die Verknüpfung: Start im Programmordner, nicht im Checkout mit
+        # static/ daneben -- sonst fällt ein relativer Pfad nie auf (0.9.0).
+        cwd=exe.parent)
     sekunden = time.monotonic() - beginn
     try:
         ergebnis = json.loads(bericht.read_text(encoding='utf-8'))

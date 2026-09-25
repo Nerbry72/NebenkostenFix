@@ -745,7 +745,7 @@ def _index_mit_kennung(basis_verz) -> str:
 
 @app.route('/')
 def index():
-    return _index_mit_kennung('static')
+    return _index_mit_kennung(app.static_folder)
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
