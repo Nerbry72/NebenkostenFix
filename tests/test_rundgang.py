@@ -79,3 +79,23 @@ def test_kein_neues_datum_aus_deutsch_formatiertem_text():
     skript = (WURZEL / 'static' / 'app.js').read_text(encoding='utf-8')
     assert 'new Date(r.created_at)' not in skript
 
+
+
+def _funktion(name: str) -> str:
+    start = SKRIPT.index(f'function {name}(')
+    return SKRIPT[start:SKRIPT.index('\n}\n', start)]
+
+
+def test_rundgang_sieht_eine_festgesetzte_abrechnung_an():
+    """Fund 0.9.1: „Abrechnung ansehen“ scheiterte an jeder festgesetzten
+    Abrechnung. Der Rundgang öffnet sie nach dem Beispiel im Browser."""
+    import inspect
+    assert 'openReportDetails(' in inspect.getsource(rundgang.rundgang)
+
+
+def test_abrechnung_ansehen_rechnet_nicht_mit_schnappschuss_text():
+    """Der Schnappschuss hält Beträge als Text (json_sicher). ``"828.32".toFixed``
+    wirft -- jede Formatierung muss vorher in eine Zahl wandeln."""
+    for name in ('openReportDetails', 'openAddPaymentModal'):
+        roh = re.findall(r'(?:item|sub|data|details)\.\w+\.toFixed\(', _funktion(name))
+        assert not roh, (name, roh)

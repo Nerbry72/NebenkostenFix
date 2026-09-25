@@ -242,6 +242,15 @@ def rundgang(chromium: str | None, ausgabe: Path) -> list[str]:
                     gang.pruefen(f'dialog/{name}')
                     seite.keyboard.press('Escape')
                     seite.wait_for_timeout(200)
+                # Die festgesetzte Beispiel-Abrechnung ansehen: der Schnappschuss
+                # liefert Beträge als Text (json_sicher), nicht als Zahl.
+                gang.schritt = 'abrechnung-ansehen'
+                seite.evaluate("async () => { const b = await (await fetch('/api/billing/reports')).json();"
+                               " await openReportDetails(b[0].id); }")
+                seite.wait_for_timeout(500)
+                gang.aufnahme('abrechnung-ansehen')
+                gang.pruefen('abrechnung-ansehen')
+                seite.keyboard.press('Escape')
                 befunde += gang.befunde
                 kontext.close()
             browser.close()

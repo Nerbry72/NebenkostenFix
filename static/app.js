@@ -5065,6 +5065,9 @@ async function openReportDetails(id) {
         // NK-124: das Ergebnis steckt im Schnappschuss ("ergebnis"); beim
         // Altbestand ohne Version ist die Antwort selbst das Ergebnis.
         const data = umschlag.ergebnis || umschlag;
+        // Der Schnappschuss hält Beträge als Text ("828.32", json_sicher),
+        // damit sie exakt bleiben; .toFixed gibt es nur an Zahlen.
+        const betrag = w => Number(w || 0).toFixed(2).replace('.', ',');
         
         const modal = document.getElementById('report-details-modal');
         const body = document.getElementById('report-details-body');
@@ -5128,7 +5131,7 @@ async function openReportDetails(id) {
                     <td style="font-weight: 500; padding: 12px 8px;">${escapeHtml(item.category)}</td>
                     <td style="color: var(--text-muted); font-size: 0.9rem; white-space: nowrap; padding: 12px 8px;">${escapeHtml(item.period)}</td>
                     <td style="color: var(--text-muted); font-size: 0.875rem; padding: 12px 8px;">${hasSub ? '' : itemDesc}</td>
-                    <td style="font-weight: 600; text-align: right; white-space: nowrap; padding: 12px 8px;">${item.tenant_cost.toFixed(2).replace('.', ',')} €</td>
+                    <td style="font-weight: 600; text-align: right; white-space: nowrap; padding: 12px 8px;">${betrag(item.tenant_cost)} €</td>
                     <td style="text-align: center; padding: 12px 8px;">${belegHtml}</td>
                 </tr>
             `;
@@ -5159,7 +5162,7 @@ async function openReportDetails(id) {
                                     ${icon} ${subDesc}
                                 </div>
                             </td>
-                            <td style="color: var(--text-muted); font-size: 0.85rem; text-align: right; padding: 4px 8px;">${sub.cost.toFixed(2).replace('.', ',')} €</td>
+                            <td style="color: var(--text-muted); font-size: 0.85rem; text-align: right; padding: 4px 8px;">${betrag(sub.cost)} €</td>
                             <td></td>
                         </tr>
                     `;
@@ -5170,12 +5173,12 @@ async function openReportDetails(id) {
         html += `
                 <tr style="border-top: 2px solid var(--text-color);">
                     <td colspan="3" style="font-weight: 700; text-align: right; padding: 12px 8px;">Gesamtkosten der Periode:</td>
-                    <td style="font-weight: 700; text-align: right; padding: 12px 8px;">${data.total_amount.toFixed(2).replace('.', ',')} €</td>
+                    <td style="font-weight: 700; text-align: right; padding: 12px 8px;">${betrag(data.total_amount)} €</td>
                     <td></td>
                 </tr>
                 <tr>
                     <td colspan="3" style="font-weight: 700; text-align: right; padding: 12px 8px;">Abzüglich geleistete Vorauszahlungen:</td>
-                    <td style="font-weight: 700; text-align: right; padding: 12px 8px; color: var(--danger-color);">- ${data.prepaid_amount.toFixed(2).replace('.', ',')} €</td>
+                    <td style="font-weight: 700; text-align: right; padding: 12px 8px; color: var(--danger-color);">- ${betrag(data.prepaid_amount)} €</td>
                     <td></td>
                 </tr>
                 <tr style="background: var(--bg-hover);">
@@ -5183,7 +5186,7 @@ async function openReportDetails(id) {
                         ${data.balance > 0 ? 'Nachzahlung des Mieters:' : (data.balance < 0 ? 'Guthaben des Mieters:' : 'Saldobetrag:')}
                     </td>
                     <td style="font-weight: 800; text-align: right; padding: 16px 8px; font-size: 1.1em; color: var(--primary-color);">
-                        ${data.balance.toFixed(2).replace('.', ',')} €
+                        ${betrag(data.balance)} €
                     </td>
                     <td></td>
                 </tr>
@@ -7275,11 +7278,11 @@ async function toggleBillingReportField() {
                     if (selectedId) {
                         try {
                             const detailsRes = await fetch(`/api/billing/reports/${selectedId}/details`);
-                            const details = await detailsRes.json();
-                            if (details.balance && details.balance > 0) {
-                                document.getElementById('payment-amount').value = details.balance.toFixed(2);
-                            } else if (details.balance < 0) {
-                                document.getElementById('payment-amount').value = details.balance.toFixed(2);
+                            const umschlag = await detailsRes.json();
+                            // Der Saldo steckt im Schnappschuss ("ergebnis") und ist Text.
+                            const saldo = Number((umschlag.ergebnis || umschlag).balance);
+                            if (saldo) {
+                                document.getElementById('payment-amount').value = saldo.toFixed(2);
                             }
                         } catch(e) {
                             console.error('Failed to load balance', e);
