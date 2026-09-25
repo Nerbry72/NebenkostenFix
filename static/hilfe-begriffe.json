@@ -1,0 +1,72 @@
+[
+ {
+  "schluessel": "abrechnungsfrist",
+  "begriff": "Abrechnungsfrist",
+  "satz": "Die Abrechnung muss dem Mieter spätestens zwölf Monate nach Ende des Abrechnungszeitraums zugehen; danach können Sie keine Nachzahlung mehr verlangen, ein Guthaben müssen Sie trotzdem auszahlen (§ 556 Abs. 3 BGB)."
+ },
+ {
+  "schluessel": "abrechnungszeitraum",
+  "begriff": "Abrechnungszeitraum",
+  "satz": "Die Zeit, über die abgerechnet wird: höchstens zwölf Monate, meist ein Kalenderjahr; bei Ein- oder Auszug zählen nur die Monate, in denen der Mieter dort gewohnt hat."
+ },
+ {
+  "schluessel": "guthaben",
+  "begriff": "Guthaben",
+  "satz": "Hat der Mieter mehr vorausgezahlt, als an Kosten angefallen ist, bekommt er den Unterschied zurück."
+ },
+ {
+  "schluessel": "hauptzaehler",
+  "begriff": "Hauptzähler",
+  "satz": "Der Zähler des Versorgers für das ganze Haus; nach ihm stellt der Versorger seine Rechnung."
+ },
+ {
+  "schluessel": "kostenprofil",
+  "begriff": "Kostenprofil",
+  "satz": "Für jeden Mieter und jede Kostenart die Angabe, wie seine Wohnung beteiligt ist: nach Wohnfläche, nach Personen, nach eigenem Zähler oder gar nicht."
+ },
+ {
+  "schluessel": "leerstand",
+  "begriff": "Leerstand",
+  "satz": "Zeiten, in denen eine Wohnung nicht vermietet war; ihren Anteil an den Kosten tragen Sie als Vermieter, nicht die übrigen Mieter."
+ },
+ {
+  "schluessel": "nachzahlung",
+  "begriff": "Nachzahlung",
+  "satz": "Waren die Kosten höher als die Vorauszahlungen, zahlt der Mieter den Unterschied nach."
+ },
+ {
+  "schluessel": "sammelrechnung",
+  "begriff": "Sammelrechnung",
+  "satz": "Ein Dokument des Anbieters, aus dem Sie mehrere einzelne Rechnungen erfassen, etwa die Jahresabrechnung der Stadtwerke für Wasser und Abwasser."
+ },
+ {
+  "schluessel": "umlagefaehig",
+  "begriff": "umlagefähig",
+  "satz": "Kosten, die Sie nach § 2 Betriebskostenverordnung auf den Mieter umlegen dürfen, wenn der Mietvertrag es vorsieht; Reparaturen, Verwaltung und Rücklagen gehören nicht dazu."
+ },
+ {
+  "schluessel": "umlageschluessel",
+  "begriff": "Umlageschlüssel",
+  "satz": "Die Regel, nach der eine Rechnung auf die Wohnungen verteilt wird: nach Wohnfläche, nach Personen oder nach dem Verbrauch laut Zähler."
+ },
+ {
+  "schluessel": "unterzaehler",
+  "begriff": "Unterzähler",
+  "satz": "Ein eigener Zähler in einer Wohnung, der misst, was diese Wohnung vom Verbrauch des ganzen Hauses selbst verbraucht hat."
+ },
+ {
+  "schluessel": "vorauszahlung",
+  "begriff": "Vorauszahlung",
+  "satz": "Der Betrag, den der Mieter jeden Monat zusätzlich zur Miete auf die Nebenkosten zahlt; die Abrechnung stellt ihn den tatsächlichen Kosten gegenüber."
+ },
+ {
+  "schluessel": "wohnflaeche",
+  "begriff": "Wohnfläche",
+  "satz": "Die Fläche der Wohnung in m² laut Mietvertrag; nach ihr werden die meisten Kosten verteilt."
+ },
+ {
+  "schluessel": "zwischenablesung",
+  "begriff": "Zwischenablesung",
+  "satz": "Ein Zählerstand am Tag eines Mieterwechsels, damit jeder Mieter nur seinen eigenen Verbrauch bezahlt."
+ }
+]

@@ -1,0 +1,2162 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NebenkostenFix</title>
+    <!-- Marke (NK-155, D-94): Zeichen und Favicon aus marke.py, erzeugt von
+         scripts/marke.py. -->
+    <link rel="icon" href="/static/marke/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/static/marke/favicon.ico" sizes="48x48">
+    <link rel="apple-touch-icon" href="/static/marke/zeichen-180.png">
+    <!-- Alles lokal gebuendelt (NK-126): Schriftart, Icons, Diagramme.
+         Kein Code aus dem Internet -- ohne Internet funktioniert alles,
+         und keine IP-Adresse geht an Google oder ein CDN (F-54).
+         Feste Versionen, Lizenzen liegen neben den Dateien. -->
+    <link rel="stylesheet" href="/static/vendor/fonts/outfit/outfit.css">
+    <link rel="stylesheet" href="/static/vendor/phosphor/regular/style.css">
+    <link rel="stylesheet" href="/static/vendor/phosphor/fill/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=12">
+    <script src="/static/vendor/chartjs/chart.umd.min.js"></script>
+</head>
+
+<body>
+    <div class="background-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar glass-panel">
+            <div class="logo">
+                <img class="logo-zeichen" src="/static/marke/zeichen.svg" alt="" width="36" height="36">
+                <h2>Nebenkosten<span class="logo-fix">Fix</span></h2>
+            </div>
+            <nav class="nav-menu">
+                <a href="#" class="nav-item active" data-tab="dashboard"><i class="ph ph-squares-four"></i>
+                    Übersicht</a>
+                <a href="#" class="nav-item" data-tab="properties"><i class="ph ph-house"></i> Immobilien</a>
+                <a href="#" class="nav-item" data-tab="tenants"><i class="ph ph-users"></i> Mieter</a>
+                <a href="#" class="nav-item" data-tab="meters"><i class="ph ph-gauge"></i> Zähler &amp; Ablesungen</a>
+                <a href="#" class="nav-item" data-tab="invoices"><i class="ph ph-receipt"></i> Rechnungen &amp; Belege</a>
+                <a href="#" class="nav-item" data-tab="billing"><i class="ph ph-file-text"></i> Abrechnungen</a>
+                <a href="#" class="nav-item" data-tab="payments"><i class="ph ph-coins"></i> Zahlungen</a>
+                <a href="#" class="nav-item" data-tab="reports"><i class="ph ph-chart-line-up"></i> Statistiken</a>
+                <a href="#" class="nav-item" data-tab="settings"><i class="ph ph-gear"></i> Einstellungen</a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-header">
+                <div class="greeting">
+                    <h1 id="begruessung">Willkommen bei NebenkostenFix!</h1>
+                    <p>Verwalten Sie Ihre Immobilien und Nebenkostenabrechnungen.</p>
+                </div>
+                <div class="kopf-aktionen">
+                    <!-- Angemeldeter Benutzer und Abmelden (NK-021). Der Name
+                         wird von zeigeAngemeldetenBenutzer() aus /api/auth/me
+                         nachgetragen, damit sichtbar ist, wessen Sitzung
+                         laeuft. -->
+                    <span id="angemeldeterBenutzer" class="angemeldeter-benutzer"></span>
+                    <!-- Druckansicht (NK-073): die aktive Ansicht auf Papier;
+                         im Druck bleibt nur die Ansicht, nicht die Anwendung. -->
+                    <!-- NK-158: die Hilfe gilt überall, deshalb im Kopf (K2). -->
+                    <button class="btn-secondary" onclick="zeigeHilfe()"
+                        title="Grundlagen, Checkliste, Begriffe und Kurzanleitung">
+                        <i class="ph ph-question"></i> Hilfe öffnen
+                    </button>
+                    <button class="btn-secondary" onclick="huelle.drucken()"
+                        title="Die aktive Ansicht über den Druckdialog des Browsers drucken">
+                        <i class="ph ph-printer"></i> Drucken
+                    </button>
+                    <button class="btn-secondary" onclick="abmelden()"
+                        title="Sitzung beenden und zur Anmeldung zurück">
+                        <i class="ph ph-sign-out"></i> Abmelden
+                    </button>
+                    <!-- K2 (NK-101, NK-156): der globale Kopf trägt nur, was überall gilt;
+                         „Immobilie anlegen“ steht im Seitenkopf der Immobilien, die
+                         Exporte stehen unter Einstellungen → Datensicherung. -->
+                </div>
+            </header>
+
+            <!-- TAB: DASHBOARD -->
+            <section class="content-section tab-content active" id="tab-dashboard">
+                <div class="section-header">
+                    <h2>Übersicht</h2>
+                </div>
+                <!-- Erste Schritte (NK-072): die Führung bei leerer Anwendung.
+                     Verschwindet, sobald alle Pflichtschritte erledigt sind;
+                     gezeichnet wird sie von zeigeErsteSchritte() in app.js. -->
+                <div id="erste-schritte" class="erste-schritte glass-panel" hidden>
+                    <div class="erste-schritte-kopf">
+                        <h2>Erste Schritte</h2>
+                        <p>Fünf Schritte bis zur ersten Abrechnung, dazu zwei optionale: vorher ausprobieren und Zähler.</p>
+                        <div class="erste-schritte-fortschritt">
+                            <span id="erste-schritte-stand">0 von 5 erledigt</span>
+                            <div class="erste-schritte-balken"><span id="erste-schritte-balken"></span></div>
+                        </div>
+                    </div>
+                    <!-- B7 (NK-103): die Liste trug ihre Klasse nicht — keine
+                         einzige Listenregel griff, der Browser nummerierte
+                         neben der Marke. -->
+                    <ol id="erste-schritte-liste" class="erste-schritte-liste"></ol>
+                </div>
+                <div class="dashboard-stats">
+                    <div class="stat-card glass-panel">
+                        <div class="stat-icon"><i class="ph ph-buildings"></i></div>
+                        <div class="stat-info">
+                            <h3>Immobilien</h3>
+                            <p id="stat-properties-count">Lade...</p>
+                        </div>
+                    </div>
+                    <div class="stat-card glass-panel">
+                        <div class="stat-icon"><i class="ph ph-users"></i></div>
+                        <div class="stat-info">
+                            <h3>Aktive Mieter</h3>
+                            <p id="stat-tenants-count">-</p>
+                        </div>
+                    </div>
+                    <div class="stat-card glass-panel">
+                        <div class="stat-icon"><i class="ph ph-coins"></i></div>
+                        <div class="stat-info">
+                            <h3>Einnahmen (laufendes Jahr)</h3>
+                            <p id="stat-revenue-ytd">-</p>
+                            <small id="stat-revenue-forecast" style="color: var(--text-secondary);">&nbsp;</small>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB: METERS -->
+            <section class="content-section tab-content" id="tab-meters">
+                <div class="section-header">
+                    <h2>Zähler &amp; Ablesungen</h2>
+                    <div class="kopf-aktionen">
+                        <button class="btn-secondary" onclick="oeffneImport('zaehlerstaende')"><i class="ph ph-file-xls" aria-hidden="true"></i>
+                            Aus Excel importieren</button>
+                        <button class="btn-secondary" onclick="openAddMeterModal()"><i class="ph ph-plus"></i> Zähler
+                            anlegen</button>
+                        <button class="btn-primary" onclick="openAddReadingModal()"><i class="ph ph-plus"></i> Ablesung
+                            erfassen</button>
+                    </div>
+                </div>
+                <div class="spalte" id="meters-container">
+                    <!-- Grouped by property / apartment -->
+                </div>
+            </section>
+
+            <!-- TAB: INVOICES -->
+            <section class="content-section tab-content" id="tab-invoices">
+                <div class="section-header">
+                    <h2>Belege &amp; Sammelrechnungen <button type="button" class="begriff-hilfe" aria-label="Begriff erklären" data-begriff="sammelrechnung"><i class="ph ph-question" aria-hidden="true"></i></button></h2>
+                    <button class="btn-primary" onclick="openAddDocumentModal()"><i class="ph ph-upload-simple"></i>
+                        Beleg hochladen</button>
+                </div>
+                <div id="documents-container" style="margin-bottom: 48px;">
+                    <!-- Document table -->
+                </div>
+
+                <div class="section-header section-header-getrennt">
+                    <h2>Alle Rechnungen</h2>
+                    <!-- Zeitleiste (NK-144): chronologisch nach Ausstellungsdatum,
+                         statt die Auffistung nach Erfassung. Auswahl-Pille wie in
+                         den Statistiken -- keine Schalter, also ohne Verb. -->
+                    <div class="zeile-eng">
+                        <button class="filter-pill active" id="pills-invoice-liste"
+                            onclick="zeigeInvoiceListe()">Liste</button>
+                        <button class="filter-pill" id="pills-invoice-zeitleiste"
+                            onclick="zeigeInvoiceZeitleiste()">Zeitleiste</button>
+                    </div>
+                    <div class="kopf-aktionen">
+                        <button class="btn-secondary" onclick="oeffneImport('rechnungen')"><i class="ph ph-file-xls" aria-hidden="true"></i>
+                            Aus Excel importieren</button>
+                        <!-- NK-161: ein Jahr Rechnungen Zeile für Zeile, wie in Excel. -->
+                        <button class="btn-secondary" onclick="oeffneRechnungstabelle()"><i class="ph ph-table" aria-hidden="true"></i>
+                            Als Tabelle erfassen</button>
+                        <button class="btn-secondary" onclick="openAddInvoiceModal()"><i class="ph ph-plus"></i> Rechnung
+                            erfassen</button>
+                    </div>
+                </div>
+                <div class="controls-bar" id="invoice-filter">
+                    <div class="form-group" style="flex: 2;">
+                        <input type="text" id="invoice-search" placeholder="Suche nach Rechnungsnr. oder Anbieter..."
+                            oninput="renderInvoices()">
+                    </div>
+                    <div class="form-group feld-breit">
+                        <select id="invoice-category-filter" onchange="renderInvoices()">
+                            <option value="">Alle Kategorien</option>
+                            <!-- populated dynamically in js -->
+                        </select>
+                    </div>
+                </div>
+                <div class="spalte" id="invoices-container">
+                    <!-- Grouped by property -->
+                </div>
+                <div id="invoices-zeitleiste" style="display: none;">
+                    <!-- NK-144: per JS gefuellt (renderInvoiceZeitleiste) -->
+                </div>
+            </section>
+
+            <!-- TAB: PROPERTIES -->
+            <section class="content-section tab-content" id="tab-properties">
+                <div class="section-header">
+                    <h2>Immobilien</h2>
+                    <div class="kopf-aktionen">
+                        <button class="btn-secondary" onclick="oeffneImport('wohnungen')"><i class="ph ph-file-xls" aria-hidden="true"></i>
+                            Aus Excel importieren</button>
+                        <button class="btn-primary" onclick="openAddPropertyModal()"><i class="ph ph-plus"></i>
+                            Immobilie anlegen</button>
+                    </div>
+                </div>
+                <div class="properties-grid" id="properties-grid">
+                    <div class="loading-state"><i class="ph ph-spinner ph-spin"></i> Lade Immobilien...</div>
+                </div>
+
+                <!-- Property Details View (hidden by default) -->
+                <div id="property-details-view" style="display: none; margin-top: 32px;">
+                    <div class="dashboard-card glass-panel">
+                        <div class="karten-kopf">
+                            <div>
+                                <h3 id="detail-prop-title">Wohnungen in Immobilien-Name</h3>
+                                <p id="detail-prop-sqm"
+                                    style="color: var(--text-muted); font-size: 14px; margin-top: 4px;">Gesamtfläche: 0
+                                    m²</p>
+                            </div>
+                            <div class="zeile-eng">
+                                <button class="btn-secondary" onclick="openHeizungsanlageModal(null)" title="Die zentrale Heizungsanlage: Verbrauchsanteil des § 7 Abs. 1 HeizkostenV und, bei einer verbundenen Anlage, die Trennung von Heizung und Warmwasser">
+                                    <i class="ph ph-flame"></i> Anlage erfassen
+                                </button>
+                                <button class="btn-secondary" onclick="openAnschreibenModal(currentPropertyId)" title="Der Text des Anschreibens auf dem Deckblatt jeder Abrechnung dieser Immobilie">
+                                    <i class="ph ph-file-text"></i> Anschreiben bearbeiten
+                                </button>
+                                <button class="btn-primary" onclick="openAddApartmentModal()"><i class="ph ph-plus"></i>
+                                    Wohnung anlegen</button>
+                            </div>
+                        </div>
+                        <div id="anlagen-list" style="display: flex; flex-direction: column; gap: 12px; margin-top: 16px;">
+                            <!-- Heizungsanlagen injected here (NK-125) -->
+                        </div>
+                        <div id="apartments-list" style="display: flex; flex-direction: column; gap: 12px;">
+                            <!-- Apartments injected here -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB: TENANTS -->
+            <section class="content-section tab-content" id="tab-tenants">
+                <div class="section-header">
+                    <h2>Mieter</h2>
+                    <div class="kopf-aktionen">
+                        <button class="btn-secondary" onclick="oeffneImport('mieter')"><i class="ph ph-file-xls" aria-hidden="true"></i>
+                            Aus Excel importieren</button>
+                        <button class="btn-primary" onclick="openAddTenantModal()"><i class="ph ph-plus"></i> Mieter
+                            anlegen</button>
+                    </div>
+                </div>
+                <div class="spalte" id="tenants-container">
+                    <!-- Grouped tenant tables injected here -->
+                </div>
+            </section>
+
+            <!-- Abrechnungen Section -->
+            <section id="tab-billing" class="content-section tab-content">
+                <div class="section-header">
+                    <div>
+                        <h2>Abrechnungen</h2>
+                        <p class="section-untertitel">Wer als Nächstes abgerechnet werden kann</p>
+                    </div>
+                    <div class="kopf-aktionen">
+                        <!-- NK-142: der freie Weg, falls die Vorschlagskarte fehlt -->
+                        <button class="btn-secondary" id="btn-freie-abrechnung"
+                            onclick="openFreieAbrechnung()"><i class="ph ph-files"></i>
+                            Abrechnung frei erstellen</button>
+                        <!-- NK-160: der geführte Weg für ein ganzes Jahr. -->
+                        <button class="btn-primary" onclick="oeffneJahrAssistent()"><i class="ph ph-calendar-check"></i>
+                            Jahr abrechnen</button>
+                    </div>
+                </div>
+
+                <div class="properties-grid raster-einspaltig" id="billing-suggestions-container">
+                    <!-- Suggestions rendered here -->
+                </div>
+
+                <div class="section-header section-header-weit">
+                    <div>
+                        <h2>Historie</h2>
+                        <p class="section-untertitel">Bereits erstellte Abrechnungen</p>
+                    </div>
+                </div>
+                <div class="properties-grid raster-einspaltig" id="billing-history-container">
+                    <!-- History rendered here -->
+                </div>
+            </section>
+
+            <!-- Einstellungen Section -->
+            <section id="tab-settings" class="content-section tab-content">
+                <div class="section-header">
+                    <div>
+                        <h2>Einstellungen</h2>
+                        <p class="section-untertitel">Vermieter und Anbieter, Datensicherung, Konto,
+                            Lizenz und Datenschutz</p>
+                    </div>
+                </div>
+
+                <!-- NK-156 (K8): Einstellungen in Gruppen statt sieben Karten
+                     untereinander. Jede Karte trägt data-gruppe; die Leiste zeigt
+                     eine Gruppe (zeigeEinstellungsgruppe in app.js). -->
+                <div class="einstellungs-gruppen" role="tablist" aria-label="Bereiche der Einstellungen">
+                    <button type="button" class="filter-pill" role="tab" data-gruppe="vermieter"
+                        onclick="zeigeEinstellungsgruppe('vermieter')"><i class="ph ph-identification-card" aria-hidden="true"></i> Vermieter &amp; Anbieter</button>
+                    <button type="button" class="filter-pill" role="tab" data-gruppe="sicherung"
+                        onclick="zeigeEinstellungsgruppe('sicherung')"><i class="ph ph-hard-drives" aria-hidden="true"></i> Datensicherung</button>
+                    <button type="button" class="filter-pill" role="tab" data-gruppe="konto"
+                        onclick="zeigeEinstellungsgruppe('konto')"><i class="ph ph-user-circle" aria-hidden="true"></i> Konto</button>
+                    <button type="button" class="filter-pill" role="tab" data-gruppe="lizenz"
+                        onclick="zeigeEinstellungsgruppe('lizenz')"><i class="ph ph-seal-check" aria-hidden="true"></i> Lizenz &amp; Updates</button>
+                    <button type="button" class="filter-pill" role="tab" data-gruppe="datenschutz"
+                        onclick="zeigeEinstellungsgruppe('datenschutz')"><i class="ph ph-shield-check" aria-hidden="true"></i> Datenschutz</button>
+                </div>
+
+                <div class="properties-grid einstellungs-raster">
+                    <!-- NK-124: Vermieterdaten für Deckblatt und GiroCode. -->
+                    <div data-gruppe="vermieter" class="dashboard-card glass-panel">
+                        <div class="karten-kopf">
+                            <h3>Vermieterdaten</h3>
+                            <span class="karten-kopf-hinweis" id="vermieter-girocode-hinweis"></span>
+                        </div>
+                        <p class="karten-text">
+                            Name und IBAN stehen auf dem Deckblatt der Abrechnung und im GiroCode
+                            (QR-Code zum Bezahlen). Ohne beides fällt der GiroCode weg.
+                        </p>
+                        <div class="form-group">
+                            <label for="vermieter-name">Name (Empfänger)</label>
+                            <input type="text" id="vermieter-name" maxlength="200" placeholder="z. B. Max Mustermann">
+                        </div>
+                        <div class="form-group">
+                            <label for="vermieter-iban">IBAN</label>
+                            <input type="text" id="vermieter-iban" maxlength="34" placeholder="z. B. DE02 1203 0000 0000 2020 51">
+                            <small class="text-muted" id="vermieter-quelle"></small>
+                        </div>
+                        <!-- NK-155: optionales Logo oben rechts auf dem Deckblatt. -->
+                        <div class="form-group">
+                            <label for="vermieter-logo-datei">Logo auf dem Deckblatt (optional)</label>
+                            <div class="vermieter-logo-zeile">
+                                <img id="vermieter-logo-vorschau" class="vermieter-logo-vorschau" alt="Ihr Logo" hidden>
+                                <input type="file" id="vermieter-logo-datei" accept=".png,.jpg,.jpeg,image/png,image/jpeg"
+                                    hidden onchange="vermieterLogoHochladen(this)">
+                                <button class="btn-secondary" type="button"
+                                    onclick="document.getElementById('vermieter-logo-datei').click()">Logo hochladen</button>
+                                <button class="btn-secondary" type="button" id="btn-vermieter-logo-loeschen" hidden
+                                    onclick="vermieterLogoLoeschen()">Logo löschen</button>
+                            </div>
+                            <small class="feld-hilfe">PNG oder JPEG, höchstens 2 MB. Es steht oben rechts auf dem Deckblatt jeder Abrechnung.</small>
+                        </div>
+                        <button class="btn-primary" id="btn-vermieter-speichern" onclick="saveVermieterdaten()">Speichern</button>
+                    </div>
+
+                    <!-- NK-127 (E-1): Kontoverwaltung in der Oberfläche. Ein
+                         Konto entsteht im Einrichtungsassistenten, das zweite
+                         legt der Betreiber hier an -- mehr braucht keine
+                         Wohnung (ZIEL § 8). Passwort vergessen bleibt Sache
+                         des Servers: flask users passwd <name>. -->
+                    <!-- NK-162 (F-91): größere Schrift, im Browser gemerkt. -->
+                    <div data-gruppe="konto" class="dashboard-card glass-panel" id="darstellung-karte">
+                        <div class="karten-kopf">
+                            <h3>Darstellung</h3>
+                        </div>
+                        <p class="karten-text">Wie groß Schrift und Knöpfe erscheinen. Die Einstellung gilt
+                            für diesen Browser.</p>
+                        <div class="schrift-wahl" role="radiogroup" aria-label="Schriftgröße">
+                            <label><input type="radio" name="schriftgroesse" value="1"
+                                onchange="schriftgroesseWaehlen(this.value)"> Normal (100 %)</label>
+                            <label><input type="radio" name="schriftgroesse" value="1.15"
+                                onchange="schriftgroesseWaehlen(this.value)"> Größer (115 %)</label>
+                            <label><input type="radio" name="schriftgroesse" value="1.3"
+                                onchange="schriftgroesseWaehlen(this.value)"> Groß (130 %)</label>
+                        </div>
+                    </div>
+
+                    <div data-gruppe="konto" class="dashboard-card glass-panel">
+                        <div class="karten-kopf">
+                            <h3>Konto</h3>
+                            <span class="karten-kopf-hinweis" id="konto-hinweis"></span>
+                        </div>
+                        <p class="karten-text">
+                            Zwei Konten reichen: eins für Sie, eins für den Partner.
+                            <span id="konto-passwort-vergessen">Haben Sie Ihr Passwort vergessen, kann es der
+                            Betreiber der Installation zurücksetzen (Anleitung in der README, Abschnitt
+                            „Betrieb“).</span>
+                        </p>
+                        <div class="table-container">
+                            <table class="tabelle">
+                                <thead>
+                                    <tr class="tabellen-kopfzeile">
+                                        <th class="zelle">Benutzername</th>
+                                        <th class="zelle">Zuletzt angemeldet</th>
+                                        <th class="zelle">Zustand</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="konto-zeilen"></tbody>
+                            </table>
+                        </div>
+                        <div class="karten-abschnitt-getrennt">
+                            <h4 class="abstand-unten-klein">Passwort ändern</h4>
+                            <div class="form-group">
+                                <label for="konto-alt">Altes Passwort</label>
+                                <input type="password" id="konto-alt" autocomplete="current-password">
+                            </div>
+                            <div class="form-group">
+                                <label for="konto-neu">Neues Passwort (mindestens 10 Zeichen)</label>
+                                <input type="password" id="konto-neu" autocomplete="new-password" minlength="10">
+                            </div>
+                            <div class="form-group">
+                                <label for="konto-neu2">Neues Passwort wiederholen</label>
+                                <input type="password" id="konto-neu2" autocomplete="new-password" minlength="10">
+                            </div>
+                            <button class="btn-primary" id="btn-konto-passwort"
+                                onclick="passwortAendern()">Passwort ändern</button>
+                        </div>
+                        <div class="karten-abschnitt-getrennt" id="zweites-konto-bereich">
+                            <h4 class="abstand-unten-klein">Zweites Konto anlegen</h4>
+                            <div class="form-group">
+                                <label for="konto-neu-name">Benutzername</label>
+                                <input type="text" id="konto-neu-name" maxlength="40" placeholder="z. B. Partner">
+                            </div>
+                            <div class="form-group">
+                                <label for="konto-neu-passwort">Passwort (mindestens 10 Zeichen)</label>
+                                <input type="password" id="konto-neu-passwort" autocomplete="new-password"
+                                    minlength="10">
+                            </div>
+                            <button class="btn-primary" id="btn-konto-anlegen"
+                                onclick="zweitesKontoAnlegen()">Konto anlegen</button>
+                        </div>
+                    </div>
+
+                    <!-- NK-080/NK-081 (D-93): die Lizenz gilt fuer Updates,
+                         nie fuer die Daten. Nichts in der Anwendung haengt an
+                         ihr, gefragt wird sie nur von der Update-Suche. -->
+                    <div data-gruppe="lizenz" class="dashboard-card glass-panel">
+                        <div class="abstand-unten-klein">
+                            <h3>Lizenz und Updates</h3>
+                        </div>
+                        <p id="lizenz-stand" style="margin: 0 0 12px; color: var(--text-muted); line-height: 1.5; font-size: 0.9rem;">
+                            Lizenz wird geladen …
+                        </p>
+                        <input type="file" id="lizenz-datei" accept=".nklizenz,application/json"
+                            style="display: none;" onchange="lizenzEinspielen(this)">
+                        <div class="knopf-zeile">
+                            <button class="btn-secondary" id="btn-lizenz-einspielen"
+                                onclick="document.getElementById('lizenz-datei').click()"
+                                title="Die Lizenzdatei (.nklizenz) aus Ihrer Kaufbestätigung">Lizenzdatei einspielen</button>
+                            <button class="btn-secondary" id="btn-update-suchen" onclick="nachUpdatesSuchen()"
+                                title="Fragt nur auf Knopfdruck nach einer neuen Version, nie von selbst">Nach Updates suchen</button>
+                            <button class="btn-primary" id="btn-update-installieren" style="display: none;"
+                                onclick="updateInstallieren()">Update installieren</button>
+                        </div>
+                        <p id="update-stand" style="margin: 12px 0 0; line-height: 1.5; font-size: 0.9rem;"></p>
+                    </div>
+
+                    <!-- NK-153 (D-89): geloeschte Mietverhaeltnisse, deren
+                         Abrechnungen und Zahlungen noch aufbewahrt werden. -->
+                    <div data-gruppe="datenschutz" class="dashboard-card glass-panel">
+                        <div class="abstand-unten-klein">
+                            <h3>Gesperrte Mietverhältnisse</h3>
+                        </div>
+                        <p style="margin: 0 0 12px; color: var(--text-muted); line-height: 1.5; font-size: 0.9rem;">
+                            Gelöschte Mieter, deren festgesetzte Abrechnungen und Zahlungen der
+                            Aufbewahrungspflicht unterliegen (§ 147 AO, § 257 HGB). Sie sind überall
+                            ausgeblendet und werden nach dem genannten Tag automatisch gelöscht.
+                        </p>
+                        <div id="gesperrte-mieter"></div>
+                    </div>
+
+                    <!-- NK-164: der JSON-Export ist kein Umzug und keine Sicherung, sondern
+                         ein Datenauszug (Art. 20 DSGVO, andere Programme). -->
+                    <div data-gruppe="datenschutz" class="dashboard-card glass-panel">
+                        <div class="karten-kopf">
+                            <h3>Datenauszug für andere Programme</h3>
+                        </div>
+                        <p class="karten-text">
+                            Alle Daten als JSON-Datei, lesbar für andere Programme. Für den Umzug auf einen
+                            anderen Rechner nehmen Sie stattdessen das Umzugspaket unter „Sicherung“.
+                        </p>
+                        <div class="knopf-zeile">
+                            <button class="btn-secondary" type="button" onclick="exportData()">
+                                <i class="ph ph-download-simple" aria-hidden="true"></i> Datenauszug herunterladen
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- NK-077: Sicherung und Wiederherstellung in der
+                         Oberflaeche. Das Archiv kommt aus backup.py (NK-025)
+                         -- Datenbank und Belege in einer Datei. Das Ziel
+                         bleibt frei, nur der Belegordner ist verboten: das
+                         Einspielen leert ihn und wuerde die Sicherung
+                         selbst wegwerfen. -->
+                    <div data-gruppe="sicherung" class="dashboard-card glass-panel">
+                        <div class="karten-kopf">
+                            <h3>Sicherung</h3>
+                            <span class="karten-kopf-hinweis" id="sicherung-stand"></span>
+                        </div>
+                        <div id="sicherung-erinnerung" style="display: none; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; line-height: 1.5;"></div>
+                        <p class="karten-text">
+                            Eine Sicherung hält die Datenbank und Ihre Belege in einer Datei. Legen Sie sie
+                            außerhalb dieses Rechners ab, zum Beispiel auf ein USB-Laufwerk oder das NAS.
+                        </p>
+                        <p id="sicherung-erlaubt" class="text-muted" style="font-size: 13px; margin: -8px 0 12px;"></p>
+                        <!-- NK-130 (D-86): Sicherungen, die den Rechner verlassen,
+                             mit Passphrase verschluesseln (AES-256-GCM). -->
+                        <div class="form-group abstand-unten-klein">
+                            <label style="display: flex; gap: 8px; align-items: center; font-weight: normal;">
+                                <input type="checkbox" id="sicherung-verschluesseln"
+                                    onchange="document.getElementById('sicherung-passphrase-felder').style.display = this.checked ? '' : 'none'">
+                                Sicherung mit Passphrase verschlüsseln (empfohlen für USB-Laufwerk und Cloud)
+                            </label>
+                            <div id="sicherung-passphrase-felder" style="display: none; margin-top: 8px;">
+                                <div class="knopf-zeile">
+                                    <input type="password" id="sicherung-passphrase" autocomplete="new-password"
+                                        minlength="12" placeholder="Passphrase (mindestens 12 Zeichen)" style="flex: 1; min-width: 200px;">
+                                    <input type="password" id="sicherung-passphrase2" autocomplete="new-password"
+                                        minlength="12" placeholder="Passphrase wiederholen" style="flex: 1; min-width: 200px;">
+                                </div>
+                                <p style="font-size: 13px; color: var(--text-muted); margin: 6px 0 0;">
+                                    Ohne die Passphrase lässt sich die Sicherung nicht mehr öffnen — niemand
+                                    kann sie wiederherstellen. Bewahren Sie sie getrennt von der Sicherung auf.
+                                </p>
+                            </div>
+                        </div>
+                        <div id="sicherung-festplatte" style="display: none; font-size: 13px; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; line-height: 1.5; background: var(--bg-hover);"></div>
+                        <div class="form-group feld-zeile">
+                            <input class="feld-breit" type="text" id="sicherung-ziel" placeholder="Verzeichnis für die Sicherung"
+                                list="sicherung-ziele">
+                            <datalist id="sicherung-ziele"></datalist>
+                            <!-- NK-152: in der Windows-App ein Ordner-Dialog statt Pfad-Eingabe (F-76). -->
+                            <button class="btn-secondary" id="btn-sicherung-ordner" style="display: none;"
+                                onclick="sicherungsordnerWaehlen()">Ordner auswählen</button>
+                            <button class="btn-primary" id="btn-sicherung-erstellen"
+                                onclick="sicherungErstellen()">Sicherung erstellen</button>
+                        </div>
+                        <!-- NK-156: der Belegexport aus dem globalen Kopf; er ist keine Sicherung,
+                             gehört aber zum selben Gedanken „Daten heraus“. Der JSON-Export
+                             steht seit NK-164 unter Datenschutz (Datenauszug). -->
+                        <div class="knopf-zeile karten-abschnitt">
+                            <a class="btn-secondary" href="/api/belege/export" download
+                                title="Alle Belege mit sprechenden Namen (Immobilie, Wohnung, Mieter) als ZIP — die Ablage selbst benennt Dateien neutral">
+                                <i class="ph ph-file-zip" aria-hidden="true"></i> Belege exportieren
+                            </a>
+                        </div>
+                        <div class="table-container">
+                            <table class="tabelle">
+                                <thead>
+                                    <tr class="tabellen-kopfzeile">
+                                        <th class="zelle">Sicherung</th>
+                                        <th class="zelle">Erstellt am</th>
+                                        <th class="zelle">Größe</th>
+                                        <th class="zelle">Belege</th>
+                                        <th class="zelle">Aktion</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="sicherung-zeilen">
+                                    <tr><td colspan="5" style="padding: 8px; color: var(--text-muted);">Noch keine Sicherung im gewählten Verzeichnis.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- NK-164 (E-13 → D-96): Umzugspaket. Dasselbe .nkfix wie eine
+                         Sicherung, hier als Weg auf einen anderen Rechner: Docker ↔
+                         Windows-App in beide Richtungen. Hochladen in Stücken
+                         (static/umzug.js), in der App über den Datei-Dialog. -->
+                    <div data-gruppe="sicherung" class="dashboard-card glass-panel" id="umzug-karte">
+                        <div class="karten-kopf">
+                            <h3>Umzug auf einen anderen Rechner</h3>
+                        </div>
+                        <p class="karten-text">
+                            Ein Umzugspaket (.nkfix) enthält alles: Daten, Belege und PDFs, Konten,
+                            Vermieterdaten, Logo und Lizenz. Übernehmen Sie es auf dem neuen Rechner —
+                            etwa von Docker in die Windows-App oder umgekehrt.
+                        </p>
+                        <div class="karten-abschnitt">
+                            <h4 class="abstand-unten-klein">Alles exportieren</h4>
+                            <label class="haken-zeile">
+                                <input type="checkbox" id="umzug-verschluesseln"
+                                    onchange="document.getElementById('umzug-export-passphrase').hidden = !this.checked">
+                                Mit Passphrase verschlüsseln (empfohlen, wenn das Paket über Cloud oder USB reist)
+                            </label>
+                            <div id="umzug-export-passphrase" class="knopf-zeile abstand-oben" hidden>
+                                <input class="feld-breit" type="password" id="umzug-export-pass1" autocomplete="new-password"
+                                    minlength="12" placeholder="Passphrase (mindestens 12 Zeichen)" aria-label="Passphrase">
+                                <input class="feld-breit" type="password" id="umzug-export-pass2" autocomplete="new-password"
+                                    minlength="12" placeholder="Passphrase wiederholen" aria-label="Passphrase wiederholen">
+                            </div>
+                            <div class="knopf-zeile abstand-oben">
+                                <button class="btn-primary" type="button" id="btn-umzug-export" onclick="umzugExportieren()">
+                                    <i class="ph ph-export" aria-hidden="true"></i> Alles exportieren
+                                </button>
+                            </div>
+                        </div>
+                        <div class="karten-abschnitt karten-abschnitt-getrennt">
+                            <h4 class="abstand-unten-klein">Daten übernehmen (ersetzt alles)</h4>
+                            <p class="karten-text">
+                                Alle Daten dieser Installation werden durch das Paket ersetzt. Vorher entsteht
+                                automatisch eine Sicherung des jetzigen Stands. Danach melden Sie sich mit dem
+                                Konto aus dem Paket an.
+                            </p>
+                            <div class="form-group">
+                                <label for="umzug-datei-einstellungen">Paket</label>
+                                <input type="file" id="umzug-datei-einstellungen" accept=".nkfix,.nkbak,.gz">
+                                <div class="knopf-zeile">
+                                    <button class="btn-secondary" type="button" id="btn-umzug-auswahl" hidden
+                                        onclick="umzugPaketWaehlen()">Paket auswählen</button>
+                                    <span class="text-muted" id="umzug-auswahl-einstellungen"></span>
+                                </div>
+                            </div>
+                            <div class="form-group" id="umzug-importordner-gruppe" hidden>
+                                <label for="umzug-importordner">… oder aus dem Importordner</label>
+                                <select id="umzug-importordner"></select>
+                                <p class="text-muted abstand-oben" id="umzug-importordner-hinweis"></p>
+                            </div>
+                            <div class="form-group">
+                                <label for="umzug-uebernahme-passphrase">Passphrase (nur bei verschlüsselten Paketen)</label>
+                                <input type="password" id="umzug-uebernahme-passphrase" autocomplete="off">
+                            </div>
+                            <div class="form-group">
+                                <label for="umzug-bestaetigung">Zur Bestätigung „ERSETZEN“ eingeben</label>
+                                <input type="text" id="umzug-bestaetigung" autocomplete="off">
+                            </div>
+                            <progress id="umzug-fortschritt-einstellungen" class="fortschritt" max="1" value="0" hidden></progress>
+                            <p id="umzug-meldung" class="karten-text" role="status" aria-live="polite"></p>
+                            <div class="knopf-zeile">
+                                <button class="btn-gefahr" type="button" id="btn-umzug-uebernehmen" onclick="umzugUebernehmen()">
+                                    <i class="ph ph-download-simple" aria-hidden="true"></i> Daten übernehmen
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div data-gruppe="vermieter" class="dashboard-card glass-panel">
+                        <div class="karten-kopf">
+                            <h3>Anbieter & Versorger</h3>
+                        </div>
+                        <div class="form-group feld-zeile">
+                            <input class="feld-breit" type="text" id="new-provider-name" placeholder="Neuer Anbieter (z. B. Stadtwerke)">
+                            <button class="btn-primary" onclick="addProvider()">Anbieter anlegen</button>
+                        </div>
+                        <div class="table-container">
+                            <table class="tabelle">
+                                <thead>
+                                    <tr class="tabellen-kopfzeile">
+                                        <th class="zelle">Name</th>
+                                        <th style="padding: 12px 8px; width: 80px;">Aktion</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="providers-table-body">
+                                    <!-- Providers injected here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div data-gruppe="sicherung" class="dashboard-card glass-panel gefahrenzone" id="gefahrenzone" hidden>
+                        <!-- NK-123: verborgen bis /api/auth/me die Entwicklerroute meldet. -->
+                        <div class="karten-kopf">
+                            <h3><i class="ph ph-warning-circle"
+                                    style="vertical-align: middle;"></i> Gefahrenzone</h3>
+                        </div>
+                        <p class="karten-text">
+                            Hier setzen Sie die gesamte Datenbank auf den Werkszustand zurück. Alle Immobilien,
+                            Wohnungen, Mieter, Zählerstände und Rechnungen werden <strong>unwiderruflich</strong>
+                            gelöscht!
+                        </p>
+                        <button class="btn-gefahr" onclick="resetDatabase()">
+                            <i class="ph ph-trash"></i> Datenbank zurücksetzen
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- NK-158 (F-88): Hilfe. Erklärt die Aufgabe, nicht nur die Software:
+                 Grundlagen, was vorher zu sammeln ist, Begriffe (aus glossar.md § 8
+                 über static/hilfe-begriffe.json) und die Kurzanleitung als PDF.
+                 Kein Eintrag in der Seitenleiste (der Kanon hat neun), geöffnet
+                 über „Hilfe öffnen“ im Kopf und die „?“ an Fachbegriffen. -->
+            <section class="content-section tab-content" id="tab-hilfe">
+                <div class="section-header">
+                    <div>
+                        <h2>Hilfe</h2>
+                        <p class="section-untertitel">Was eine Nebenkostenabrechnung ist und wie Sie
+                            dorthin kommen</p>
+                    </div>
+                    <div class="kopf-aktionen">
+                        <a class="btn-primary" href="/api/hilfe/kurzanleitung.pdf" target="_blank">
+                            <i class="ph ph-file-pdf" aria-hidden="true"></i> Kurzanleitung öffnen (PDF)</a>
+                    </div>
+                </div>
+
+                <div class="hilfe-raster">
+                    <div class="dashboard-card glass-panel" id="hilfe-grundlagen">
+                        <div class="karten-kopf"><h3>Grundlagen</h3></div>
+                        <h4 class="hilfe-frage">Was ist eine Nebenkostenabrechnung?</h4>
+                        <p class="karten-text">
+                            Ihr Mieter zahlt jeden Monat eine Vorauszahlung auf die Nebenkosten. Einmal im
+                            Jahr stellen Sie diesen Vorauszahlungen die tatsächlichen Betriebskosten des Hauses
+                            gegenüber, verteilt nach einem Umlageschlüssel, zum Beispiel nach Wohnfläche.
+                            Waren die Kosten höher, zahlt der Mieter nach; waren sie niedriger, bekommt er
+                            ein Guthaben zurück.
+                        </p>
+                        <h4 class="hilfe-frage">Was darf ich umlegen?</h4>
+                        <p class="karten-text">
+                            Nur Betriebskosten nach § 2 Betriebskostenverordnung, und nur, wenn der Mietvertrag
+                            es vorsieht:
+                        </p>
+                        <ol class="hilfe-liste">
+                            <li>Grundsteuer</li>
+                            <li>Wasserversorgung</li>
+                            <li>Entwässerung (Abwasser, Niederschlagswasser)</li>
+                            <li>Heizung</li>
+                            <li>Warmwasser</li>
+                            <li>Heizung und Warmwasser aus einer Anlage</li>
+                            <li>Aufzug</li>
+                            <li>Straßenreinigung und Müllbeseitigung</li>
+                            <li>Gebäudereinigung und Ungezieferbekämpfung</li>
+                            <li>Gartenpflege</li>
+                            <li>Beleuchtung (Allgemeinstrom)</li>
+                            <li>Schornsteinreinigung</li>
+                            <li>Sach- und Haftpflichtversicherung</li>
+                            <li>Hauswart</li>
+                            <li>Antenne, Kabel oder Glasfaser</li>
+                            <li>Wäschepflege (Gemeinschaftswaschmaschine)</li>
+                            <li>Sonstige Betriebskosten, wenn sie im Mietvertrag einzeln genannt sind</li>
+                        </ol>
+                        <p class="karten-text">
+                            Nicht umlegen dürfen Sie Reparaturen und Instandhaltung, Verwaltungskosten,
+                            Rücklagen und Bankgebühren.
+                        </p>
+                        <h4 class="hilfe-frage">Welche Fristen gelten?</h4>
+                        <p class="karten-text">
+                            Der Abrechnungszeitraum ist höchstens zwölf Monate lang. Die Abrechnung muss dem
+                            Mieter spätestens zwölf Monate nach seinem Ende zugehen (§ 556 Abs. 3 BGB) — für
+                            2025 also bis zum 31.12.2026. Danach können Sie keine Nachzahlung mehr verlangen,
+                            ein Guthaben müssen Sie trotzdem auszahlen. Der Mieter hat nach Zugang zwölf Monate
+                            Zeit für Einwände.
+                        </p>
+                        <h4 class="hilfe-frage">Was darf der Mieter prüfen?</h4>
+                        <p class="karten-text">
+                            Er darf die Belege einsehen und muss die Rechnung nachvollziehen können:
+                            Gesamtkosten, Umlageschlüssel, seinen Anteil und seine Vorauszahlungen.
+                            NebenkostenFix druckt dafür den Rechenweg und die Belegliste mit ins PDF.
+                        </p>
+                        <p class="karten-text text-muted">
+                            Keine Rechtsberatung. Im Zweifel fragen Sie Ihren Eigentümerverband oder eine
+                            Anwältin für Mietrecht.
+                        </p>
+                    </div>
+
+                    <div class="dashboard-card glass-panel" id="hilfe-sammeln">
+                        <div class="karten-kopf"><h3>Was Sie vorher sammeln</h3></div>
+                        <p class="karten-text">Haken Sie ab, was Sie beisammen haben. Die Haken merkt sich
+                            dieser Browser.</p>
+                        <ul class="hilfe-checkliste" id="hilfe-checkliste">
+                            <li><label><input type="checkbox" data-punkt="vertraege"> Mietverträge: Wohnfläche,
+                                vereinbarte Vorauszahlung, welche Kosten umgelegt werden</label></li>
+                            <li><label><input type="checkbox" data-punkt="rechnungen"> Alle Rechnungen des
+                                Jahres: Grundsteuerbescheid, Wasser und Abwasser, Müll, Versicherung, Hauswart,
+                                Allgemeinstrom, Schornsteinfeger, Heizung und Wartung</label></li>
+                            <li><label><input type="checkbox" data-punkt="zaehler"> Zählerstände zum Stichtag
+                                (meist 31.12.) und bei jedem Mieterwechsel</label></li>
+                            <li><label><input type="checkbox" data-punkt="mietzeiten"> Ein- und Auszugsdaten
+                                Ihrer Mieter</label></li>
+                            <li><label><input type="checkbox" data-punkt="personen"> Wie viele Personen in jedem
+                                Haushalt leben (falls nach Personen verteilt wird)</label></li>
+                            <li><label><input type="checkbox" data-punkt="zahlungen"> Die Vorauszahlungen, die
+                                jeder Mieter tatsächlich gezahlt hat (Kontoauszüge)</label></li>
+                        </ul>
+                        <p class="karten-text">
+                            Liegt das alles in Excel? Dann übernehmen Sie es mit „Aus Excel importieren“ in
+                            den Bereichen Immobilien, Mieter, Rechnungen, Zahlungen und Zähler.
+                        </p>
+                    </div>
+
+                    <div class="dashboard-card glass-panel" id="hilfe-begriffe">
+                        <div class="karten-kopf"><h3>Begriffe von A bis Z</h3></div>
+                        <dl class="hilfe-begriffe" id="hilfe-begriffe-liste"></dl>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Statistiken (formerly Verbrauch & Analytics) Section -->
+            <section id="tab-reports" class="content-section tab-content">
+                <div class="section-header">
+                    <div>
+                        <h2>Statistiken</h2>
+                        <p class="section-untertitel">Verbrauchsanalysen und Finanzstatistiken
+                        </p>
+                    </div>
+                    <div class="form-group" id="analytics-auswahl" style="display: flex; gap: 8px; margin: 0;">
+                        <select id="analytics-property-select" class="form-control" style="width: 250px;"
+                            onchange="fetchAnalytics()"></select>
+                    </div>
+                </div>
+
+                <!-- NK-154: ohne Immobilie ein Leerzustand statt einer leeren
+                     Seite -- mit dem Weg zur Beispielimmobilie (NK-141), die
+                     sonst erst mit einer eigenen Immobilie erreichbar war. -->
+                <div id="analytics-leer" hidden></div>
+
+                <!-- Dynamische Navigation (Pills) -->
+                <div id="analytics-nav" style="display: flex; gap: 12px; margin-bottom: 32px; flex-wrap: wrap;">
+                    <!-- Injected by JS -->
+                </div>
+
+                <div class="section-divider" id="analytics-trenner" style="margin: 32px 0; border-bottom: 1px solid var(--border-color);">
+                </div>
+
+
+                <!-- Ansicht: Gebäudeübersicht -->
+                <div id="analytics-view-general" style="display: none; flex-direction: column; gap: 32px;">
+                    <!-- Zone 1: Vital Signs -->
+                    <div>
+                        <div id="kpis-container"
+                            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px;">
+                            <!-- KPI Cards injected here -->
+                        </div>
+                    </div>
+
+                    <!-- Zone 2: Verbrauchsentwicklung (total building consumption) -->
+                    <div class="dashboard-card glass-panel">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+                            <h3 style="margin: 0; display: flex; align-items: center; gap: 8px;">
+                                <i class="ph ph-chart-line-up text-primaer"></i>
+                                Verbrauchsentwicklung (Gesamtgebäude)
+                            </h3>
+                        </div>
+                        <div style="position: relative; width: 100%;">
+                            <div id="chart-consumption-trend"></div>
+                        </div>
+                    </div>
+
+                    <!-- Zone 3: Mieterübersicht -->
+                    <div class="dashboard-card glass-panel">
+                        <h3 style="margin-bottom: 20px; display: flex; align-items: center; gap: 8px;">
+                            <i class="ph ph-users-three text-primaer"></i>
+                            Mieterübersicht
+                        </h3>
+                        <div id="tenant-overview-grid"
+                            style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;">
+                            <!-- Tenant cards injected by JS -->
+                        </div>
+                    </div>
+
+                    <!-- Zone 4: Consumption Radar -->
+                    <div class="dashboard-card glass-panel">
+                        <h3 id="chart-comparison-title" style="margin-bottom: 24px;">Wohnungsvergleich</h3>
+                        <div class="diagramm-flaeche">
+                            <canvas id="chart-building-comparison"></canvas>
+                            <p id="chart-building-comparison-leer" class="text-muted" hidden>
+                                Keine Verbrauchsdaten für den Vergleich vorhanden.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Ansicht: Wohnung -->
+                <div id="analytics-view-apartment" style="display: none;">
+                    <div class="properties-grid" style="grid-template-columns: repeat(auto-fill, minmax(min(500px, 100%), 1fr));">
+                        <div class="dashboard-card glass-panel">
+                            <div class="karten-kopf">
+                                <h3>Eigenverbrauch</h3>
+                            </div>
+                            <div id="apt-consumption-cards"
+                                style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; width: 100%;">
+                                <!-- Metric cards will be rendered here -->
+                            </div>
+                        </div>
+
+                        <div class="dashboard-card glass-panel">
+                            <div class="karten-kopf">
+                                <h3>Kostenverteilung (Letzte Abrechnung)</h3>
+                            </div>
+                            <div id="chart-apt-costs-container"
+                                style="position: relative; height: 350px; width: 100%; max-width: 350px; margin: 0 auto; display: flex; justify-content: center; align-items: center;">
+                                <canvas id="chart-apt-costs"></canvas>
+                                <div id="chart-apt-costs-empty"
+                                    style="display: none; text-align: center; color: var(--text-muted);">
+                                    <i class="ph ph-chart-pie-slice"
+                                        style="font-size: 48px; margin-bottom: 16px; opacity: 0.5;"></i>
+                                    <p>Noch keine Abrechnung erstellt.<br>Sobald die erste Nebenkostenabrechnung
+                                        abgeschlossen ist, sehen Sie hier die Kostenverteilung.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Ansicht: Datenqualität -->
+                <div id="analytics-view-dataquality" style="display: none; flex-direction: column; gap: 32px;">
+                    <!-- Beispielimmobilie (NK-141) -->
+                    <div class="dashboard-card glass-panel" id="dq-beispiel-karte">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+                            <div style="max-width: 640px;">
+                                <h3 style="margin: 0 0 8px 0; display: flex; align-items: center; gap: 8px;">
+                                    <i class="ph ph-house-line text-primaer"></i>
+                                    Noch nichts zu sehen?
+                                </h3>
+                                <p style="margin: 0; color: var(--text-muted); font-size: 0.92em;">
+                                    Legen Sie eine Beispielimmobilie an: ein kleines Haus mit zwei Wohnungen,
+                                    Zählern in allen vier Zuständen der Aktualität und einer Warnung.
+                                    Sie können sie danach wie jede andere Immobilie bearbeiten oder löschen.
+                                </p>
+                            </div>
+                            <button id="btn-beispiel-anlegen" class="btn-primary" onclick="beispielAnlegen(this)">
+                                <i class="ph ph-sparkle"></i> Beispielimmobilie anlegen
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Warnings Section -->
+                    <div id="dq-warnings-section" style="display: none;">
+                        <div class="dashboard-card glass-panel">
+                            <h3 style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                                <i class="ph ph-warning" style="color: var(--danger-color);"></i>
+                                Warnungen
+                            </h3>
+                            <p style="margin: 0 0 16px 0; color: var(--text-muted); font-size: 0.92em;">
+                                Diese Warnungen zeigen, wo eine Abrechnung ins Wanken gerät: Wer nach Verbrauch
+                                abrechnet, braucht einen Zähler, der die Wohnung misst. Ohne ihn lassen sich diese
+                                Kosten nicht nach Verbrauch verteilen: Heizkosten gehen dann ganz nach Wohnfläche,
+                                andere Verbrauchskosten fallen für die Wohnung aus der Abrechnung. Richten Sie den fehlenden Zähler ein oder
+                                stellen Sie die Abrechnungsart des Mietverhältnisses um.
+                            </p>
+                            <div id="dq-warnings-container" class="dq-warnings">
+                                <!-- Warning cards injected by JS -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Meter Freshness Section -->
+                    <div class="dashboard-card glass-panel">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 12px;">
+                            <h3 style="margin: 0; display: flex; align-items: center; gap: 8px;">
+                                <i class="ph ph-gauge text-primaer"></i>
+                                Zählerstand-Aktualität
+                            </h3>
+                            <div id="dq-summary-bar" class="dq-summary-bar" style="margin-bottom: 0;">
+                                <!-- Summary counts injected by JS -->
+                            </div>
+                        </div>
+                        <p style="margin: 0 0 20px 0; color: var(--text-muted); font-size: 0.92em;">
+                            Die Farbe sagt, wie alt die letzte Ablesung ist: <strong>grün</strong> unter 90 Tagen,
+                            <strong>gelb</strong> unter 180, <strong>rot</strong> 180 Tage und mehr —
+                            <strong>ohne Punkt</strong> heißt nie gelesen. Ohne aktuellen Stand rechnet die
+                            Abrechnung mit geschätzten Werten (§ 12a HeizkostenV); führen Sie die Ablesungen
+                            daher pünktlich zu Jahreswechsel und Mietwechsel durch.
+                        </p>
+                        <div id="dq-meter-grid" class="dq-meter-grid">
+                            <!-- Meter cards injected by JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Ansicht: Finanzen -->
+                <div id="analytics-view-finanzen" style="display: none; flex-direction: column; gap: 32px;">
+                    <!-- Historische Entwicklung (Kosten) - moved from Gebäudeübersicht -->
+                    <div class="dashboard-card glass-panel">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+                            <h3 style="margin: 0;">Historische Entwicklung (Kosten)</h3>
+                            <div class="knopf-zeile" id="chart-building-filters">
+                                <button class="filter-pill active" data-filter="Alle Kosten">Alle
+                                    Kosten</button>
+                                <button class="filter-pill" data-filter="Sonstige Kosten">Sonstige
+                                    Kosten</button>
+                                <button class="filter-pill" data-filter="Strom">Strom</button>
+                                <button class="filter-pill" data-filter="Gas">Gas</button>
+                                <button class="filter-pill" data-filter="Wasser">Wasser</button>
+                            </div>
+                        </div>
+                        <div class="diagramm-flaeche">
+                            <canvas id="chart-building-timeseries"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="properties-grid" style="grid-template-columns: repeat(auto-fill, minmax(min(500px, 100%), 1fr));">
+                        <div class="dashboard-card glass-panel">
+                            <div class="karten-kopf">
+                                <h3>Einnahmen-Verteilung</h3>
+                            </div>
+                            <div class="diagramm-flaeche">
+                                <canvas id="chart-finance-distribution"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="dashboard-card glass-panel">
+                            <div class="karten-kopf">
+                                <h3>Einnahmen vs. Ausgaben (Cashflow)</h3>
+                            </div>
+                            <div class="diagramm-flaeche">
+                                <canvas id="chart-finance-cashflow"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB: PAYMENTS -->
+            <section class="content-section tab-content" id="tab-payments">
+                <div class="section-header">
+                    <h2>Zahlungen</h2>
+                    <div class="kopf-aktionen">
+                        <button class="btn-secondary" onclick="oeffneImport('zahlungen')"><i class="ph ph-file-xls" aria-hidden="true"></i>
+                            Aus Excel importieren</button>
+                        <button class="btn-primary" onclick="openAddPaymentModal()"><i class="ph ph-plus"></i> Zahlung
+                            erfassen</button>
+                    </div>
+                </div>
+                <div id="payments-grid" class="properties-grid"
+                    style="grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 24px;">
+                    <!-- Cards injected via JS -->
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <!-- KPI History Modal -->
+    <!-- NK-160: „Jahr abrechnen“ in fünf Schritten. Früh im Dokument, damit
+         Rechnungs-, Ablese- und Anschreibendialog darüber liegen. Gerechnet
+         wird über die vorhandenen Routen (generate, finalize). -->
+    <div class="modal-overlay" id="jahr-modal">
+        <div class="modal glass-panel dialog-breit">
+            <div class="modal-header">
+                <h2>Jahr abrechnen</h2>
+                <button class="btn-icon" aria-label="Schließen" onclick="schliesseJahrAssistent()"><i class="ph ph-x"></i></button>
+            </div>
+            <ol class="assistent-schritte" id="jahr-schritte">
+                <li data-schritt="1">Jahr und Immobilie</li>
+                <li data-schritt="2">Rechnungen</li>
+                <li data-schritt="3">Ablesungen</li>
+                <li data-schritt="4">Vorschau</li>
+                <li data-schritt="5">Abschließen</li>
+            </ol>
+            <div class="modal-body">
+                <section data-jahr-schritt="1">
+                    <p class="karten-text">Welches Jahr möchten Sie für welches Haus abrechnen? Meist ist
+                        es das vergangene Kalenderjahr.</p>
+                    <div class="felder-nebeneinander">
+                        <div class="form-group feld-breit">
+                            <label for="jahr-immobilie">Immobilie</label>
+                            <select id="jahr-immobilie"></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="jahr-jahr">Jahr</label>
+                            <input type="number" id="jahr-jahr" min="2000" max="2100">
+                        </div>
+                    </div>
+                </section>
+                <section data-jahr-schritt="2" hidden>
+                    <p class="karten-text">Die üblichen Kostenarten und alles, was Sie im Jahr oder im
+                        Vorjahr erfasst haben. Steht beim Vorjahr ein Betrag und in diesem Jahr keiner,
+                        fehlt vermutlich eine Rechnung.</p>
+                    <div class="table-container"><table class="tabelle" id="jahr-kostenarten"></table></div>
+                    <div class="knopf-zeile abstand-oben">
+                        <button type="button" class="btn-secondary" onclick="openAddInvoiceModal()">
+                            <i class="ph ph-plus" aria-hidden="true"></i> Rechnung erfassen</button>
+                        <button type="button" class="btn-secondary" onclick="oeffneRechnungstabelle()">
+                            <i class="ph ph-table" aria-hidden="true"></i> Als Tabelle erfassen</button>
+                        <button type="button" class="btn-tint" onclick="jahrNeuLaden()">Liste prüfen</button>
+                    </div>
+                </section>
+                <section data-jahr-schritt="3" hidden>
+                    <p class="karten-text" id="jahr-ablesungen-text"></p>
+                    <div class="table-container"><table class="tabelle" id="jahr-ablesungen"></table></div>
+                    <div class="knopf-zeile abstand-oben">
+                        <button type="button" class="btn-tint" onclick="jahrNeuLaden()">Liste prüfen</button>
+                    </div>
+                </section>
+                <section data-jahr-schritt="4" hidden>
+                    <p class="karten-text">So sähen die Abrechnungen aus. Nichts ist festgesetzt; wählen
+                        Sie ab, wen Sie noch nicht abrechnen möchten.</p>
+                    <div id="jahr-vorschau"></div>
+                </section>
+                <section data-jahr-schritt="5" hidden>
+                    <p class="karten-text" id="jahr-frist"></p>
+                    <p class="karten-text">Das Anschreiben steht auf dem Deckblatt jeder Abrechnung; prüfen
+                        Sie es vor dem Erstellen. Danach erstellt NebenkostenFix je Mieter die Abrechnung
+                        als PDF (einfach und detailliert).</p>
+                    <div class="knopf-zeile">
+                        <button type="button" class="btn-secondary" onclick="jahrAnschreiben()">
+                            <i class="ph ph-envelope-simple" aria-hidden="true"></i> Anschreiben bearbeiten</button>
+                        <button type="button" class="btn-primary" id="jahr-festsetzen" onclick="jahrFestsetzen()">
+                            <i class="ph ph-check" aria-hidden="true"></i> Abrechnungen erstellen</button>
+                    </div>
+                    <div id="jahr-ergebnis" class="abstand-oben"></div>
+                </section>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" id="jahr-zurueck" onclick="jahrSchritt(-1)">Zurück</button>
+                <button type="button" class="btn-primary" id="jahr-weiter" onclick="jahrSchritt(1)">Weiter</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="kpi-history-modal">
+        <div class="modal glass-panel" style="max-width: 500px; width: 90%;">
+            <div class="modal-header">
+                <h3 id="kpi-history-modal-title">Verlauf</h3>
+                <button class="btn-icon"
+                    onclick="document.getElementById('kpi-history-modal').classList.remove('active')" aria-label="Schließen"><i
+                        class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body rollbereich">
+                <div id="kpi-history-modal-content"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary"
+                    onclick="document.getElementById('kpi-history-modal').classList.remove('active')">Schließen</button>
+            </div>
+        </div>
+    </div>
+    <!-- Add Property Modal -->
+    <div class="modal-overlay" id="property-modal">
+        <div class="modal glass-panel">
+            <div class="modal-header">
+                <h2>Neue Immobilie</h2>
+                <button class="btn-icon" aria-label="Schließen" onclick="closeAddPropertyModal()"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="prop-name">Name der Immobilie</label>
+                    <input type="text" id="prop-name" placeholder="z. B. Mehrfamilienhaus Musterstraße">
+                </div>
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" id="prop-standalone">
+                    <label for="prop-standalone">Ist eine autarke Einzelwohnung (kein Mehrfamilienhaus)
+                        <i class="ph ph-question feld-hilfe" title="Wählen Sie dies nur, wenn das Haus eine einzelne Wohnung ist, die sich selbst mit Wärme und Warmwasser versorgt. Es wird dann keine getrennte Abrechnung nach Heizkostenverordnung erstellt."></i></label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeAddPropertyModal()">Abbrechen</button>
+                <button class="btn-primary" onclick="saveProperty()">Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Apartment Modal -->
+    <div class="modal-overlay" id="apartment-modal">
+        <div class="modal glass-panel">
+            <div class="modal-header">
+                <h2>Neue Wohnung</h2>
+                <button class="btn-icon" aria-label="Schließen" onclick="closeAddApartmentModal()"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="apt-name">Bezeichnung (z. B. EG Links)</label>
+                    <input type="text" id="apt-name">
+                </div>
+                <div class="form-group">
+                    <label for="apt-sqm">Wohnfläche (m²) <button type="button" class="begriff-hilfe" aria-label="Begriff erklären" data-begriff="wohnflaeche"><i class="ph ph-question" aria-hidden="true"></i></button></label>
+                    <input type="number" id="apt-sqm" step="0.01" min="0.01" max="500">
+                </div>
+                <!-- NK-124: die Fachfelder der Wohnung, setzbar wie im Modell. -->
+                <div class="form-group">
+                    <label for="apt-nutzungsart">Nutzungsart</label>
+                    <select id="apt-nutzungsart">
+                        <option value="wohnen">Wohnraum</option>
+                        <option value="gewerbe">Gewerbe</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 8px; font-weight: normal;">
+                        <input type="checkbox" id="apt-eigennutzung">
+                        Vom Vermieter selbst bewohnt
+                    </label>
+                    <small class="text-muted">Eine selbst bewohnte Wohnung ist nicht leer und zählt doch nicht auf einen Mieter.</small>
+                </div>
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 8px; font-weight: normal;">
+                        <input type="checkbox" id="apt-selbstversorger">
+                        Beheizt sich selbst (eigene Therme, eigener Ofen)
+                    </label>
+                    <small class="text-muted">Solche Einheiten nehmen an Heizkosten und CO₂ des Hauses nicht teil.</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeAddApartmentModal()">Abbrechen</button>
+                <button class="btn-primary" onclick="saveApartment()">Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Payment Details Modal -->
+    <div class="modal-overlay" id="payment-details-modal">
+        <div class="modal glass-panel" style="max-width: 800px; width: 90%;">
+            <div class="modal-header">
+                <h2 id="payment-details-title">Details: Einnahmen</h2>
+                <div class="zeile-eng">
+                    <button class="btn-danger" id="btn-delete-selected-payments" onclick="deleteSelectedPayments()"
+                        style="display: none;"><i class="ph ph-trash"></i> Markierte löschen</button>
+                    <button class="btn-icon" aria-label="Schließen" onclick="closePaymentDetailsModal()"><i class="ph ph-x"></i></button>
+                </div>
+            </div>
+            <div class="modal-body rollbereich">
+                <div class="data-table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 40px; text-align: center;"><input type="checkbox"
+                                        id="payment-select-all" onchange="toggleAllPaymentSelection(this)"></th>
+                                <th>Datum</th>
+                                <th>Typ</th>
+                                <th style="text-align: right; width: 100px;">Betrag</th>
+                                <th style="text-align: center; width: 60px;">Aktion</th>
+                            </tr>
+                        </thead>
+                        <tbody id="payment-details-list">
+                            <!-- Injected via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closePaymentDetailsModal()">Schließen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Payment Modal -->
+    <!-- NK-161 (F-90): Import aus Excel/CSV. Vorlage, Datei, Zuordnung der
+         Spalten, Probelauf mit Fehlern je Zeile, Übernahme in einem Zug. -->
+    <div class="modal-overlay" id="import-modal">
+        <div class="modal glass-panel dialog-breit">
+            <div class="modal-header">
+                <h2>Aus Excel importieren</h2>
+                <button class="btn-icon" aria-label="Schließen" onclick="schliesseImport()"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div id="import-schritt-datei">
+                    <div class="form-group">
+                        <label for="import-art">Was möchten Sie importieren?</label>
+                        <select id="import-art" onchange="importArtGewaehlt()"></select>
+                        <p class="karten-text abstand-oben" id="import-erklaerung"></p>
+                    </div>
+                    <p class="karten-text">
+                        Laden Sie die Vorlage herunter, tragen Sie Ihre Daten ins Blatt „Daten“ ein und
+                        wählen Sie die Datei dann hier aus. Eigene Tabellen gehen auch: im nächsten Schritt
+                        ordnen Sie ihre Spalten zu.
+                    </p>
+                    <div class="knopf-zeile">
+                        <a class="btn-secondary" id="import-vorlage-xlsx" href="#" download>
+                            <i class="ph ph-file-xls" aria-hidden="true"></i> Vorlage herunterladen (Excel)</a>
+                        <a class="btn-secondary" id="import-vorlage-csv" href="#" download>
+                            <i class="ph ph-file-csv" aria-hidden="true"></i> Vorlage herunterladen (CSV)</a>
+                    </div>
+                    <div class="form-group abstand-oben">
+                        <label for="import-datei">Ihre Tabelle (.xlsx oder .csv)</label>
+                        <input type="file" id="import-datei" accept=".xlsx,.csv">
+                    </div>
+                </div>
+                <div id="import-schritt-zuordnung" hidden>
+                    <p class="karten-text" id="import-gelesen"></p>
+                    <div id="import-zuordnung" class="import-zuordnung"></div>
+                    <h4 class="abstand-oben abstand-unten-klein">Die ersten Zeilen Ihrer Tabelle</h4>
+                    <div class="table-container">
+                        <table class="tabelle" id="import-beispiel"></table>
+                    </div>
+                </div>
+                <div id="import-schritt-ergebnis" hidden>
+                    <p class="karten-text" id="import-zusammenfassung" role="status"></p>
+                    <div class="table-container">
+                        <table class="tabelle" id="import-befunde"></table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="import-zuordnung-aendern" hidden
+                    onclick="importZuordnungAendern()">Zuordnung ändern</button>
+                <button class="btn-secondary" onclick="schliesseImport()">Abbrechen</button>
+                <button class="btn-primary" id="import-weiter" onclick="importWeiter()">Weiter</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- NK-161: Rechnungen eines Jahres als Tabelle erfassen. Enter springt in
+         die nächste Zeile, Pfeil hoch/runter wie in Excel. -->
+    <div class="modal-overlay" id="rechnungstabelle-modal">
+        <div class="modal glass-panel dialog-breit">
+            <div class="modal-header">
+                <h2>Rechnungen als Tabelle erfassen</h2>
+                <button class="btn-icon" aria-label="Schließen" onclick="schliesseRechnungstabelle()"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="felder-nebeneinander">
+                    <div class="form-group feld-breit">
+                        <label for="rt-immobilie">Immobilie</label>
+                        <select id="rt-immobilie" onchange="rtImmobilieGewaehlt()"></select>
+                    </div>
+                    <div class="form-group">
+                        <label for="rt-jahr">Jahr</label>
+                        <input type="number" id="rt-jahr" min="2000" max="2100" onchange="rtJahrGewaehlt()">
+                    </div>
+                </div>
+                <p class="karten-text">
+                    Je Zeile eine Rechnung. <b>Enter</b> springt in die nächste Zeile, <b>Tab</b> ins nächste
+                    Feld. Beträge wie <code>1.234,56</code>, Daten wie <code>31.12.2025</code>. Leere Zeilen
+                    werden übergangen. Heizkosten mit Anlage und CO2-Angaben erfassen Sie im Dialog.
+                </p>
+                <datalist id="rt-kostenarten"></datalist>
+                <datalist id="rt-anbieter"></datalist>
+                <datalist id="rt-wohnungen"></datalist>
+                <div class="table-container">
+                    <table class="tabelle rechnungstabelle">
+                        <thead>
+                            <tr class="tabellen-kopfzeile">
+                                <th class="zelle">Kostenart</th>
+                                <th class="zelle">Betrag (€)</th>
+                                <th class="zelle">Von</th>
+                                <th class="zelle">Bis</th>
+                                <th class="zelle">Rechnungsdatum</th>
+                                <th class="zelle">Nr.</th>
+                                <th class="zelle">Anbieter</th>
+                                <th class="zelle">Nur Wohnung</th>
+                                <th class="zelle"><span class="sr-only">Prüfergebnis</span></th>
+                            </tr>
+                        </thead>
+                        <tbody id="rt-zeilen"></tbody>
+                    </table>
+                </div>
+                <div class="knopf-zeile abstand-oben">
+                    <button class="btn-secondary" type="button" onclick="rtZeilenAnlegen(5)">
+                        <i class="ph ph-plus" aria-hidden="true"></i> Zeilen anlegen</button>
+                </div>
+                <p class="karten-text abstand-oben" id="rt-meldung" role="status"></p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="schliesseRechnungstabelle()">Abbrechen</button>
+                <button class="btn-secondary" onclick="rtSenden(false)">Tabelle prüfen</button>
+                <button class="btn-primary" onclick="rtSenden(true)">Rechnungen speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="payment-modal">
+        <div class="modal glass-panel">
+            <div class="modal-header">
+                <h2>Zahlung erfassen</h2>
+                <button class="btn-icon" aria-label="Schließen" onclick="closeAddPaymentModal()"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="payment-tenant">Mieter</label>
+                    <select id="payment-tenant">
+                        <option value="">Lade Mieter...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="payment-type">Typ <button type="button" class="begriff-hilfe" aria-label="Begriff erklären" data-begriff="vorauszahlung"><i class="ph ph-question" aria-hidden="true"></i></button>
+                        <i class="ph ph-question feld-hilfe" title="Miete: die vereinbarte Miete. Nebenkostenvorauszahlung: was der Mieter monatlich auf Betriebskosten zahlt. Kaution: die Sicherheit für Mietschulden; sie wird nicht automatisch verrechnet. Nebenkostenzahlung: die Zahlung der Abrechnung."></i></label>
+                    <select id="payment-type"
+                        onchange="toggleBillingReportField()">
+                        <option value="Miete">Miete</option>
+                        <option value="Nebenkostenvorauszahlung">Nebenkostenvorauszahlung</option>
+                        <option value="Kaution">Kaution</option>
+                        <option value="Nebenkostenzahlung">Nebenkostenzahlung (Abrechnungssaldo)</option>
+                    </select>
+                </div>
+                <div class="form-group" id="group-billing-report" style="display: none;">
+                    <label for="payment-billing-report">Zugehörige Abrechnung</label>
+                    <select id="payment-billing-report">
+                        <option value="">Lade Abrechnungen...</option>
+                    </select>
+                </div>
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" id="payment-recurring" onchange="togglePaymentRecurring()">
+                    <label for="payment-recurring">Monatlich wiederholen (Serienbuchung)</label>
+                </div>
+                <div class="felder-nebeneinander">
+                    <div class="form-group feld-breit">
+                        <label id="label-payment-date" for="payment-date">Datum / Startmonat</label>
+                        <input type="date" id="payment-date">
+                    </div>
+                    <div class="form-group" style="flex: 1; display: none;" id="group-payment-end-date">
+                        <label for="payment-end-date">Endmonat (Optional)</label>
+                        <input type="date" id="payment-end-date">
+                    </div>
+                </div>
+                <div class="form-group abstand-oben">
+                    <label for="payment-amount">Betrag (€)</label>
+                    <input type="number" id="payment-amount" step="0.01">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeAddPaymentModal()">Abbrechen</button>
+                <button class="btn-primary" onclick="savePayment()">Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Tenant Modal -->
+    <div class="modal-overlay" id="tenant-modal">
+        <div class="modal glass-panel">
+            <div class="modal-header">
+                <h2>Neuer Mieter</h2>
+                <button class="btn-icon" aria-label="Schließen" onclick="closeAddTenantModal()"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="tenant-name">Name des Mieters</label>
+                    <input type="text" id="tenant-name">
+                </div>
+                <div class="form-group">
+                    <label for="tenant-apartment">Zugeordnete Wohnung</label>
+                    <select id="tenant-apartment">
+                        <option value="">Lade Wohnungen...</option>
+                    </select>
+                </div>
+                <div class="felder-nebeneinander">
+                    <div class="form-group feld-breit">
+                        <label for="tenant-move-in">Einzugsdatum</label>
+                        <input type="date" id="tenant-move-in">
+                    </div>
+                    <div class="form-group feld-breit">
+                        <label for="tenant-move-out">Auszugsdatum (Optional)</label>
+                        <input type="date" id="tenant-move-out">
+                    </div>
+                </div>
+                <div class="form-group abstand-oben">
+                    <label for="tenant-last-billed">Zuletzt abgerechnet bis einschließlich (Optional)
+                        <i class="ph ph-question feld-hilfe" title="Das Datum der letzten Ablesung, die in einer Abrechnung enthalten ist — der Anfangspunkt der nächsten Abrechnung. Leer lassen, wenn noch nie abgerechnet wurde."></i></label>
+                    <input type="date" id="tenant-last-billed">
+                </div>
+                <div class="form-group abstand-oben">
+                    <label>Mietvertrag hochladen (PDF/DOCX, Optional)</label>
+                    <div class="file-upload-wrapper">
+                        <input type="file" id="tenant-contract-file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,application/pdf,image/jpeg,image/png,image/webp,image/heic"
+                            onchange="document.getElementById('tenant-contract-name').textContent = this.files[0] ? this.files[0].name : 'Datei auswählen...'">
+                        <label for="tenant-contract-file" class="file-upload-label">
+                            <i class="ph ph-file-pdf"></i>
+                            <span id="tenant-contract-name">Datei auswählen...</span>
+                        </label>
+                    </div>
+                    <div id="tenant-contract-info" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px; display: none;"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeAddTenantModal()">Abbrechen</button>
+                <button class="btn-primary" onclick="saveTenant()">Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tenant Cost Profile Modal -->
+    <div class="modal-overlay" id="cost-profile-modal">
+        <div class="modal glass-panel dialog-mittel">
+            <div class="modal-header">
+                <h2>Kostenprofil <button type="button" class="begriff-hilfe" aria-label="Begriff erklären" data-begriff="kostenprofil"><i class="ph ph-question" aria-hidden="true"></i></button>: <span id="profile-tenant-name"></span></h2>
+                <button class="btn-icon" aria-label="Schließen" onclick="closeCostProfileModal()"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body rollbereich">
+                <p class="karten-text">
+                    Legen Sie je Kostenart den Umlageschlüssel <button type="button" class="begriff-hilfe" aria-label="Begriff erklären" data-begriff="umlageschluessel"><i class="ph ph-question" aria-hidden="true"></i></button> fest: wie dieser Mieter an
+                    der Kostenart beteiligt ist.
+                </p>
+                <form id="cost-profile-form">
+                    <input type="hidden" id="profile-tenant-id">
+                    <div id="cost-profile-categories" style="display: flex; flex-direction: column; gap: 16px;">
+                        <!-- Injected via JS -->
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" onclick="closeCostProfileModal()">Abbrechen</button>
+                <button type="button" class="btn-primary" onclick="saveCostProfile()">Kostenprofil speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Haushaltsgröße (NK-118): Personenzahl je Stichtag -->
+    <div class="modal-overlay" id="household-modal">
+        <div class="modal glass-panel" style="max-width: 520px; width: 90%;">
+            <div class="modal-header">
+                <h2>Haushaltsgröße: <span id="household-tenant-name"></span></h2>
+                <button class="btn-icon" aria-label="Schließen" onclick="closeHouseholdModal()"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <p class="karten-text">
+                    Die Personenzahl gilt ab ihrem Stichtag bis zum nächsten. Ein Eintrag mit
+                    demselben Stichtag berichtigt den vorhandenen.
+                </p>
+                <input type="hidden" id="household-tenant-id">
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
+                    <thead>
+                        <tr>
+                            <th style="text-align: left; padding: 8px;">Gültig ab</th>
+                            <th style="text-align: right; padding: 8px;">Personen</th>
+                            <th style="width: 48px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="household-list"></tbody>
+                </table>
+                <div class="form-group">
+                    <label for="household-gueltig-ab">Gültig ab</label>
+                    <input type="date" id="household-gueltig-ab" required>
+                </div>
+                <div class="form-group">
+                    <label for="household-personen">Personen im Haushalt</label>
+                    <input type="number" id="household-personen" min="1" step="1" value="1" required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" onclick="closeHouseholdModal()">Schließen</button>
+                <button type="button" class="btn-primary" onclick="saveHouseholdSize()">Haushaltsgröße speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Meter Modal -->
+    <div class="modal-overlay" id="meter-modal">
+        <div class="modal glass-panel">
+            <div class="modal-header">
+                <h2>Neuer Zähler</h2>
+                <button class="btn-icon" aria-label="Schließen" onclick="closeAddMeterModal()"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Kategorie</label>
+                    <select id="meter-category" required></select>
+                </div>
+                <div class="form-group">
+                    <label>Immobilie</label>
+                    <select id="meter-property" onchange="updateMeterApartments()" required></select>
+                </div>
+                <div class="form-group">
+                    <label>Wohnung</label>
+                    <select id="meter-apartment">
+                        <option value="">Allgemein (Hausanschluss)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Zählernummer</label>
+                    <input type="text" id="meter-number" required>
+                </div>
+                <div class="form-group">
+                    <label>Heizungsanlage <i class="ph ph-question feld-hilfe" title="Welche Anlage dieser Immobilie der Zähler misst (D-45). Leer lassen bei Strom, Wasser und allem, was keine Wärme erfasst."></i></label>
+                    <select id="meter-heizungsanlage">
+                        <option value="">— keine (misst keine Wärme) —</option>
+                        <!-- Anlagen der gewählten Immobilie -->
+                    </select>
+                </div>
+                <div class="form-group checkbox-group" style="margin-top: 8px;">
+                    <input type="checkbox" id="meter-dual-tariff">
+                    <label for="meter-dual-tariff">Ist ein Doppeltarifzähler (HT/NT)
+                        <i class="ph ph-question feld-hilfe" title="Ein Zähler mit zwei Registern für hohe und niedrige Tarifzeit (Hochtarif/Niedrigtarif); beide Stände werden am selben Datum abgelesen."></i></label>
+                </div>
+                <div class="form-group checkbox-group" style="margin-top: 8px;">
+                    <input type="checkbox" id="meter-is-official">
+                    <label for="meter-is-official">Offizieller Zähler vom Versorger <button type="button" class="begriff-hilfe" aria-label="Begriff erklären" data-begriff="hauptzaehler"><i class="ph ph-question" aria-hidden="true"></i></button> (kein privater
+                        Unterzähler <button type="button" class="begriff-hilfe" aria-label="Begriff erklären" data-begriff="unterzaehler"><i class="ph ph-question" aria-hidden="true"></i></button>)
+                        <i class="ph ph-question feld-hilfe" title="Hauptzähler des Versorgers. Private Zwischenzähler messen nur einzelne Wohnungen und werden nicht als Hauptzähler erfasst."></i></label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeAddMeterModal()">Abbrechen</button>
+                <button class="btn-primary" onclick="saveMeter()">Zähler speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- History Modal -->
+    <div class="modal-overlay" id="history-modal">
+        <div class="modal glass-panel" style="max-width: 800px; width: 90%;">
+            <div class="modal-header">
+                <h2 id="history-modal-title">Zähler-Historie</h2>
+                <button class="btn-icon" aria-label="Schließen" onclick="closeHistoryModal()"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body rollbereich">
+                <table class="tabelle" id="history-table">
+                    <!-- filled via js -->
+                </table>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeHistoryModal()">Schließen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Reading Modal -->
+    <div class="modal-overlay" id="reading-modal">
+        <div class="modal glass-panel">
+            <div class="modal-header">
+                <h2>Ablesung erfassen</h2>
+                <button class="btn-icon" aria-label="Schließen" onclick="closeAddReadingModal()"><i class="ph ph-x"></i></button>
+            </div>
+            <form id="reading-form" onsubmit="event.preventDefault(); saveReading();">
+                <div class="modal-body">
+                    <input type="hidden" id="reading-id">
+                    <div class="form-group">
+                        <label>Zähler auswählen</label>
+                        <select id="reading-meter" required onchange="handleReadingMeterChange()"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Datum</label>
+                        <input type="date" id="reading-date" required>
+                    </div>
+                    <!-- NK-124: die Ablesungsart (NK-051) setzbar machen. Nur
+                         "Zwischenablesung" markiert den Stand zum Datum eines
+                         Mieterwechsels oder einer Eigenutzung; der Normallall
+                         bleibt Ablesung. -->
+                    <div class="form-group">
+                        <label for="reading-ablesungsart">Art der Ablesung <button type="button" class="begriff-hilfe" aria-label="Begriff erklären" data-begriff="zwischenablesung"><i class="ph ph-question" aria-hidden="true"></i></button></label>
+                        <select id="reading-ablesungsart">
+                            <option value="ablesung">Ablesung (Stichtag oder laufend)</option>
+                            <option value="zwischenablesung">Zwischenablesung (z. B. bei Mieterwechsel)</option>
+                        </select>
+                    </div>
+                    <div class="felder-nebeneinander">
+                        <div class="form-group feld-breit">
+                            <label id="label-reading-value">Zählerstand</label>
+                            <input type="number" id="reading-value" step="0.01" required>
+                        </div>
+                        <div class="form-group" id="group-reading-value-nt" style="flex: 1; display: none;">
+                            <label>Zählerstand (NT)</label>
+                            <input type="number" id="reading-value-nt" step="0.01">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Beweisfoto (Optional)</label>
+                        <div class="file-upload-wrapper">
+                            <input type="file" id="reading-file" accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.pdf,image/jpeg,image/png,image/webp,image/heic,application/pdf"
+                                onchange="document.getElementById('reading-file-name').textContent = this.files[0] ? this.files[0].name : 'Datei auswählen...'">
+                            <label for="reading-file" class="file-upload-label">
+                                <i class="ph ph-upload-simple"></i>
+                                <span id="reading-file-name">Datei auswählen...</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group abstand-oben">
+                        <label
+                            style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
+                            <input type="checkbox" id="reading-is-official" style="width: 16px; height: 16px;"
+                                onchange="document.getElementById('group-reading-provider').style.display = this.checked ? 'block' : 'none';">
+                            <span style="font-size: 14px; font-weight: 500; color: var(--text-color);">Ablesung stammt aus
+                                offizieller Rechnung</span>
+                        </label>
+                    </div>
+                    <div class="form-group" id="group-reading-provider" style="display: none; margin-top: 16px;">
+                        <label>Anbieter</label>
+                        <select id="reading-provider"></select>
+                    </div>
+                    <div id="plausibility-alert"
+                        style="display: none; padding: 12px; border-radius: 8px; margin-top: 16px; font-size: 14px; font-weight: 500;">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="closeAddReadingModal()">Abbrechen</button>
+                    <button type="submit" class="btn-primary">Ablesung speichern</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add Document Modal -->
+    <div class="modal-overlay" id="document-modal">
+        <div class="modal glass-panel">
+            <div class="modal-header">
+                <h2>Beleg hochladen</h2>
+                <button class="btn-icon" aria-label="Schließen" onclick="closeAddDocumentModal()"><i class="ph ph-x"></i></button>
+            </div>
+            <form id="document-form" onsubmit="event.preventDefault(); saveDocument();">
+                <div class="modal-body">
+                    <input type="hidden" id="doc-id">
+                    <div class="form-group">
+                        <label>Immobilie</label>
+                        <select id="doc-property" required></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Bezeichnung (z. B. Stadtwerke Jahresabrechnung 2025)
+                            <i class="ph ph-question feld-hilfe" title="Ein Beleg kann eine Sammelrechnung enthalten: ein Papier des Anbieters, aus dem mehrere einzelne Rechnungen erfasst werden."></i></label>
+                        <input type="text" id="doc-description" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Beleg (PDF oder Foto)</label>
+                        <div class="file-upload-wrapper">
+                            <input type="file" id="doc-file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,application/pdf,image/jpeg,image/png,image/webp,image/heic" required
+                                onchange="document.getElementById('doc-file-name').textContent = this.files[0] ? this.files[0].name : 'Datei auswählen...'">
+                            <label for="doc-file" class="file-upload-label">
+                                <i class="ph ph-file-pdf"></i>
+                                <span id="doc-file-name">PDF auswählen...</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="closeAddDocumentModal()">Abbrechen</button>
+                    <button type="submit" class="btn-primary" id="btn-save-doc">Beleg hochladen</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add Invoice Modal -->
+    <div class="modal-overlay" id="invoice-modal">
+        <div class="modal glass-panel">
+            <div class="modal-header">
+                <h2>Rechnung erfassen</h2>
+                <button class="btn-icon" aria-label="Schließen" onclick="closeAddInvoiceModal()"><i class="ph ph-x"></i></button>
+            </div>
+            <form id="invoice-form" onsubmit="event.preventDefault(); saveInvoice();">
+                <div class="modal-body">
+                    <input type="hidden" id="invoice-id">
+                    <div class="form-group">
+                        <label for="invoice-category">Kostenart <button type="button" class="begriff-hilfe" aria-label="Begriff erklären" data-begriff="umlagefaehig"><i class="ph ph-question" aria-hidden="true"></i></button></label>
+                        <select id="invoice-category" required onchange="toggleInvoiceDescription()"></select>
+                    </div>
+                    <div class="form-group" id="group-invoice-description" style="display: none;">
+                        <label>Bezeichnung (z. B. Hauswartung, Schornsteinfeger)</label>
+                        <input type="text" id="invoice-description">
+                    </div>
+                    <div class="form-group">
+                        <label>Immobilie</label>
+                        <select id="invoice-property" required onchange="populateInvoiceApartments()"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Zuweisung (Optional)</label>
+                        <select id="invoice-apartment">
+                            <option value="">Gesamtes Gebäude (Standard)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Betrag (€)</label>
+                        <input type="number" id="invoice-amount" step="0.01" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Rechnungs-Nr. (Optional)</label>
+                        <input type="text" id="invoice-number">
+                    </div>
+                    <div class="form-group">
+                        <label>Anbieter</label>
+                        <select id="invoice-provider" required></select>
+                    </div>
+                    <div class="felder-nebeneinander">
+                        <div class="form-group feld-breit">
+                            <label>Startdatum</label>
+                            <input type="date" id="invoice-start" required>
+                        </div>
+                        <div class="form-group feld-breit">
+                            <label>Enddatum</label>
+                            <input type="date" id="invoice-end" required>
+                        </div>
+                    </div>
+                    <!-- NK-124: das Datum des Belegs (NK-058) setzbar machen. -->
+                    <div class="form-group">
+                        <label>Rechnungsdatum (Ausstellungsdatum auf dem Beleg)</label>
+                        <input type="date" id="invoice-rechnungsdatum">
+                    </div>
+                    <!-- NK-124: die Tarifpreise (NK-055). Sie gehören zusammen:
+                         entweder beide oder keine — so rechnet der Kern es. -->
+                    <div class="felder-nebeneinander">
+                        <div class="form-group feld-breit">
+                            <label>Arbeitspreis Hochtarif</label>
+                            <input type="number" id="invoice-preis-ht" step="0.0001" min="0"
+                                placeholder="z. B. 0,35">
+                        </div>
+                        <div class="form-group feld-breit">
+                            <label>Arbeitspreis Niedertarif</label>
+                            <input type="number" id="invoice-preis-nt" step="0.0001" min="0"
+                                placeholder="z. B. 0,28">
+                        </div>
+                    </div>
+                    <small style="display: block; margin-top: -8px; color: var(--text-muted);">
+                        Nur bei Energiekosten mit geteilten Tarifen (HT/NT): der Preis
+                        je verbrauchter Menge (kWh, m³), wie auf dem Beleg des Versorgers.
+                        Beide Preise zusammen oder keine.
+                    </small>
+
+                    <!-- NK-125: die Heizkosten-Felder (NK-048, NK-053). Anlage und
+                         Posten des § 7 Abs. 2 gehören zusammen; die CO2-Angaben
+                         kommen vom Beleg und werden übernommen, nicht gerechnet. -->
+                    <div class="felder-nebeneinander">
+                        <div class="form-group feld-breit">
+                            <label>Heizungsanlage</label>
+                            <select id="invoice-heizungsanlage">
+                                <option value="">— keine Heizkostenrechnung —</option>
+                                <!-- Anlagen der gewählten Immobilie -->
+                            </select>
+                        </div>
+                        <div class="form-group feld-breit">
+                            <label>Posten nach § 7 Abs. 2 HeizkostenV</label>
+                            <select id="invoice-heizkostenart">
+                                <option value="">— kein Posten —</option>
+                                <!-- die acht Posten -->
+                            </select>
+                        </div>
+                    </div>
+                    <div id="gruppe-invoice-co2" style="display: none;">
+                        <div class="felder-nebeneinander">
+                            <div class="form-group feld-breit">
+                                <label>CO₂-Kosten des Belegs (€)</label>
+                                <input type="number" id="invoice-co2-kosten" step="0.01" min="0"
+                                    placeholder="z. B. 412,60">
+                            </div>
+                            <div class="form-group feld-breit">
+                                <label>CO₂-Emissionen des Belegs (kg)</label>
+                                <input type="number" id="invoice-co2-emission" step="0.01" min="0"
+                                    placeholder="z. B. 5210,25">
+                            </div>
+                        </div>
+                        <small style="display: block; margin-top: -8px; color: var(--text-muted);">
+                            Wie der Lieferantenbeleg sie ausweist — die Aufteilung nach
+                            § 5 CO2KostAufG rechnet die Abrechnung, nicht dieses Feld.
+                        </small>
+                    </div>
+
+                    <!-- NEW DOCUMENT LOGIC -->
+                    <div class="form-group"
+                        style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+                        <label>Beleg / Rechnung</label>
+                        <select id="invoice-document-id" onchange="toggleInvoiceFileUpload()">
+                            <option value="">-- Neuen Beleg hochladen (Einzelrechnung) --</option>
+                            <!-- populated with existing documents -->
+                        </select>
+                    </div>
+
+                    <div class="form-group" id="group-invoice-file">
+                        <div class="file-upload-wrapper">
+                            <input type="file" id="invoice-file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,application/pdf,image/jpeg,image/png,image/webp,image/heic"
+                                onchange="document.getElementById('invoice-file-name').textContent = this.files[0] ? this.files[0].name : 'Datei auswählen...'">
+                            <label for="invoice-file" class="file-upload-label">
+                                <i class="ph ph-upload-simple"></i>
+                                <span id="invoice-file-name">Datei auswählen...</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group" id="group-invoice-pages" style="display: none;">
+                        <label>Betroffene Seiten im Sammelbeleg (optional)</label>
+                        <input type="text" id="invoice-pages" placeholder="z. B. 1-4 oder 7">
+                    </div>
+
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="closeAddInvoiceModal()">Abbrechen</button>
+                    <button type="submit" class="btn-primary" id="btn-save-invoice">Rechnung speichern</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Billing Selection Modal -->
+    <div class="modal-overlay" id="billing-selection-modal">
+        <div class="modal glass-panel dialog-mittel">
+            <div class="modal-header">
+                <h2>Abrechnung erstellen</h2>
+                <button class="btn-icon"
+                    onclick="document.getElementById('billing-selection-modal').classList.remove('active')" aria-label="Schließen"><i
+                        class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body rollbereich">
+                <!-- Abrechnungszeitraum frei wählbar, vorbelegt aus den Kategorien (NK-119) -->
+                <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                    <div class="form-group feld-breit feld-min">
+                        <label for="billing-period-start">Beginn des Abrechnungszeitraums</label>
+                        <input type="date" id="billing-period-start" required>
+                    </div>
+                    <div class="form-group feld-breit feld-min">
+                        <label for="billing-period-end">Ende des Abrechnungszeitraums <button type="button" class="begriff-hilfe" aria-label="Begriff erklären" data-begriff="abrechnungszeitraum"><i class="ph ph-question" aria-hidden="true"></i></button></label>
+                        <input type="date" id="billing-period-end" required>
+                    </div>
+                </div>
+                <p class="karten-text">
+                    Vorbelegt mit dem Zeitraum der ausgewählten Kategorien. Frei änderbar, etwa vom
+                    Einzug bis zum Stichtag.
+                </p>
+                <div id="billing-selection-body"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary"
+                    onclick="document.getElementById('billing-selection-modal').classList.remove('active')">Abbrechen</button>
+                <button type="button" class="btn-primary" id="btn-proceed-preview">Weiter zur Vorschau</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Freie Abrechnung (NK-142): Mieter und Zeitraum frei waehlen, ohne
+         Vorschlagskarte. Die Vorschau und die Festsetzung sind dieselben wie
+         beim Vorschlagsweg. -->
+    <!-- NK-130: Passphrase fuer verschluesselte Sicherungen und Exporte -->
+    <div class="modal-overlay" id="passphrase-modal">
+        <div class="modal glass-panel" style="max-width: 480px; width: 90%;">
+            <div class="modal-header">
+                <h2 id="passphrase-titel">Passphrase</h2>
+                <button class="btn-icon" aria-label="Schließen" onclick="passphraseAntwort(null)"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <p id="passphrase-text" style="margin-top: 0; color: var(--text-muted); line-height: 1.5;"></p>
+                <div class="form-group">
+                    <label for="passphrase-eingabe">Passphrase</label>
+                    <input type="password" id="passphrase-eingabe" autocomplete="off">
+                </div>
+                <div class="form-group" id="passphrase-wiederholung-gruppe" style="display: none;">
+                    <label for="passphrase-wiederholung">Passphrase wiederholen</label>
+                    <input type="password" id="passphrase-wiederholung" autocomplete="off">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" onclick="passphraseAntwort(null)">Abbrechen</button>
+                <button type="button" class="btn-primary" id="btn-passphrase-weiter"
+                    onclick="passphraseBestaetigen()">Weiter</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="billing-frei-modal">
+        <div class="modal glass-panel dialog-mittel">
+            <div class="modal-header">
+                <h2>Abrechnung frei erstellen</h2>
+                <button class="btn-icon"
+                    onclick="document.getElementById('billing-frei-modal').classList.remove('active')" aria-label="Schließen"><i
+                        class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="frei-mieter">Mieter</label>
+                    <select id="frei-mieter" class="form-control"></select>
+                    <p style="margin: 8px 0 0 0; color: var(--text-muted); font-size: 14px;">
+                        Abgerechnet wird auf das Mietverhältnis dieser Person; liegt der
+                        gewählte Zeitraum vor dem Einzug oder nach dem Auszug, stutzt die
+                        Abrechnung ihn auf den Mietzeitraum.
+                    </p>
+                </div>
+                <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px;">
+                    <div class="form-group feld-breit feld-min">
+                        <label for="frei-period-start">Beginn des Abrechnungszeitraums</label>
+                        <input type="date" id="frei-period-start" required>
+                    </div>
+                    <div class="form-group feld-breit feld-min">
+                        <label for="frei-period-end">Ende des Abrechnungszeitraums</label>
+                        <input type="date" id="frei-period-end" required>
+                    </div>
+                </div>
+                <p style="margin-bottom: 0; color: var(--text-muted); font-size: 14px;">
+                    In die Abrechnung fließen alle Kostenarten ein, für die im gewählten
+                    Zeitraum Rechnungen vorliegen. Vorbelegt ist das vergangene Kalenderjahr;
+                    Sie können beide Daten frei ändern.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary"
+                    onclick="document.getElementById('billing-frei-modal').classList.remove('active')">Abbrechen</button>
+                <button type="button" class="btn-primary" id="btn-frei-weiter"
+                    onclick="starteFreieAbrechnung()">Weiter zur Vorschau</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Billing Preview Modal -->
+    <div class="modal-overlay" id="billing-preview-modal">
+        <div class="modal glass-panel" style="max-width: 1000px; width: 90%;">
+            <div class="modal-header">
+                <h2>Abrechnungs-Vorschau</h2>
+                <button class="btn-icon"
+                    onclick="document.getElementById('billing-preview-modal').classList.remove('active')" aria-label="Schließen"><i
+                        class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body rollbereich" id="billing-preview-body">
+                <!-- Preview content here -->
+            </div>
+            <div class="modal-footer" style="display: flex; gap: 8px; justify-content: flex-end;">
+                <button type="button" class="btn-secondary"
+                    onclick="document.getElementById('billing-preview-modal').classList.remove('active')">Abbrechen</button>
+                <button type="button" class="btn-secondary btn-tint" id="btn-generate-detailed-pdf">
+                    <i class="ph ph-file-magnifying-glass"></i> PDF erstellen (detailliert)
+                </button>
+                <button type="button" class="btn-primary" id="btn-generate-pdf">PDF erstellen &amp; abschließen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Report Details Modal -->
+    <div class="modal-overlay" id="report-details-modal">
+        <div class="modal glass-panel" style="max-width: 1000px; width: 90%;">
+            <div class="modal-header">
+                <h2>Abrechnungs-Details & Belege</h2>
+                <button class="btn-icon"
+                    onclick="document.getElementById('report-details-modal').classList.remove('active')" aria-label="Schließen"><i
+                        class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body rollbereich" id="report-details-body">
+                <!-- Details content here -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary"
+                    onclick="document.getElementById('report-details-modal').classList.remove('active')">Schließen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- NK-124: Anschreiben-Vorlage des Objekts -->
+    <div class="modal-overlay" id="anschreiben-modal">
+        <div class="modal glass-panel" style="max-width: 760px; width: 92%;">
+            <div class="modal-header">
+                <h2>Anschreiben-Vorlage</h2>
+                <button class="btn-icon"
+                    onclick="document.getElementById('anschreiben-modal').classList.remove('active')" aria-label="Schließen"><i
+                        class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <p id="anschreiben-status" style="margin: 0 0 12px 0; color: var(--text-muted); font-size: 0.9rem;"></p>
+                <div class="form-group">
+                    <label for="anschreiben-text">Der Text des Anschreibens. Platzhalter füllt die Software aus.</label>
+                    <textarea id="anschreiben-text" rows="12" style="width: 100%; font-family: inherit;"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Platzhalter</label>
+                    <p id="anschreiben-platzhalter" style="margin: 0; color: var(--text-muted); font-size: 0.9rem;"></p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" onclick="loescheAnschreibenVorlage()">Vorlage löschen</button>
+                <button type="button" class="btn-primary" onclick="saveAnschreibenVorlage()">Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- NK-125: die Heizungsanlage (NK-048) -->
+    <div class="modal-overlay" id="heizungsanlage-modal">
+        <div class="modal glass-panel" style="max-width: 700px; width: 92%;">
+            <div class="modal-header">
+                <h2 id="heizung-modal-titel">Heizungsanlage</h2>
+                <button class="btn-icon"
+                    onclick="document.getElementById('heizungsanlage-modal').classList.remove('active')" aria-label="Schließen"><i
+                        class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="heizung-id">
+                <input type="hidden" id="heizung-property-id">
+                <div class="form-group">
+                    <label for="heizung-name">Name der Anlage</label>
+                    <input type="text" id="heizung-name" required placeholder="z. B. Zentralheizung Hinterhaus">
+                </div>
+                <div class="felder-nebeneinander">
+                    <div class="form-group feld-breit">
+                        <label for="heizung-versorgt">Was die Anlage versorgt (§ 2 BetrKV)</label>
+                        <select id="heizung-versorgt" onchange="toggleVerbundenBlock()">
+                            <option value="heizung">Nr. 4 — Heizung</option>
+                            <option value="warmwasser">Nr. 5 — Warmwasser</option>
+                            <option value="verbunden">Nr. 6 — Heizung und Warmwasser (verbundene Anlage)</option>
+                        </select>
+                    </div>
+                    <div class="form-group feld-breit">
+                        <label for="heizung-anteil">Anteil nach Verbrauch (§ 7 Abs. 1)</label>
+                        <select id="heizung-anteil">
+                            <option value="50">50 vom Hundert</option>
+                            <option value="55">55 vom Hundert</option>
+                            <option value="60">60 vom Hundert</option>
+                            <option value="65">65 vom Hundert</option>
+                            <option value="70">70 vom Hundert</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="heizung-sonderfall" onchange="toggleSonderfall()">
+                    <label for="heizung-sonderfall" style="margin: 0;">Sonderfall § 7 Abs. 1 Satz 2 (Öl- oder Gasheizung, ungefördertes Gebäude, gedaemmte Leitungen — dann sind 70 vom Hundert vorgeschrieben)</label>
+                </div>
+                <div id="heizung-verbunden-block" style="display: none; border-top: 1px solid var(--border-color); padding-top: 16px;">
+                    <div class="form-group">
+                        <label for="heizung-ww-weg">Weg zur Wärmemenge des Warmwassers (§ 9 Abs. 2)</label>
+                        <select id="heizung-ww-weg">
+                            <option value="zaehler">Gemessen mit Wärmemengenzähler</option>
+                            <option value="formel">Berechnet nach der Formel des § 9 Abs. 2 Satz 4</option>
+                            <option value="ersatz">Ersatzmaßstab (§ 9 Abs. 2 Satz 5)</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="gruppe-ww-zaehler" style="display: none;">
+                        <label for="heizung-ww-kwh">Gemessene Wärmemenge des Warmwassers (kWh)</label>
+                        <input type="number" id="heizung-ww-kwh" step="0.001" min="0" placeholder="z. B. 12500,5">
+                    </div>
+                    <div class="form-group" id="gruppe-ww-formel" style="display: none;">
+                        <div class="felder-nebeneinander">
+                            <div class="feld-breit">
+                                <label for="heizung-ww-volumen">Warmwasservolumen (m³)</label>
+                                <input type="number" id="heizung-ww-volumen" step="0.001" min="0" placeholder="z. B. 185,4">
+                            </div>
+                            <div class="feld-breit">
+                                <label for="heizung-ww-temperatur">Warmwassertemperatur (°C)</label>
+                                <input type="number" id="heizung-ww-temperatur" step="0.1" min="10.1" placeholder="z. B. 55,0">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="heizung-brennstoff">Gesamtverbrauch der Anlage im Zeitraum (Nenner der Trennung)</label>
+                        <input type="number" id="heizung-brennstoff" step="0.001" min="0" placeholder="z. B. 68400 kWh">
+                    </div>
+                    <div class="form-group">
+                        <label for="heizung-heizwert">Heizwert Hi in kWh je Mengenabschnitt (leer, wenn die Menge ohnehin in kWh steht)</label>
+                        <input type="number" id="heizung-heizwert" step="0.001" min="0" placeholder="z. B. 9,83">
+                    </div>
+                    <small style="display: block; color: var(--text-muted);">
+                        <i class="ph ph-info"></i> Diese Mengen gelten für den laufenden Abrechnungszeitraum
+                        und tragen keine Historie — bei jeder Abrechnung neu eintragen.
+                    </small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary"
+                    onclick="document.getElementById('heizungsanlage-modal').classList.remove('active')">Abbrechen</button>
+                <button type="button" class="btn-primary" onclick="saveHeizungsanlage()">Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Interpolation Audit Modal (Transparenz-Bericht) -->
+    <div class="modal-overlay" id="interpolation-audit-modal">
+        <div class="modal glass-panel" style="max-width: 1200px; width: 95%;">
+            <div class="modal-header">
+                <div>
+                    <h2 style="margin-bottom: 4px;">Berechnungsprotokoll</h2>
+                    <p style="color: var(--text-muted); font-size: 0.9em; margin: 0;">Der Dreisatz hinter den Kulissen: Transparente Darstellung der Stückweise-Interpolation</p>
+                </div>
+                <button class="btn-icon no-print"
+                    onclick="document.getElementById('interpolation-audit-modal').classList.remove('active')" aria-label="Schließen"><i
+                        class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body" id="interpolation-audit-body" style="max-height: 70vh; overflow-y: auto; overflow-x: hidden;">
+                <!-- Audit content here -->
+            </div>
+            <div class="modal-footer no-print" style="display: flex; gap: 8px; justify-content: flex-end;">
+                <button type="button" class="btn-secondary"
+                    onclick="document.getElementById('interpolation-audit-modal').classList.remove('active')">Schließen</button>
+                <button type="button" class="btn-primary" onclick="huelle.drucken()">
+                    <i class="ph ph-printer" style="margin-right: 6px;"></i> Drucken / als PDF speichern
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- NK-162: Hinweis vor der Leerlauf-Abmeldung und der gesicherte Entwurf. -->
+    <div id="leerlauf-hinweis" class="hinweis-leiste" role="alert" hidden>
+        <i class="ph ph-clock" aria-hidden="true"></i>
+        <span id="leerlauf-text"></span>
+        <button type="button" class="btn-primary" onclick="angemeldetBleiben()">Angemeldet bleiben</button>
+    </div>
+    <div id="entwurf-hinweis" class="hinweis-leiste" role="status" hidden>
+        <i class="ph ph-floppy-disk" aria-hidden="true"></i>
+        <span>Ihre Eingabe in „<b id="entwurf-titel"></b>“ wurde vor der Abmeldung gesichert.</span>
+        <button type="button" class="btn-primary" onclick="entwurfWiederherstellen()">Eingabe wiederherstellen</button>
+        <button type="button" class="btn-secondary" onclick="entwurfVerwerfen()">Entwurf löschen</button>
+    </div>
+
+    <!-- NK-158: die Erklärung hinter einem „?“ an einem Fachbegriff. -->
+    <div id="begriff-blase" class="begriff-blase" role="dialog" aria-live="polite" hidden>
+        <strong id="begriff-blase-titel"></strong>
+        <p id="begriff-blase-text"></p>
+        <button type="button" class="btn-tint btn-klein" onclick="zeigeHilfe('hilfe-begriffe')">Alle Begriffe öffnen</button>
+    </div>
+    <script src="/static/umzug.js?v=1"></script>
+    <script src="/static/app.js?v=28"></script>
+</body>
+
+</html>

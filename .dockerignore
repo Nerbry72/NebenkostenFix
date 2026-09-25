@@ -1,0 +1,91 @@
+# Was nicht ins Abbild gehoert (NK-023).
+#
+# Der Dockerfile macht COPY . ., und ohne diese Datei nimmt er alles mit, was
+# im Verzeichnis liegt. Nachgeprueft an einem gebauten Abbild: die .env lag mit
+# SECRET_KEY, NAS-Passwort und IBAN darin. Wer das Abbild bekommt, bekommt die
+# Zugangsdaten, und geloescht bekommt man sie aus einer Schicht nicht mehr.
+
+# Zugangsdaten. Die .env wird zur Laufzeit ueber env_file gelesen, nicht
+# hineinkopiert.
+.env
+.env.*
+!.env.example
+
+# Daten des Betreibers. data/ ist die Datenbank samt Mietern, belege/ sind
+# deren Rechnungen und Zaehlerfotos. Beide haengen zur Laufzeit als Verzeichnis
+# vom Wirt herein.
+data/
+# NK-132: der Datenordner der Auslieferung (./daten -> /data)
+daten/
+belege/
+nas-sandbox/
+backups/
+*.db
+*.sqlite
+*.sqlite3
+sicherung-*.tar.gz
+*.log
+*.log.[0-9]*
+*.log.sperre
+
+# Verlauf und Werkzeug
+.git/
+.gitignore
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Entwicklerrouten (NK-040). debug_routen.py traegt
+# POST /api/debug/reset_db: die Route leert die Datenbank und raeumt das
+# Belegverzeichnis leer. R-DSGVO-01 verlangt, dass ein solcher Endpunkt im
+# Auslieferungsbuild nicht existiert -- nicht, dass er per Flag ausgeschaltet
+# ist. Eine Zeile in der falschen .env genuegt sonst, um ihn scharf zu machen.
+# app.py versucht den Import und faehrt ohne das Modul weiter. Im Dev-Stapel
+# liegt die Datei ueber das Volume trotzdem im Container.
+debug_routen.py
+
+# Entwicklungswerkzeuge in scripts/ (F-26, NK-040). e2e.py baut und faehrt
+# Docker-Stapel und misst die Zeit bis zur laufenden Instanz;
+# einzelschwelle.py wertet einen Abdeckungsbericht aus,
+# ui_beschriftungen.py prueft static/ gegen den Begriffskatalog (NK-074),
+# rauchtest_design.js prueft das Design-System am DOM-Stub (NK-067, Wirt).
+# Beides braucht im Abbild niemand, und e2e.py raeumt Verzeichnisse leer.
+#
+# scripts/kostenarten.py bleibt bewusst drin: das ist der Notfallweg fuer den
+# Betreiber, auf den ihn kategorien.py im Klartext verweist, wenn zwei
+# Kostenarten denselben Namen tragen. Ohne die Datei zeigt die Anwendung ihm
+# einen Befehl, den er nicht ausfuehren kann.
+scripts/e2e.py
+scripts/einzelschwelle.py
+scripts/ui_beschriftungen.py
+scripts/html_maskierung.py
+scripts/probe_ersteinrichtung.py
+scripts/rauchtest_design.js
+# NK-080: Lizenzen und Manifeste stellt nur der Herausgeber aus.
+scripts/lizenz_werkzeug.py
+# NK-155: Erzeuger der Markenbilder (die Bilder selbst liegen in static/).
+scripts/marke_bilder.py
+# NK-157: Browser-Rundgang der CI (Playwright, Chromium).
+scripts/rundgang.py
+# NK-164: Umzugsprobe über Plattformgrenzen (CI).
+scripts/umzug_kreuzprobe.py
+# NK-158: Erzeuger der Hilfebegriffe (liest docs/, das nicht im Abbild ist).
+scripts/hilfe_begriffe.py
+
+# Entwicklung. Im Abbild laeuft weder pytest noch der Dev-Stapel.
+tests/
+requirements-dev.txt
+Makefile
+docker-compose.yml
+docs/
+README.md
+.gitleaks.toml
+
+# Windows-Paket (NK-079): Bau, Installer und CI gehoeren nicht ins Abbild.
+packaging/
+.github/
+requirements-desktop.txt

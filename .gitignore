@@ -1,0 +1,61 @@
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Docker
+# .dockerignore gehoert ins Repository (NK-023): ohne sie kopiert
+# COPY . . die .env samt SECRET_KEY und NAS-Passwort ins Abbild.
+
+# Database & Data
+data/
+# NK-132: Datenordner des Docker-Wegs
+daten/
+belege/
+sicherung-*.tar.gz
+nebenkosten.db
+*.sqlite3
+
+# Das Protokoll (NK-042). Es liegt normalerweise in data/ und waere damit
+# schon draussen -- aber LOG_DATEI darf es verlegen, und dann soll es nicht
+# beim naechsten git add mit im Verlauf landen. Im Protokoll stehen Pfade,
+# Nutzernamen und Ausnahmetexte.
+*.log
+*.log.[0-9]*
+*.log.sperre
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+test-cases/
+check_db.py
+check_docs.py
+migrate_apartment_id.py
+
+# migrations/ und scripts/ sind bewusst NICHT ignoriert (NK-016):
+# Alembic (NK-024) und die Sicherungsskripte (NK-025) muessen im
+# ausgelieferten Quellbaum liegen, sonst hat der Gast keinen Migrationspfad.
+
+output/
+
+# Dev isolation — never commit live dumps or the NAS sandbox
+nas-sandbox/
+docker-compose.override.yml
+*.sqlite
+backups/
+

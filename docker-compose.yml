@@ -1,0 +1,52 @@
+# NebenkostenFix, Betrieb mit Docker (NK-023, NK-076, NK-132).
+#
+#   docker compose up -d
+#
+# Keine .env noetig: der Sitzungsschluessel entsteht beim ersten Start im
+# Datenordner, das erste Konto legt die Einrichtung im Browser an (der
+# Einmal-Code steht in "docker compose logs web"). Eine .env neben dieser
+# Datei darf die Werte unten setzen (Beispiele in .env.example).
+#
+# Ein Dienst, ein Datenordner (NK-132, D-90): ./daten auf dem Wirt haengt als
+# /data im Container und traegt Datenbank, Belege, Sicherungen, Schluessel und
+# Protokoll. Ein Neubau des Abbilds nimmt davon nichts mit. Wer die Daten auf
+# dem NAS haben will, bindet dessen Ordner als ./daten ein -- die Anwendung
+# selbst spricht kein SMB/NFS.
+#
+# Die Anwendung laeuft als Nutzer PUID/PGID (Standard 1000:1000). Auf einer
+# Synology den Nutzer nehmen, dem der Ordner gehoert (id <name> in der Shell).
+
+services:
+  web:
+    image: ghcr.io/nerbry72/nebenkostenfix:${NK_VERSION:-latest}
+    build: .
+    restart: unless-stopped
+    environment:
+      - DATA_DIR=/data
+      - TZ=${TZ:-Europe/Berlin}
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      # Optional, leer heisst Vorgabe (siehe .env.example):
+      - SECRET_KEY=${SECRET_KEY:-}
+      - BEHIND_HTTPS=${BEHIND_HTTPS:-}
+      - ERLAUBTE_URSPRUENGE=${ERLAUBTE_URSPRUENGE:-}
+      - MAX_UPLOAD_MB=${MAX_UPLOAD_MB:-}
+      - LOG_LEVEL=${LOG_LEVEL:-}
+      - BACKUP_ZIELE=${BACKUP_ZIELE:-}
+      - UMZUG_MAX_GB=${UMZUG_MAX_GB:-}
+      - SITZUNG_LEERLAUF_MIN=${SITZUNG_LEERLAUF_MIN:-}
+      - VERMIETER_NAME=${VERMIETER_NAME:-}
+      - VERMIETER_IBAN=${VERMIETER_IBAN:-}
+    ports:
+      # 6060 ist der Standard. Ist der Port auf dem Wirt belegt, genuegt eine
+      # Zeile APP_PORT=6070 in der .env, der Container bleibt innen auf 6060.
+      - "${APP_PORT:-6060}:6060"
+    volumes:
+      - ./daten:/data
+    healthcheck:
+      # /api/health ist der einzige Pfad, der ohne Anmeldung antwortet (NK-019).
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:6060/api/health', timeout=3).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s

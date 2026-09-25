@@ -1,0 +1,5 @@
+# Gebuendelte Bibliotheken sind per sha256 festgenagelt (NK-075). Git darf
+# ihre Zeilenenden unter Windows nicht umschreiben, sonst stimmt kein Pin.
+static/vendor/** -text
+# Skripte fuer Linux-Container behalten LF, auch aus einem Windows-Checkout.
+*.sh text eol=lf

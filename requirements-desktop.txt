@@ -1,0 +1,5 @@
+# Windows-App (NK-079, NK-150): Server im Prozess, Fenster, Bau.
+# Nur der Windows-Weg braucht das; das Docker-Abbild nimmt requirements.txt.
+waitress==3.0.2
+pywebview==6.2.1; sys_platform == "win32"
+pyinstaller==6.22.3; sys_platform == "win32"

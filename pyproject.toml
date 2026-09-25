@@ -1,0 +1,84 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+cache_dir = "/tmp/nkfix-pytest-cache"
+addopts = [
+  "--cov=.",
+  "--cov-report=term-missing",
+  "--cov-fail-under=55",
+]
+filterwarnings = [
+  "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["."]
+omit = [
+  "tests/*",
+  "migrations/*",
+  "scripts/*",
+]
+data_file = "/tmp/nkfix-coverage"
+
+# Gestaffelte Schwelle (NK-017, Entscheidung D26).
+# Gemessen nach dem Merge von NK-003: 27,85 % projektweit, billing_engine.py 86 %.
+# Die Schwelle liegt bewusst knapp darunter, damit sie beim naechsten Lauf nicht
+# an Rundung scheitert, und wird mit jeder Testkarte angehoben:
+#   NK-017                    27   Ist 27,85
+#   NK-018 nas_handler-Tests  30   Ist 30,92
+#   NK-027 Flaechen-Guard     31   Ist 31,71
+#   NK-019 Auth-Tests         36   Ist 36,30
+#   NK-020 Routentabellentest 42   Ist 42,49   app.py 15 -> 27 %
+#   NK-025 Backup-Tests       47   Ist 48,40   backup.py 94 %
+#   NK-026 Backup-Rundlauf    -    Stufe 45 war schon erreicht, keine neue Zahl
+#   NK-028 Eingabepruefung    49   Ist 50,82   validation.py 100 %
+#   NK-029 Uploadgrenze       -    Ist 51,39   keine eigene Stufe
+#   beide Buendel auf dev     55   Ist 56,03   <- heute
+#   Ziel                      80
+# Die Stufe 45, die NK-026 setzen sollte, ist uebersprungen: NK-028 raeumt 122
+# Anweisungen aus app.py heraus und prueft den Rest, das hebt staerker als
+# geplant. Die beiden Buendel standen auf getrennten Zweigen und trugen dort
+# je eigene Zahlen (47 und 49); zusammen auf dev messen sie 56,03, weil sich
+# die Testmengen kaum ueberschneiden. Die Schwelle steht deshalb jetzt auf 55.
+# Einzeldateiregel fuer auth.py und backup.py: siehe [tool.nk.einzelschwelle].
+[tool.coverage.report]
+fail_under = 55
+show_missing = true
+skip_empty = false
+
+# Harte Schwelle je Datei (NK-032).
+# coverage.py kennt nur die eine Zahl oben, und die gilt projektweit. Sie bliebe
+# gruen, wenn auth.py von 99 auf 40 faellt, solange anderswo genug dazukommt --
+# ausgerechnet bei der Anmeldung und bei der Datenrettung, wo ein Rueckfall
+# niemandem auffaellt und jedem schadet. Geprueft wird nach pytest von
+# scripts/einzelschwelle.py, aufgerufen in `make check`. Gerundet wird nicht:
+# 89,97 sind weniger als 90.
+# Gemessen am 2026-09-20: auth.py 98,77 %, backup.py 94,36 %.
+#
+# NK-037 nimmt den Rechenkern und seinen Lader dazu. Dort wird Geld verteilt;
+# eine Zahl, die dort falsch herauskommt, steht auf der Abrechnung eines
+# Mieters. Gemessen am 2026-09-21: rechenkern.py 99,52 %,
+# abrechnungsdaten.py 96,23 %. Die Zweigabdeckung des Kerns prueft `make
+# kern` gesondert, weil coverage.py sie nur projektweit einschalten kann.
+[tool.nk.einzelschwelle]
+"auth.py" = 90
+"backup.py" = 90
+"rechenkern.py" = 95
+"abrechnungsdaten.py" = 90
+
+[tool.ruff]
+target-version = "py311"
+src = ["."]
+cache-dir = "/tmp/nkfix-ruff-cache"
+
+# Syntax/undefined-name gate only — billing_engine.py is otherwise unlinted
+# (full style cleanup is out of scope for NK-002).
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]
+
+# NK-146: Sicherheitspruefung des Quellcodes (make sicherheit, Teil von make
+# check). Tests, Skripte der Entwicklung und Wanderungen laufen nie im Betrieb
+# mit Nutzereingaben. Jede Ausnahme im Code steht als `# nosec Bxxx` mit
+# einer Kommentarzeile "Bandit-Ausnahme: <Grund>" direkt darueber.
+[tool.bandit]
+exclude_dirs = ["tests", "scripts", "migrations", "packaging", ".git"]

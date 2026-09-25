@@ -1,0 +1,2266 @@
+:root {
+    /* Colors */
+    --primary: #4F46E5;
+    --primary-hover: #4338CA;
+    --secondary: #10B981;
+    --bg-color: #F3F4F6;
+    --text-main: #111827;
+    /* NK-162: #6B7280 lag auf dem Seitengrund und auf Tönungen unter
+       4,5 : 1; #4B5563 hält den Kontrast überall (wie anmeldung.css). */
+    --text-muted: #4B5563;
+    
+    /* Glassmorphism */
+    --glass-bg: rgba(255, 255, 255, 0.7);
+    --glass-border: rgba(255, 255, 255, 0.5);
+    --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+    
+    /* Spacing & Borders */
+    --radius-lg: 24px;
+    --radius-md: 16px;
+    --radius-sm: 8px;
+    --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* Abstands- und Massraster (K6, NK-100): jede Regel, die die
+       Design-Nacharbeit anfasst, nimmt Abstände nur aus diesen Tokens. */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+    --space-7: 48px;
+    --knopf-hoehe: 44px;
+    --knopf-hoehe-klein: 32px;
+    --primary-tint: rgba(79, 70, 229, 0.08);
+}
+
+/* NK-156: ``hidden`` gilt immer. Klassen wie .btn-secondary setzen display und
+   stachen das Attribut sonst aus (sichtbarer Knopf „Logo löschen“ ohne Logo). */
+[hidden] {
+    display: none !important;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Outfit', sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+}
+
+/* Background Blobs for aesthetics */
+.background-blobs {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: -1;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.6;
+}
+
+.blob-1 {
+    top: -10%;
+    left: -10%;
+    width: 50vw;
+    height: 50vw;
+    background: #A78BFA;
+    animation: float 10s ease-in-out infinite alternate;
+}
+
+.blob-2 {
+    bottom: -10%;
+    right: -10%;
+    width: 60vw;
+    height: 60vw;
+    background: #6EE7B7;
+    animation: float 12s ease-in-out infinite alternate-reverse;
+}
+
+@keyframes float {
+    0% { transform: translate(0, 0) scale(1); }
+    100% { transform: translate(5%, 10%) scale(1.1); }
+}
+
+/* Glass Panel Utility */
+.glass-panel {
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--glass-shadow);
+}
+
+/* Kartenkörper (NK-067): ein Innenabstand fuer alle, keiner im Markup. */
+.dashboard-card {
+    padding: 24px;
+}
+
+/* Layout */
+.app-container {
+    display: flex;
+    min-height: 100vh;
+    padding: 24px;
+    gap: 24px;
+}
+
+/* Sidebar */
+.sidebar {
+    width: 260px;
+    padding: 32px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+    position: sticky;
+    top: 24px;
+    height: calc(100vh - 48px);
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--primary);
+}
+
+.logo-zeichen {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+}
+
+.logo h2 {
+    font-weight: 600;
+    font-size: 22px;
+    letter-spacing: -0.5px;
+    color: var(--text-main);
+}
+
+/* NK-155: „Fix“ in der Primärfarbe, wie auf den Anmeldeseiten. */
+.logo-fix {
+    color: var(--primary);
+    font-weight: 700;
+}
+
+.nav-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    text-decoration: none;
+    color: var(--text-muted);
+    font-weight: 500;
+    border-radius: var(--radius-md);
+    transition: var(--transition);
+}
+
+.nav-item i {
+    font-size: 20px;
+}
+
+.nav-item:hover {
+    background: rgba(255, 255, 255, 0.5);
+    color: var(--primary);
+    transform: translateX(4px);
+}
+
+.nav-item.active {
+    background: var(--primary);
+    color: white;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);
+}
+
+/* Main Content */
+.main-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+    /* B6 (NK-100): als Flex-Kind darf die Spalte schrumpfen, sonst drücken
+       breite Kinder (Suchleiste, Tabellen) sie über den rechten Rand und
+       schneiden die Kopfknaepfe ab. */
+    min-width: 0;
+}
+
+.top-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+}
+
+.greeting h1 {
+    font-size: 32px;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.greeting p {
+    color: var(--text-muted);
+    font-size: 16px;
+}
+
+/* Buttons */
+/* Knopfsockel (K3, NK-100): alle vier Klassen teilen ein Mass — 44 px Höhe,
+   mittig, Icon 18 px. inline-flex statt flex: der Knopf ist ein Inline-Level-
+   Kasten und zentriert damit auch unter text-align: center (B2). */
+.btn-primary,
+.btn-secondary,
+.btn-tint,
+.btn-gefahr {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    height: var(--knopf-hoehe);
+    padding: 0 var(--space-5);
+    border-radius: var(--radius-md);
+    font-family: inherit;
+    font-weight: 600;
+    font-size: 15px;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+/* Icons im Knopf: eigene Regel (K3), die kein Container überschreiben kann. */
+.btn-primary > i,
+.btn-secondary > i,
+.btn-tint > i,
+.btn-gefahr > i {
+    font-size: 18px;
+    line-height: 1;
+}
+
+/* Kleine Knöpfe (K3) nur für Zeilenaktionen in Karten und Tabellen. */
+.btn-klein {
+    height: var(--knopf-hoehe-klein);
+    padding: 0 var(--space-3);
+    font-size: 13px;
+}
+
+.btn-primary {
+    background: var(--primary);
+    color: white;
+    border: none;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);
+}
+
+.btn-primary:hover {
+    background: var(--primary-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(79, 70, 229, 0.3);
+}
+
+.btn-secondary {
+    background: transparent;
+    color: var(--text-main);
+    border: 1px solid #D1D5DB;
+}
+
+.btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.5);
+}
+
+.btn-icon {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 20px;
+    transition: var(--transition);
+}
+
+.btn-icon:hover {
+    color: var(--text-main);
+}
+
+/* Stats */
+.dashboard-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 24px;
+}
+
+.stat-card {
+    padding: 24px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    transition: var(--transition);
+}
+
+.stat-card:hover {
+    transform: translateY(-4px);
+}
+
+.stat-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: rgba(79, 70, 229, 0.1);
+    color: var(--primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+}
+
+.stat-info h3 {
+    font-size: 14px;
+    color: var(--text-muted);
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+.stat-info p {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+/* Properties Grid */
+.properties-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 24px;
+}
+
+.property-card {
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    transition: var(--transition);
+    text-decoration: none;
+    color: inherit;
+}
+
+.property-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(31, 38, 135, 0.1);
+}
+
+.prop-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.prop-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--primary), #818CF8);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+}
+
+.prop-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin-top: 12px;
+}
+
+.prop-meta {
+    display: flex;
+    gap: 16px;
+    color: var(--text-muted);
+    font-size: 14px;
+    border-top: 1px solid rgba(0,0,0,0.05);
+    padding-top: 16px;
+}
+
+.prop-meta span {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.loading-state {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 40px;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+/* Der drehende Spinner (NK-126): Phosphor liefert nur das Symbol, die
+   Drehung kommt vom eigenen Stil. Vorher stand das Symbol still. */
+.ph-spin {
+    animation: ph-drehung 1s linear infinite;
+}
+
+@keyframes ph-drehung {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+
+/* Modals */
+.modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.2);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0;
+    pointer-events: none;
+    transition: var(--transition);
+}
+
+.modal-overlay.active {
+    opacity: 1;
+    pointer-events: all;
+}
+
+.modal {
+    width: 100%;
+    max-width: 500px;
+    /* NK-116: ein Dialog, der höher ist als das Fenster, rollt in sich —
+       sonst schneidet die zentrierte, feste Überlagerung Kopf und Fuß ab,
+       und „Speichern“ ist nicht mehr erreichbar. */
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    padding: 32px;
+    transform: translateY(20px) scale(0.95);
+    transition: var(--transition);
+}
+
+.modal-overlay.active .modal {
+    transform: translateY(0) scale(1);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.form-group label {
+    font-weight: 500;
+    font-size: 14px;
+    color: var(--text-main);
+}
+
+.form-group input[type="text"],
+.form-group input[type="number"],
+.form-group input[type="date"],
+.form-group input[type="password"],
+.form-group input[type="email"],
+.form-group select {
+    width: 100%;
+    padding: 12px 16px;
+    border-radius: var(--radius-sm);
+    border: 1px solid #D1D5DB;
+    background: rgba(255,255,255,0.5);
+    font-family: inherit;
+    font-size: 16px;
+    transition: var(--transition);
+    appearance: none;
+    -webkit-appearance: none;
+}
+
+/* Custom dropdown arrow for select */
+.form-group select {
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 16px center;
+    background-size: 16px;
+    padding-right: 40px;
+}
+
+.form-group input[type="text"]:focus,
+.form-group input[type="number"]:focus,
+.form-group input[type="date"]:focus,
+.form-group input[type="password"]:focus,
+.form-group input[type="email"]:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+    background: white;
+}
+
+/* Custom File Upload Button */
+.file-upload-wrapper {
+    position: relative;
+    display: inline-block;
+    width: 100%;
+}
+.file-upload-wrapper input[type="file"] {
+    position: absolute;
+    left: -9999px;
+    opacity: 0;
+}
+.file-upload-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 12px 16px;
+    border-radius: var(--radius-sm);
+    border: 1px dashed var(--primary);
+    background: rgba(255,255,255,0.5);
+    color: var(--primary);
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition);
+}
+.file-upload-label:hover {
+    background: rgba(79, 70, 229, 0.1);
+}
+
+/* Hide spin buttons */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    appearance: none;
+    margin: 0;
+}
+input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.checkbox-group {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+}
+
+.checkbox-group input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 16px;
+    margin-top: 32px;
+}
+
+/* Image Hover Tooltip */
+.image-hover-container {
+    position: relative;
+    display: inline-block;
+    cursor: pointer;
+}
+.image-hover-preview {
+    display: none;
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 250px;
+    height: auto;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 9999;
+    margin-bottom: 8px;
+    background: white;
+    padding: 4px;
+    pointer-events: none;
+}
+.image-hover-container:hover .image-hover-preview {
+    display: block;
+}
+
+/* Accordion Styles */
+.accordion {
+    margin-bottom: 16px;
+    border: 1px solid rgba(0,0,0,0.05);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.4);
+}
+
+.accordion-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px;
+    background: rgba(255, 255, 255, 0.6);
+    cursor: pointer;
+    transition: var(--transition);
+    font-weight: 600;
+}
+
+.accordion-header:hover {
+    background: rgba(255, 255, 255, 0.9);
+}
+
+.accordion-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.accordion-icon {
+    font-size: 20px;
+    color: var(--primary);
+}
+
+.accordion-badge {
+    background: rgba(79, 70, 229, 0.1);
+    color: var(--primary);
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.accordion-chevron {
+    transition: transform 0.3s ease;
+}
+
+.accordion.open .accordion-chevron {
+    transform: rotate(180deg);
+}
+
+.accordion-content {
+    display: none;
+    border-top: 1px solid rgba(0,0,0,0.05);
+}
+
+.accordion.open .accordion-content {
+    display: block;
+}
+
+/* Zebra Striping */
+.table-zebra tbody tr:nth-child(even) {
+    background-color: rgba(0, 0, 0, 0.02);
+}
+.table-zebra tbody tr:hover {
+    background-color: rgba(79, 70, 229, 0.03);
+}
+
+/* Typography Utilities */
+.tabular-nums {
+    font-variant-numeric: tabular-nums;
+}
+
+.text-right {
+    text-align: right;
+}
+
+
+/* Controls Bar */
+.controls-bar {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 24px;
+    align-items: center;
+}
+.controls-bar .form-group {
+    margin-bottom: 0;
+    flex: 1;
+}
+
+/* ─── Data Quality Dashboard ─── */
+.dq-meter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.dq-meter-card {
+    padding: 20px;
+    border-radius: var(--radius-md);
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    transition: var(--transition);
+    border-left: 4px solid #D1D5DB;
+}
+
+.dq-meter-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(31, 38, 135, 0.1);
+}
+
+.dq-meter-card.status-green { border-left-color: #10B981; }
+.dq-meter-card.status-yellow { border-left-color: var(--warning-color); }
+.dq-meter-card.status-red { border-left-color: var(--danger-color); }
+.dq-meter-card.status-none { border-left-color: #9CA3AF; }
+
+.dq-meter-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+}
+
+.dq-meter-title {
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--text-main);
+}
+
+.dq-meter-subtitle {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.dq-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.dq-status-badge.green {
+    background: rgba(16, 185, 129, 0.1);
+    color: #059669;
+}
+
+.dq-status-badge.yellow {
+    background: rgba(245, 158, 11, 0.1);
+    color: #D97706;
+}
+
+.dq-status-badge.red {
+    background: rgba(239, 68, 68, 0.1);
+    color: #DC2626;
+}
+
+.dq-status-badge.none {
+    background: rgba(156, 163, 175, 0.1);
+    color: #6B7280;
+}
+
+.dq-meter-details {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.dq-meter-detail {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.dq-meter-detail span:last-child {
+    font-weight: 500;
+    color: var(--text-main);
+}
+
+.dq-warnings {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.dq-warning-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px 20px;
+    border-radius: var(--radius-sm);
+    background: rgba(239, 68, 68, 0.05);
+    border: 1px solid rgba(239, 68, 68, 0.15);
+    transition: var(--transition);
+}
+
+.dq-warning-card:hover {
+    background: rgba(239, 68, 68, 0.08);
+}
+
+.dq-warning-icon {
+    font-size: 20px;
+    color: var(--danger-color);
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+.dq-warning-text {
+    font-size: 14px;
+    color: var(--text-main);
+    line-height: 1.5;
+}
+
+.dq-warning-meta {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+.dq-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 48px 24px;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+.dq-empty-state i {
+    font-size: 48px;
+    color: #10B981;
+    opacity: 0.6;
+}
+
+.dq-summary-bar {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+}
+
+.dq-summary-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.dq-summary-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+.dq-summary-dot.green { background: #10B981; }
+.dq-summary-dot.yellow { background: var(--warning-color); }
+.dq-summary-dot.red { background: var(--danger-color); }
+.dq-summary-dot.none { background: #9CA3AF; }
+
+/* --- UX: Interpolation Transparency --- */
+.interpolated-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+.interpolated-value {
+    border-bottom: 2px dotted #9ca3af;
+    cursor: help;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.math-icon {
+    color: var(--primary);
+    font-size: 1.25em;
+    cursor: pointer;
+    display: inline-block;
+    transition: transform 0.2s;
+    vertical-align: middle;
+}
+
+.interpolated-wrapper:hover .math-icon {
+    transform: scale(1.15);
+}
+
+.glass-tooltip {
+    visibility: hidden;
+    opacity: 0;
+    position: absolute;
+    bottom: 120%;
+    left: 50%;
+    transform: translateX(-50%) translateY(10px);
+    width: max-content;
+    max-width: 300px;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    border-radius: 12px;
+    padding: 12px 16px;
+    color: #1f2937;
+    font-size: 13px;
+    line-height: 1.5;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    z-index: 100;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: none;
+    text-align: left;
+}
+
+/* Tooltip Arrow */
+.glass-tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border-width: 6px;
+    border-style: solid;
+    border-color: rgba(255, 255, 255, 0.85) transparent transparent transparent;
+}
+
+.interpolated-wrapper:hover .glass-tooltip {
+    visibility: visible;
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+/* --- Ebene 2: Interpolation Audit Modal --- */
+.timeline-container {
+    position: relative;
+    width: calc(100% - 120px);
+    margin: 32px 60px;
+    padding-top: 24px;
+    padding-bottom: 24px;
+    background: var(--bg-hover);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.timeline-axis {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    border-top: 1px solid #d1d5db;
+    margin-top: 40px; /* Position of the axis */
+    z-index: 0;
+}
+
+.timeline-bar-reading {
+    position: absolute;
+    height: 12px;
+    background: #d1d5db; /* gray */
+    border-radius: 6px;
+    top: 34px; /* aligned with axis */
+    z-index: 1;
+}
+
+.timeline-bar-target {
+    position: absolute;
+    height: 24px;
+    background: var(--primary); /* blue */
+    border-radius: 4px;
+    top: 28px;
+    z-index: 2;
+    opacity: 0.8;
+}
+
+.timeline-bar-overlap {
+    position: absolute;
+    height: 24px;
+    background: repeating-linear-gradient(
+        45deg,
+        rgba(16, 185, 129, 0.4), /* green */
+        rgba(16, 185, 129, 0.4) 10px,
+        rgba(16, 185, 129, 0.7) 10px,
+        rgba(16, 185, 129, 0.7) 20px
+    );
+    border-radius: 4px;
+    top: 28px;
+    z-index: 3;
+    border: 2px solid #10b981;
+}
+
+.timeline-marker {
+    position: absolute;
+    top: -24px;
+    transform: translateX(-50%);
+    font-size: 13px;
+    color: var(--text-muted);
+    text-align: center;
+    white-space: nowrap;
+    z-index: 4;
+}
+.timeline-marker::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    width: 1px;
+    height: 50px;
+    background: #9ca3af;
+    border-left: 1px dashed #9ca3af;
+}
+
+/* Step-by-Step Table */
+.audit-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 16px;
+}
+
+.audit-table th, .audit-table td {
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 1px solid #e5e7eb;
+}
+.audit-table th {
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 0.85em;
+}
+
+@media print {
+    /* Druckansicht (NK-073, D-75): Gedruckt wird die aktive Ansicht, nicht
+       die Anwendung. Rahmen, Kopfzeile, Schalter und Meldungen gehoeren
+       nicht auf Papier; Karten drucken weiß statt Glas. Der Sonderfall
+       unten bleibt: Bei offenem Pruef-Nachweis (interpolation-audit-modal)
+       druckt nur das Modal -- frueher galt body * visibility:hidden aber
+       IMMER, d.h. ohne offenes Modal kam eine leere Seite heraus. Die
+       allgemeine Regel ist darum an :has gebunden. */
+    .sidebar, .top-header, .toast-stapel, .background-blobs,
+    .modal-overlay, .kopf-aktionen, .btn, .filter-pill,
+    .nav-menu, .feld-hilfe, .no-print {
+        display: none !important;
+    }
+
+    /* Ausnahme: der offene Pruef-Nachweis wird gedruckt (siehe unten). */
+    #interpolation-audit-modal.active {
+        display: flex !important;
+    }
+
+    body {
+        background: white !important;
+        color: black !important;
+    }
+
+    .app-container, .main-content {
+        display: block !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        max-width: none !important;
+    }
+
+    .tab-content {
+        display: none !important;
+    }
+
+    .tab-content.active {
+        display: block !important;
+    }
+
+    .dashboard-card, .glass-panel {
+        background: white !important;
+        border: 1px solid #cccccc !important;
+        box-shadow: none !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        break-inside: avoid;
+    }
+
+    h1, h2, h3, h4, p, span, td, th, li, label {
+        color: black !important;
+    }
+
+    table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+    }
+
+    th, td {
+        border: 1px solid #cccccc !important;
+        padding: 4px 8px !important;
+    }
+
+    a {
+        color: black !important;
+        text-decoration: none;
+    }
+
+    /* Pruef-Nachweis (offenes Modal) statt der Seite drucken. */
+    body:has(#interpolation-audit-modal.active) * {
+        visibility: hidden;
+    }
+
+    body:has(#interpolation-audit-modal.active) #interpolation-audit-modal,
+    body:has(#interpolation-audit-modal.active) #interpolation-audit-modal * {
+        visibility: visible;
+    }
+
+    body:has(#interpolation-audit-modal.active) #interpolation-audit-modal {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        background: white;
+        box-shadow: none;
+    }
+
+    /* Das offene Modal druckt ohne Scrollbalken und ohne Abschneiden. */
+    .modal,
+    .modal-body {
+        max-height: none !important;
+        overflow: visible !important;
+    }
+}
+
+/* Angemeldeter Benutzer in der Kopfzeile (NK-021). */
+.angemeldeter-benutzer {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+/* Feldhilfe (NK-066): das Fragezeichen neben komplexen Feldbeschriftungen.
+   Das Erklaerfenster kommt aus dem title-Attribut des Browsers; hier steht
+   nur die Darstellung des Zeichens. */
+.feld-hilfe {
+    color: var(--text-muted);
+    cursor: help;
+    font-size: 0.95em;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
+.feld-hilfe:hover {
+    color: var(--primary);
+}
+
+/* Erste Schritte (K5, NK-103): neu gesetzt, nicht ausgebessert. Das Panel
+   steht über den Kennzahlen und verschwindet, sobald alle Pflichtschritte
+   erledigt sind; gezeichnet wird es von zeigeErsteSchritte() in app.js. */
+.erste-schritte {
+    padding: var(--space-6);           /* K5: 32 px innen */
+    margin-bottom: var(--space-6);
+}
+
+.erste-schritte h2 {
+    margin: 0 0 var(--space-1);
+    font-size: 20px;
+}
+
+.erste-schritte-kopf p {
+    margin: 0 0 var(--space-2);
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+/* K5: Fortschritt „x von 5 erledigt“ mit schmalem Balken in Primärfarbe. */
+.erste-schritte-fortschritt {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin: 0 0 var(--space-5);        /* K5: Kopf → Liste 24 px */
+}
+
+.erste-schritte-stand {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+.erste-schritte-balken {
+    flex: 0 1 220px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--bg-hover);
+    overflow: hidden;
+}
+
+.erste-schritte-balken span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--primary);
+    transition: width var(--transition);
+}
+
+.erste-schritte-liste {
+    list-style: none;                  /* B7: eine Nummerierung — die Marke */
+    margin: 0;
+    padding: 0;
+}
+
+/* K5: jede Zeile ein Raster 32px | 1fr | auto, mindestens 64 px hoch;
+   Zeilen trennt eine 1-px-Linie statt einer 4-px-Lücke. */
+.erste-schritte-liste .schritt {
+    display: grid;
+    grid-template-columns: 32px 1fr auto;
+    align-items: center;
+    gap: var(--space-4);
+    min-height: 64px;
+    padding: var(--space-4) var(--space-5);
+}
+
+.erste-schritte-liste .schritt + .schritt {
+    border-top: 1px solid var(--border-color);
+}
+
+/* K5: nur der aktuelle Schritt hervorgehoben — Palette (B9) und eine
+   3-px-Primärleiste links. */
+.erste-schritte-liste .schritt.aktuell {
+    background: var(--primary-tint);
+    box-shadow: inset 3px 0 0 var(--primary);
+}
+
+.schritt-marke {
+    flex: 0 0 auto;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 600;
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--text-muted);
+}
+
+.schritt.optional .schritt-marke {
+    border: 1px dashed var(--text-muted);
+    background: transparent;
+}
+
+.schritt.erledigt .schritt-marke {
+    background: var(--success-color);
+    color: #fff;
+}
+
+.schritt-text {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+}
+
+/* K5: die Pille „optional“ sitzt hinter dem Titel, auf dessen Grundlinie. */
+.schritt-titel-zeile {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+}
+
+.schritt-text strong {
+    font-size: 15px;
+}
+
+.schritt-text span {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.schritt.erledigt .schritt-text strong {
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.schritt-hinweis {
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--text-muted);
+    border: 1px solid var(--text-muted);
+    border-radius: 999px;
+    padding: 0 var(--space-2);
+}
+
+/* Leerzustand (K4, NK-102): eine Komponente, ein Erzeuger (leerzustand()
+   in app.js). Volle Breite — im Raster über alle Spalten (B3) —, der
+   Inhalt als Flex-Spalte zentriert statt links oben zu kleben. */
+.empty-state {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: center;
+    padding: var(--space-7) var(--space-5);
+    color: var(--text-muted);
+}
+
+.empty-state-inhalt {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+/* K3: Container-Icons bekommen eine eigene Klasse statt Nachfahren-
+   Selektors auf i — der traf auch das Icon im Knopf (B1). */
+.leer-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 40px;
+    color: var(--primary);
+    background: var(--primary-tint);
+    margin-bottom: var(--space-4);
+}
+
+.empty-state h3 {
+    margin: 0 0 var(--space-2);
+    font-size: 17px;
+    color: var(--text-main);
+}
+
+.empty-state p {
+    margin: 0 0 var(--space-4);
+    max-width: 46ch;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+/* K4: zu leerem Bestand gehört keine Filterleiste (nk-102). [hidden]
+   muss gegen die display-Regel der Leiste gewinnen. */
+.controls-bar[hidden] {
+    display: none;
+}
+
+/* ------------------------------------------------------------------ */
+/* Design-System (NK-067)                                              */
+/* ------------------------------------------------------------------ */
+
+/* Aliase (F-43): Namen, die der Bestand benutzt, ohne dass sie definiert
+   waren -- sie fielen auf Browser-Vorgaben zurück (38 Stellen). Sie fallen
+   jetzt auf die Palette oben zurück. Neue Beschriftungen benutzen die
+   kanonischen Namen. */
+:root {
+    --primary-color: var(--primary);
+    --text-color: var(--text-main);
+    --text-secondary: var(--text-muted);
+    --danger-color: #DC2626;
+    --success-color: #16A34A;
+    --warning-color: #D97706;
+    --border-color: rgba(17, 24, 39, 0.1);
+    --bg-hover: rgba(17, 24, 39, 0.04);
+}
+
+/* Ein Abstandsraster: Abschnittsköpfe statt zehnfach wiederholter
+   Inline-Stile. flex-wrap hält die Knöpfe im Kopf bei schmalen Fenstern
+   in der Reihe, statt sie überlaufen zu lassen. */
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+}
+
+.section-header-getrennt {
+    border-top: 1px solid var(--border-color);
+    padding-top: var(--space-5); /* K6: 24px-Token statt Literal (NK-101) */
+}
+
+/* K1 (NK-101): Aktionsknaepfe rechts im Seitenkopf; der Primärknopf steht
+   ganz rechts, Nebenknöpfe links davon. margin-left: auto hält die
+   Fluchtung auch in der Umbruchzeile bei schmalen Fenstern (K7). */
+.kopf-aktionen {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    margin-left: auto;
+}
+
+/* K1 (NK-101): Untertitel des Seitenkopfs statt Inline-Stil. */
+.section-untertitel {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin-top: var(--space-1);
+}
+    padding-top: 24px;
+}
+
+.section-header-weit {
+    margin-top: 48px;
+}
+
+/* Kopfbereich: Knöpfe umbrechen statt überlaufen. */
+.top-header {
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.kopf-aktionen {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+/* Tabellen (F-44): die Klassen, die der Bestand benutzt, ohne dass sie
+   existierten. Die Rollbalken bleiben im Behälter, nicht auf der Seite. */
+.data-table-container {
+    overflow-x: auto;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.data-table th {
+    text-align: left;
+    font-size: 13px;
+    color: var(--text-muted);
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+}
+
+.data-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border-color);
+    vertical-align: middle;
+}
+
+.data-table tbody tr:hover {
+    background: var(--bg-hover);
+}
+
+/* Sichtbarer Tastaturfokus (NK-073): jede ansteuerbare Stelle zeigt,
+   wo der Fokus liegt. */
+:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+/* Meldungen im Stapel (NK-067): sie sammeln sich unten rechts, statt
+   sich zu überlappen, und bleiben sechs Sekunden -- lang genug zum Lesen. */
+.toast-stapel {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: min(380px, calc(100vw - 48px));
+}
+
+.toast {
+    padding: 12px 20px;
+    border-radius: var(--radius-md);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.toast-fehler {
+    background: #FEE2E2;
+    color: #B91C1C;
+}
+
+.toast-erfolg {
+    background: #DCFCE7;
+    color: #166534;
+}
+
+/* Tablet (NK-073): die Seitenleiste wird schmaler. NK-162 (F-91): mit
+   Beschriftung -- eine Spalte nur aus Symbolen verstand niemand, der die
+   Anwendung zum ersten Mal sieht. */
+@media (max-width: 1024px) {
+    .sidebar {
+        width: 196px;
+        padding: 24px 12px;
+        gap: 28px;
+    }
+
+    .logo h2 {
+        font-size: 18px;
+    }
+
+    .nav-item {
+        font-size: 15px;
+        gap: 10px;
+        padding: 12px 12px;
+    }
+
+    .nav-item i {
+        font-size: 20px;
+    }
+}
+
+/* Schmales Fenster (NK-073): Kopf stapelt, Kennzahlen einspaltig,
+   Modals bekommen Luft. */
+@media (max-width: 720px) {
+    .top-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .greeting h1 {
+        font-size: 24px;
+    }
+
+    .dashboard-stats {
+        grid-template-columns: 1fr;
+    }
+
+    .modal {
+        padding: 20px;
+    }
+
+    .erste-schritte {
+        padding: var(--space-4);
+    }
+
+    /* K5: bei ≤ 720 px rutscht der Knopf unter den Text — bündig mit dem
+       Text, nicht mit der Marke. */
+    .erste-schritte-liste .schritt {
+        grid-template-columns: 32px 1fr;
+    }
+
+    .erste-schritte-liste .schritt .btn-primary {
+        grid-column: 2;
+        justify-self: start;
+    }
+}
+
+/* Zustandstöne als Flaechen (NK-067-Abnahme): dieselben Farben wie die
+   Meldungen, nicht neue. */
+:root {
+    --success-bg: #DCFCE7;
+    --danger-bg: #FEE2E2;
+    --warning-bg: rgba(217, 119, 6, 0.12);
+}
+
+/* Auswahlpillen der Statistiken (NK-067): sie benennen Kategorien, keine
+   Handlungen; der aktive Zustand traegt die Grundfarbe. */
+.filter-pill {
+    padding: 6px 16px;
+    border-radius: 20px;
+    border: 1px solid var(--border-color);
+    background: white;
+    color: var(--text-main);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+    transition: var(--transition);
+}
+
+.filter-pill:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.filter-pill.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: white;
+}
+
+/* Gefahrenzone (NK-067): der zerstoerende Knopf traegt die Gefahr, nicht
+   die Grundfarbe der Haupthaendlungen. */
+.gefahrenzone {
+    border: 1px solid rgba(220, 38, 38, 0.3);
+}
+
+.gefahrenzone h3 {
+    color: var(--danger-color);
+}
+
+.btn-gefahr {
+    background: var(--danger-color);
+    color: white;
+    border: none;
+}
+
+.btn-gefahr:hover {
+    background: #B91C1C;
+}
+
+.btn-gefahr:focus-visible {
+    outline: 2px solid var(--danger-color);
+    outline-offset: 2px;
+}
+
+/* Vorhebender Nebenknoepf (NK-067): die Grundfarbe mit Deckkraft statt
+   eines eigenen Blautons. */
+.btn-tint {
+    background: rgba(79, 70, 229, 0.1);
+    color: var(--primary);
+    border: 1px solid rgba(79, 70, 229, 0.3);
+}
+
+/* Zeitleiste der Rechnungen (NK-144): chronologisch nach Ausstellungsdatum.
+   Gruppenkarte je Monat, Eintragszeilen im Raster, Summe am Gruppenkopf. */
+.zeitleiste-jahr {
+    margin: 32px 0 16px;
+}
+
+.zeitleiste-jahr:first-child {
+    margin-top: 0;
+}
+
+.zeitleiste-gruppe .zeitleiste-kopf {
+    align-items: baseline;
+    display: flex;
+    gap: 16px;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.zeitleiste-gruppe .zeitleiste-kopf h3 {
+    margin: 0;
+}
+
+.zeitleiste-summe {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.zeitleiste-eintrag {
+    align-items: center;
+    border-top: 1px solid var(--border-color);
+    display: grid;
+    gap: 12px;
+    grid-template-columns: 90px 1fr auto auto auto;
+    padding: 8px 0;
+}
+
+.zeitleiste-datum {
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.zeitleiste-nr {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.zeitleiste-beleg {
+    color: var(--text-muted);
+}
+
+.zeitleiste-betrag {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.zeitleiste-gesamt {
+    margin-top: 16px;
+    text-align: right;
+}
+
+/* Und im Druck (NK-073) bricht die Gruppe nicht auseinander. */
+@media print {
+    .zeitleiste-gruppe {
+        break-inside: avoid;
+    }
+}
+
+/* NK-155: Logo des Vermieters in den Einstellungen. */
+.vermieter-logo-zeile {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2, 8px);
+}
+
+.vermieter-logo-vorschau {
+    max-height: 48px;
+    max-width: 160px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 4px;
+    background: #FFFFFF;
+}
+
+.feld-hilfe {
+    display: block;
+    margin-top: 6px;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+/* ------------------------------------------------------------------
+   NK-156: Bausteine statt Inline-Stile (K1–K9). Wer eine Karte baut,
+   nimmt diese Klassen; ein Wächter lässt die Zahl der Inline-Stile in
+   index.html nur noch sinken (tests/test_design_einheit.py).
+   ------------------------------------------------------------------ */
+.karten-kopf {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-3, 12px);
+    margin-bottom: var(--space-4, 16px);
+}
+
+.karten-kopf-hinweis {
+    font-size: 14px;
+    color: var(--text-muted);
+}
+
+.karten-text {
+    margin: 0 0 var(--space-4, 16px);
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+.karten-abschnitt {
+    margin: var(--space-4, 16px) 0;
+}
+
+.karten-abschnitt-getrennt {
+    margin-top: 20px;
+    padding-top: var(--space-4, 16px);
+    border-top: 1px solid var(--border-color);
+}
+
+.tabelle {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+}
+
+.tabellen-kopfzeile {
+    border-bottom: 1px solid var(--border-color);
+}
+
+.zelle {
+    padding: 10px 8px;
+}
+
+.rollbereich {
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.diagramm-flaeche {
+    position: relative;
+    height: 350px;
+    width: 100%;
+}
+
+.feld-breit { flex: 1; }
+
+/* Eingabe und Knopf in einer Zeile (Sicherungsziel, neuer Anbieter). */
+.form-group.feld-zeile {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-bottom: var(--space-4, 16px);
+}
+
+.form-group.feld-zeile > input {
+    flex: 1 1 260px;
+}
+
+/* Ein Link, der wie ein Knopf aussieht, trägt keine Unterstreichung. */
+a.btn-primary,
+a.btn-secondary {
+    text-decoration: none;
+}
+.feld-min { min-width: 180px; }
+
+.felder-nebeneinander {
+    display: flex;
+    gap: var(--space-4, 16px);
+}
+
+.zeile-eng {
+    display: flex;
+    gap: var(--space-2, 8px);
+}
+
+.knopf-zeile {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2, 8px);
+}
+
+.spalte {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5, 24px);
+}
+
+.abstand-oben { margin-top: var(--space-4, 16px); }
+.abstand-unten-klein { margin: 0 0 var(--space-3, 12px); }
+.text-muted { color: var(--text-muted); }
+.text-primaer { color: var(--primary); }
+.raster-einspaltig { grid-template-columns: 1fr; }
+
+.dialog-mittel {
+    max-width: 600px;
+    width: 90%;
+}
+
+/* K8: Einstellungen in Gruppen. */
+.gruppe-aus {
+    display: none !important;
+}
+
+.einstellungs-gruppen {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2, 8px);
+    margin-bottom: var(--space-5, 24px);
+}
+
+.einstellungs-gruppen .filter-pill i {
+    font-size: 18px;
+    vertical-align: -3px;
+}
+
+.einstellungs-raster {
+    grid-template-columns: repeat(auto-fill, minmax(min(600px, 100%), 1fr));
+}
+
+.math-icon-primaer {
+    font-size: 1.1em;
+    color: var(--primary);
+}
+
+.verbrauch-symbol {
+    font-size: 18px;
+    color: var(--primary);
+}
+
+@media (max-width: 640px) {
+    .felder-nebeneinander { flex-direction: column; }
+}
+
+
+/* NK-157: Telefonbreite. Der Rundgang (scripts/rundgang.py) fand bei 390 px
+   Tabellen, die aus ihren Karten ragten, und eine Seitenleiste, die ein
+   Viertel der Breite nahm. Die Leiste wird zur Leiste unten, Tabellen
+   rollen in ihrer Karte statt auf der Seite. */
+@media (max-width: 720px) {
+    .dashboard-card table,
+    .glass-panel table,
+    .modal table {
+        display: block;
+        max-width: 100%;
+        overflow-x: auto;
+    }
+
+    .dashboard-card {
+        padding: 16px;
+    }
+}
+
+@media (max-width: 560px) {
+    .app-container {
+        padding: 12px 12px 84px;
+        gap: 12px;
+    }
+
+    .sidebar {
+        position: fixed;
+        top: auto;
+        bottom: 8px;
+        left: 8px;
+        right: 8px;
+        z-index: 50;
+        width: auto;
+        height: auto;
+        padding: 6px;
+        gap: 0;
+    }
+
+    .sidebar .logo {
+        display: none;
+    }
+
+    .nav-menu {
+        flex-direction: row;
+        justify-content: space-between;
+        gap: 2px;
+    }
+
+    .nav-item {
+        flex: 1;
+        min-width: 0;
+        padding: 10px 0;
+        /* Telefon: nur Symbole in der Leiste unten; der Name steht im
+           aria-label und im title (NK-162). */
+        font-size: 0;
+        gap: 0;
+        justify-content: center;
+    }
+
+    .nav-item i {
+        font-size: 22px;
+    }
+
+    .nav-item:hover {
+        transform: none;
+    }
+}
+
+/* NK-164: Umzugskarte. */
+.haken-zeile {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-weight: normal;
+}
+
+.fortschritt {
+    width: 100%;
+    margin: 8px 0;
+    accent-color: var(--primary);
+}
+
+/* NK-161: Import aus Excel und Tabellen-Erfassung. */
+.dialog-breit {
+    max-width: 1100px;
+    width: 95%;
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+.import-zuordnung {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
+    gap: 12px 16px;
+}
+
+.import-zuordnung .form-group {
+    margin: 0;
+}
+
+.pflicht-marke {
+    color: var(--primary);
+    font-weight: 700;
+}
+
+.rechnungstabelle td {
+    padding: 4px;
+    vertical-align: top;
+}
+
+.rechnungstabelle input {
+    width: 100%;
+    min-width: 96px;
+    padding: 8px 10px;
+    font: inherit;
+    font-size: 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.8);
+}
+
+.rechnungstabelle input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+}
+
+.rechnungstabelle .rt-kostenart { min-width: 200px; }
+.dialog-breit .table-container { overflow-x: auto; }
+.rechnungstabelle .rt-status { min-width: 220px; max-width: 320px; font-size: 13px; }
+.rechnungstabelle tr.zeile-fehler input { border-color: #B91C1C; }
+.rechnungstabelle .rt-status.fehler { color: #B91C1C; }
+.rechnungstabelle .rt-status.ok { color: #15803D; }
+.import-befund-fehler { color: #B91C1C; }
+
+/* NK-158: Hilfe. Das „?“ an Fachbegriffen ist ein Knopf (Tastatur,
+   Touch), kein title-Tooltip: den sieht auf dem Tablet niemand. */
+.begriff-hilfe {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    margin: 0 2px;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.7);
+    color: var(--primary);
+    font-size: 14px;
+    vertical-align: middle;
+    cursor: pointer;
+}
+
+.begriff-hilfe:hover,
+.begriff-hilfe:focus-visible {
+    background: var(--primary);
+    color: #FFFFFF;
+    outline: none;
+}
+
+.begriff-blase {
+    position: fixed;
+    z-index: 1200;
+    padding: 14px 16px;
+    border-radius: var(--radius-md);
+    background: #FFFFFF;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 12px 32px rgba(17, 24, 39, 0.18);
+    font-size: 15px;
+    line-height: 1.5;
+}
+
+.begriff-blase p {
+    margin: 6px 0 10px;
+    color: var(--text-main);
+}
+
+.hilfe-raster {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
+    gap: 24px;
+    align-items: start;
+}
+
+.hilfe-frage {
+    margin: 20px 0 6px;
+    font-size: 17px;
+}
+
+.hilfe-liste {
+    margin: 0 0 12px 22px;
+    line-height: 1.7;
+}
+
+.hilfe-checkliste {
+    list-style: none;
+    margin: 0 0 12px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.hilfe-checkliste label {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    line-height: 1.5;
+    cursor: pointer;
+}
+
+.hilfe-checkliste input {
+    width: 20px;
+    height: 20px;
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+.hilfe-begriffe dt {
+    font-weight: 600;
+    margin-top: 12px;
+}
+
+.hilfe-begriffe dd {
+    margin: 4px 0 0;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+.mieter-erklaerung {
+    margin-top: 16px;
+    padding: 14px 16px;
+    border-radius: var(--radius-md);
+    background: var(--primary-tint, rgba(79, 70, 229, 0.08));
+    line-height: 1.5;
+}
+
+.mieter-erklaerung p {
+    margin: 4px 0 0;
+}
+
+/* NK-159: das Beispielhaus ist überall als Beispiel erkennbar. */
+.badge-beispiel {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--primary-tint);
+    color: var(--primary);
+    font-size: 13px;
+    font-weight: 600;
+    vertical-align: middle;
+}
+
+.historie-zeile {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 20px;
+}
+
+.historie-knoepfe {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+/* NK-162: größere Klickflächen in Tabellen und Listen. */
+td .btn-icon,
+.tabelle .btn-icon,
+.data-table .btn-icon {
+    min-width: 40px;
+    min-height: 40px;
+}
+
+.schrift-wahl {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 24px;
+}
+
+.schrift-wahl label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.schrift-wahl input {
+    width: 20px;
+    height: 20px;
+}
+
+.hinweis-leiste {
+    position: fixed;
+    left: 50%;
+    top: 16px;
+    transform: translateX(-50%);
+    z-index: 1300;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    max-width: calc(100vw - 32px);
+    padding: 12px 16px;
+    border-radius: var(--radius-md);
+    background: #FFFFFF;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 12px 32px rgba(17, 24, 39, 0.18);
+    font-size: 15px;
+}
+
+:focus-visible {
+    outline: 3px solid rgba(79, 70, 229, 0.45);
+    outline-offset: 2px;
+}
+
+/* NK-162: mit größerer Schrift ist ein Tablet so schmal wie ein kleines
+   Fenster -- die Schritte der Führung brechen wie unter 720 px um (K5). */
+@media (max-width: 1024px) {
+    html[data-schrift] .erste-schritte-liste .schritt {
+        grid-template-columns: 32px 1fr;
+    }
+
+    html[data-schrift] .erste-schritte-liste .schritt .btn-primary,
+    html[data-schrift] .erste-schritte-liste .schritt .btn-secondary {
+        grid-column: 2;
+        justify-self: start;
+    }
+}
+
+.tabellen-rolle {
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+/* NK-160: Jahresabrechnungs-Assistent. */
+.assistent-schritte {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    list-style: none;
+    margin: 0 0 16px;
+    padding: 0;
+    counter-reset: schritt;
+}
+
+.assistent-schritte li {
+    counter-increment: schritt;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+.assistent-schritte li::before {
+    content: counter(schritt) ". ";
+}
+
+.assistent-schritte li.aktuell {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #FFFFFF;
+    font-weight: 600;
+}
+
+.assistent-schritte li.erledigt {
+    background: var(--primary-tint);
+    color: var(--primary);
+}
+
+.jahr-fehlt td:first-child i,
+.jahr-offen td:first-child i { color: #B45309; }
+.jahr-erfasst td:first-child i { color: #15803D; }
+
+.jahr-mieter {
+    padding: 16px;
+    margin-bottom: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.6);
+}
+
+.jahr-positionen,
+.jahr-warnungen,
+.jahr-ergebnis-liste {
+    margin: 8px 0 0 20px;
+    line-height: 1.6;
+}
+
+.jahr-warnungen { color: #B45309; }

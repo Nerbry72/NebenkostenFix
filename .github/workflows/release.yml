@@ -1,0 +1,148 @@
+# Jeder Push auf main (also jeder Merge) wird ein Release: dieselben Tests
+# wie im Pull Request, dann das Docker-Abbild (amd64 + arm64) nach GHCR und
+# der Windows-Installer, zuletzt das GitHub-Release vX.Y.Z mit der Setup-Exe
+# und ihrer Pruefsumme. Die Nummer steht nur in abrechnung_version.py.
+# Ein roter Test haelt alles an; es wird nichts veroeffentlicht.
+name: release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  ABBILD: ghcr.io/nerbry72/nebenkostenfix
+
+jobs:
+  version:
+    name: Versionsnummer
+    runs-on: ubuntu-latest
+    outputs:
+      wert: ${{ steps.v.outputs.wert }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - id: v
+        run: |
+          v=$(python3 -c "from abrechnung_version import SOFTWARE_VERSION as v; print(v)")
+          if ! echo "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::SOFTWARE_VERSION '$v' ist keine Nummer x.y.z"; exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/v$v" >/dev/null; then
+            echo "::error file=abrechnung_version.py::v$v ist schon veroeffentlicht. SOFTWARE_VERSION anheben."
+            exit 1
+          fi
+          echo "wert=$v" >> "$GITHUB_OUTPUT"
+          echo "## NebenkostenFix $v" >> "$GITHUB_STEP_SUMMARY"
+
+  ci:
+    needs: version
+    uses: ./.github/workflows/ci.yml
+
+  rundgang:
+    needs: version
+    uses: ./.github/workflows/rundgang.yml
+
+  windows:
+    needs: version
+    uses: ./.github/workflows/windows.yml
+
+  docker:
+    name: Docker-Abbild
+    needs: [version, ci, rundgang, windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    env:
+      VERSION: ${{ needs.version.outputs.wert }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Rauchtest (amd64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: nebenkostenfix:probe
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Abbild starten und /api/health abfragen
+        run: |
+          mkdir -p probe && sudo chown 1000:1000 probe
+          docker run -d --name probe -p 6060:6060 -v "$PWD/probe:/data" nebenkostenfix:probe
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:6060/api/health; then echo; exit 0; fi
+            sleep 2
+          done
+          docker logs probe; exit 1
+      - name: Bauen und nach GHCR schieben (amd64, arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.ABBILD }}:${{ env.VERSION }}
+            ${{ env.ABBILD }}:latest
+          labels: |
+            org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - run: echo "- Docker: \`${ABBILD}:${VERSION}\` und \`:latest\`" >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: GitHub-Release
+    needs: [version, docker]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.wert }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: nebenkostenfix-windows
+          path: windows
+      - name: Release anlegen
+        run: |
+          exe="NebenkostenFix-${VERSION}-Setup.exe"
+          cp "$(find windows -name "$exe" | head -n1)" "$exe"
+          sha256sum "$exe" > SHA256SUMS.txt
+          cat > notizen.md <<NOTIZ
+          ## NebenkostenFix ${VERSION}
+
+          **Windows:** \`${exe}\` herunterladen und ausführen (Windows 10 ab 1809, Windows 11).
+          Ein bestehendes NebenkostenFix wird aktualisiert, die Daten bleiben.
+
+          **Docker:**
+          \`\`\`
+          docker pull ${ABBILD}:${VERSION}
+          \`\`\`
+          oder in der Compose-Datei \`NK_VERSION=${VERSION}\` setzen und \`docker compose pull && docker compose up -d\`.
+
+          **Prüfsumme (SHA256):** \`$(cut -d' ' -f1 SHA256SUMS.txt)\`
+          NOTIZ
+          gh release create "v${VERSION}" "$exe" SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "NebenkostenFix ${VERSION}" --notes-file notizen.md --generate-notes
+          echo "- Release: v${VERSION}" >> "$GITHUB_STEP_SUMMARY"

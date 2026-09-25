@@ -1,0 +1,65 @@
+# Qualitaetstor fuer jeden Push auf einen Feature-Branch und jeden Pull
+# Request: Lint, Glossar, Sicherheit, Tests, Abdeckung des Rechenkerns,
+# bekannte Luecken in Abhaengigkeiten und Secret-Scan. Der Release-Workflow
+# ruft denselben Lauf vor jedem Release auf.
+name: ci
+
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pruefen:
+    name: Lint, Tests, Sicherheit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Abhaengigkeiten
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
+      - name: make check
+        run: make lint ui sicherheit test schwelle kern
+      - name: Bekannte Luecken in Abhaengigkeiten
+        run: make audit
+
+  geheimnisse:
+    name: Secret-Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: gitleaks ueber die ganze Historie
+        run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 git /repo --redact --no-banner -v
+
+  version:
+    # Jeder Merge nach main wird ein Release. Die Nummer in
+    # abrechnung_version.py muss dafuer neu sein.
+    name: Neue Versionsnummer
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - run: |
+          v=$(python3 -c "from abrechnung_version import SOFTWARE_VERSION as v; print(v)")
+          if git rev-parse -q --verify "refs/tags/v$v" >/dev/null; then
+            echo "::error file=abrechnung_version.py::v$v ist schon veroeffentlicht. SOFTWARE_VERSION anheben."
+            exit 1
+          fi
+          echo "Release nach dem Merge: v$v" >> "$GITHUB_STEP_SUMMARY"

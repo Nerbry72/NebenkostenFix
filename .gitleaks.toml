@@ -1,0 +1,9 @@
+# Secret-Scan (gitleaks): Standardregeln plus die festen Testpasswoerter
+# aus Tests und Browser-Rundgang, die keine Geheimnisse sind.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Testpasswoerter"
+regexTarget = "line"
+regexes = ['''(lang|rundgang)-passwort-\d''']

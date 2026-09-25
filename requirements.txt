@@ -1,0 +1,25 @@
+# NK-146: 3.0.3 -> 3.1.3 (PYSEC-2026-2151); Werkzeug mitgepinnt.
+Flask==3.1.3
+Werkzeug==3.1.8
+SQLAlchemy==2.0.30
+Flask-SQLAlchemy==3.1.1
+# NK-024: Schemawanderungen. alembic ist mitgepinnt, obwohl Flask-Migrate es
+# ohnehin zieht: sonst holt ein Bau von morgen eine andere Version als die,
+# gegen die die Basisrevision geschrieben wurde.
+Flask-Migrate==4.0.7
+alembic==1.19.1
+python-dotenv==1.2.3  # NK-146: PYSEC-2026-2270
+gunicorn==22.0.0
+reportlab==4.2.0
+segno==1.6.1
+# NK-130: AES-256-GCM und scrypt fuer verschluesselte Sicherungen/Exporte.
+cryptography==50.0.1  # NK-146: PYSEC-2026-3552/3553/3554, GHSA-537c-gmf6-5ccf
+# NK-151 (F-81): Windows hat keine IANA-Zeitzonendatenbank; zoneinfo braucht
+# fuer Europe/Berlin dieses Paket (unter Linux schadet es nicht).
+tzdata==2026.4
+# NK-161: Import aus Excel (.xlsx) und die Vorlagen. defusedxml schützt
+# openpyxl beim Lesen fremder Dateien vor XML-Bomben (openpyxl nimmt es
+# selbst, wenn es installiert ist).
+openpyxl==3.1.5
+et-xmlfile==2.0.0
+defusedxml==0.7.1

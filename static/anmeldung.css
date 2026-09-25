@@ -1,0 +1,150 @@
+/* Anmelde-, Einrichtungs- und Passwortseite (NK-155, Layout K9).
+   Dieselben Farben, Schrift und Maße wie die Anwendung (style.css), aber
+   eigenständig: die Seiten stehen vor der Anmeldung und laden nicht die ganze
+   Oberfläche. Werte hier ändern sich nur zusammen mit :root in style.css. */
+
+:root {
+    --primary: #4F46E5;
+    --primary-hover: #4338CA;
+    --primary-tint: rgba(79, 70, 229, 0.08);
+    --text-main: #111827;
+    --text-muted: #4B5563;
+    --rand: #D1D5DB;
+    --fehler: #B91C1C;
+    --erfolg: #15803D;
+    --radius: 16px;
+    --radius-sm: 10px;
+    --knopf-hoehe: 44px;
+}
+
+* { box-sizing: border-box; }
+
+/* Wie style.css (NK-156): hidden gewinnt gegen display einer Klasse. */
+[hidden] { display: none !important; }
+
+body.anmeldung {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    padding: 24px 16px;
+    font-family: 'Outfit', system-ui, sans-serif;
+    font-size: 16px;
+    color: var(--text-main);
+    background:
+        radial-gradient(circle at 15% 10%, rgba(139, 92, 246, 0.18), transparent 45%),
+        radial-gradient(circle at 85% 90%, rgba(16, 185, 129, 0.16), transparent 45%),
+        #F3F4F6;
+}
+
+.anmelde-marke {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+
+.anmelde-marke b { color: var(--primary); font-weight: 700; }
+
+.anmelde-karte {
+    width: 100%;
+    max-width: 440px;
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    border-radius: var(--radius);
+    padding: 32px;
+    box-shadow: 0 10px 30px rgba(17, 24, 39, 0.08);
+}
+
+.anmelde-karte h1 { font-size: 22px; margin: 0 0 8px; }
+
+.anmelde-karte .hinweis,
+.anmelde-karte p { font-size: 15px; color: var(--text-muted); line-height: 1.55; margin: 0 0 16px; }
+
+.anmelde-karte label {
+    display: block;
+    font-size: 14px;
+    font-weight: 500;
+    margin: 16px 0 6px;
+}
+
+.anmelde-karte input,
+.anmelde-karte select {
+    width: 100%;
+    padding: 12px 16px;
+    font: inherit;
+    font-size: 16px;
+    border: 1px solid var(--rand);
+    border-radius: var(--radius-sm);
+    background: #FFFFFF;
+}
+
+.anmelde-karte input:focus,
+.anmelde-karte select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-tint);
+}
+
+.anmelde-karte button {
+    width: 100%;
+    height: var(--knopf-hoehe);
+    margin-top: 24px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: var(--primary);
+    color: #FFFFFF;
+    font: inherit;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.anmelde-karte button:hover { background: var(--primary-hover); }
+.anmelde-karte button:focus-visible { outline: 3px solid var(--primary-tint); outline-offset: 2px; }
+
+.anmelde-karte .hilfe { font-size: 14px; margin: 8px 0 0; }
+.anmelde-karte code {
+    background: var(--primary-tint);
+    padding: 1px 6px;
+    border-radius: 6px;
+    font-size: 14px;
+}
+.anmelde-karte .fehler { color: var(--fehler); margin: 16px 0 0; }
+.anmelde-karte .ok { color: var(--erfolg); margin: 16px 0 0; }
+
+/* NK-164: der zweite Weg der Einrichtung, zugeklappt unter dem ersten. */
+.umzug-karte summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--primary);
+}
+.umzug-karte[open] summary { margin-bottom: 16px; }
+.umzug-karte input[type=file] { padding: 10px; }
+.umzug-karte .zweitknopf {
+    background: #FFFFFF;
+    color: var(--primary);
+    border: 1px solid var(--rand);
+    margin-top: 8px;
+}
+.umzug-karte .zweitknopf:hover { background: var(--primary-tint); }
+.umzug-karte progress { width: 100%; margin-top: 16px; accent-color: var(--primary); }
+.umzug-karte #umzug-status { margin: 16px 0 0; }
+.umzug-karte #umzug-status.fehler { color: var(--fehler); }
+.umzug-karte #umzug-status.ok { color: var(--erfolg); }
+.umzug-karte .knopf-link {
+    display: block;
+    margin-top: 16px;
+    text-align: center;
+    padding: 11px;
+    border-radius: var(--radius-sm);
+    background: var(--primary);
+    color: #FFFFFF;
+    font-weight: 600;
+    text-decoration: none;
+}
