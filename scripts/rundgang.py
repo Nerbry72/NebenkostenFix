@@ -36,6 +36,12 @@ import urllib.request
 from pathlib import Path
 
 WURZEL = Path(__file__).resolve().parents[1]
+# Abstand zwischen jeder sichtbaren Trennlinie eines Abschnittskopfs und dem
+# Element davor, in px.
+TRENNLINIEN_JS = """() => [...document.querySelectorAll('.section-header-getrennt')]
+    .filter(k => k.offsetParent && k.previousElementSibling?.offsetParent)
+    .map(k => [k.innerText.split('\\n')[0],
+               k.getBoundingClientRect().top - k.previousElementSibling.getBoundingClientRect().bottom])"""
 BEREICHE = ['dashboard', 'properties', 'tenants', 'meters', 'invoices',
             'billing', 'payments', 'reports', 'settings']
 BREITEN = [(1440, 900), (768, 1024), (390, 844)]
@@ -181,6 +187,11 @@ class Rundgang:
         self.seite.wait_for_timeout(700)
         self.aufnahme(f'{zustand}-{name}')
         self.pruefen(f'{zustand}/{name}', name)
+        # Fund 0.9.1: die Trennlinie vor „Historie“ klebte an der Karte darüber.
+        for kopf, luecke in self.seite.evaluate(TRENNLINIEN_JS):
+            if luecke < 16:
+                self.befunde.append(f'{self.breite}px {zustand}/{name}: „{kopf}“ nur {luecke:.0f}px '
+                                    'unter dem Inhalt darüber')
 
 
 def rundgang(chromium: str | None, ausgabe: Path) -> list[str]:
@@ -207,6 +218,16 @@ def rundgang(chromium: str | None, ausgabe: Path) -> list[str]:
                     seite.wait_for_timeout(500)
                     gang.aufnahme('einrichtung')
                     gang.pruefen('einrichtung')
+                    # Fund 0.9.1: Die offene Hinweisblase liest beim Tippen neu und
+                    # zeigte dann den Systemtext statt des deutschen Hinweises.
+                    seite.click('#password')
+                    seite.keyboard.type('a')
+                    seite.click('button[type=submit]')
+                    seite.keyboard.type('b')
+                    hinweis = seite.eval_on_selector('#password', 'e => e.validationMessage')
+                    if '(bisher 2)' not in hinweis:
+                        befunde.append(f'einrichtung: Hinweis beim Tippen „{hinweis}“')
+                    seite.fill('#password', '')
                     code = json.loads((datenordner / 'ersteinrichtung_code').read_text())['code']
                     seite.fill('#username', 'rundgang')
                     seite.fill('#password', 'rundgang-passwort-1')

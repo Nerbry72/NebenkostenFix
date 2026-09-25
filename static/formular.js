@@ -20,12 +20,14 @@ function formularHinweis(feld) {
     return '';
 }
 
-document.addEventListener('invalid', (e) => {
-    const feld = e.target;
+function deutschPruefen(feld) {
+    if (!feld.setCustomValidity) return;
     feld.setCustomValidity('');
     feld.setCustomValidity(formularHinweis(feld));
-}, true);
-// Jede Eingabe prüft neu; sonst bliebe der eigene Hinweis kleben.
-['input', 'change'].forEach(art => document.addEventListener(art, (e) => {
-    if (e.target.setCustomValidity) e.target.setCustomValidity('');
-}, true));
+}
+
+document.addEventListener('invalid', (e) => deutschPruefen(e.target), true);
+// Jede Eingabe prüft neu. Nur leeren reicht nicht: Eine offene Hinweisblase
+// liest beim Tippen die Meldung neu und zeigte dann den Systemtext
+// ("Please lengthen this text ... using 2 characters").
+['input', 'change'].forEach(art => document.addEventListener(art, (e) => deutschPruefen(e.target), true));

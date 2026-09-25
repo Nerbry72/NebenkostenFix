@@ -282,7 +282,7 @@ def _seitenkopf(titel: str) -> str:
         '<link rel="icon" href="/static/marke/favicon.ico" sizes="48x48">\n'
         '<link rel="stylesheet" href="/static/vendor/fonts/outfit/outfit.css">\n'
         '<link rel="stylesheet" href="/static/anmeldung.css">\n'
-        '<script src="/static/formular.js"></script>\n'
+        '<script src="/static/formular.js?v=2"></script>\n'
         '</head><body class="anmeldung">\n'
         '<div class="anmelde-marke"><img src="/static/marke/zeichen.svg" alt="" '
         'width="44" height="44"><span>Nebenkosten<b>Fix</b></span></div>\n')
