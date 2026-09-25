@@ -43,10 +43,4 @@ services:
       - "${APP_PORT:-6060}:6060"
     volumes:
       - ./daten:/data
-    healthcheck:
-      # /api/health ist der einzige Pfad, der ohne Anmeldung antwortet (NK-019).
-      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:6060/api/health', timeout=3).status == 200 else 1)"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
+    # Der Gesundheitscheck steht im Abbild (Dockerfile, HEALTHCHECK).

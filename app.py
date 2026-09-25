@@ -686,6 +686,11 @@ if _veraltet:
         'Veraltete Einstellungen gesetzt: %s. Seit NK-132 gibt es einen '
         'Datenordner DATA_DIR (Datenbank, Belege, Sicherungen); die alten '
         'Namen wirken nur noch eine Version lang.', ', '.join(_veraltet))
+if datenordner.verwaister_nas_pfad():
+    app.logger.warning(
+        'NAS_MOUNT_PATH=%s ist kein Ordner und wird ignoriert; die Belege '
+        'liegen in %s. Die Zeile kann aus der .env entfernt werden.',
+        datenordner.verwaister_nas_pfad(), datenordner.belegordner())
 
 
 with app.app_context():

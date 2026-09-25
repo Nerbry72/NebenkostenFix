@@ -40,8 +40,10 @@ RUN groupadd --system --gid 1000 nebenkosten \
 VOLUME ["/data"]
 EXPOSE 6060
 
+# Der Port folgt FLASK_PORT (Vorgabe 6060): Dev- und Abgleich-Stapel binden
+# gunicorn auf 6061/6062 und galten sonst als "unhealthy".
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD ["python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:6060/api/health', timeout=3).status == 200 else 1)"]
+  CMD ["python", "-c", "import os,sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:%s/api/health' % os.environ.get('FLASK_PORT', '6060'), timeout=3).status == 200 else 1)"]
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 # E-3 → D-91: ein Prozess mit Threads auf einer SQLite-Datei (WAL).

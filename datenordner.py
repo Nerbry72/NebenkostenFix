@@ -82,12 +82,21 @@ def datenbank_url() -> str:
 def belegordner() -> Path:
     """Die Wurzel der Belegablage.
 
-    ``NAS_MOUNT_PATH`` gilt eine Version lang als Alias (veraltet).
+    ``NAS_MOUNT_PATH`` gilt eine Version lang als Alias (veraltet), aber nur,
+    wenn der Ordner da ist: eine alte .env neben der neuen Compose-Datei
+    (nichts mehr unter /mnt eingehängt) ließe den Start sonst mit
+    PermissionError abbrechen. Siehe ``verwaister_nas_pfad``.
     """
     alt = (os.environ.get('NAS_MOUNT_PATH') or '').strip()
-    if alt:
+    if alt and os.path.isdir(alt):
         return Path(os.path.abspath(alt))
     return datenordner() / BELEGE
+
+
+def verwaister_nas_pfad() -> str | None:
+    """``NAS_MOUNT_PATH``, wenn gesetzt, aber kein Ordner -- er wird ignoriert."""
+    alt = (os.environ.get('NAS_MOUNT_PATH') or '').strip()
+    return alt if alt and not os.path.isdir(alt) else None
 
 
 def sicherungsordner() -> Path:
