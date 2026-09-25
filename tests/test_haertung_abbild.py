@@ -34,8 +34,8 @@ def test_anwendung_laeuft_nicht_als_root():
 
 
 def test_ein_worker_mit_threads():
-    cmd = DOCKERFILE[DOCKERFILE.index('CMD ['):]
-    assert '"--workers", "1"' in cmd and '"--threads"' in cmd
+    cmd = DOCKERFILE[DOCKERFILE.index('\nCMD ['):]
+    assert '--workers 1 ' in cmd and '--threads ' in cmd
 
 
 def test_healthcheck_und_datenvolume():
@@ -68,6 +68,20 @@ def test_healthcheck_folgt_dem_port(tmp_path):
                               timeout=10).returncode == 0
     finally:
         server.shutdown()
+
+
+@pytest.mark.skipif(sys.platform == 'win32', reason='POSIX-Shell')
+def test_startbefehl_bindet_denselben_port_wie_der_healthcheck():
+    """Der Healthcheck folgt FLASK_PORT; bindet gunicorn fest auf 6060, meldet
+    Docker jeden Container mit anderem FLASK_PORT als "unhealthy" (Copilot-Review 0.9.2)."""
+    befehl = re.search(r'^CMD \["sh", "-c", "exec (gunicorn [^"]+)"\]', DOCKERFILE, re.M).group(1)
+    for port, erwartet in (('7123', '0.0.0.0:7123'), (None, '0.0.0.0:6060')):
+        umgebung = {k: v for k, v in os.environ.items() if k != 'FLASK_PORT'}
+        if port:
+            umgebung['FLASK_PORT'] = port
+        ausgabe = subprocess.run(['sh', '-c', f'echo {befehl}'], env=umgebung,
+                                 capture_output=True, text=True, check=True).stdout
+        assert f'--bind {erwartet} ' in ausgabe, ausgabe
 
 
 @pytest.mark.skipif(sys.platform == 'win32', reason='POSIX-Einstieg')

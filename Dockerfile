@@ -47,5 +47,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 # E-3 → D-91: ein Prozess mit Threads auf einer SQLite-Datei (WAL).
-CMD ["gunicorn", "--bind", "0.0.0.0:6060", "--workers", "1", "--threads", "8", \
-     "--timeout", "120", "--access-logfile", "-", "app:app"]
+# Gebunden wird wie beim Healthcheck an FLASK_PORT (Vorgabe 6060); exec hält
+# gunicorn als Hauptprozess, damit SIGTERM ankommt.
+CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${FLASK_PORT:-6060} --workers 1 --threads 8 --timeout 120 --access-logfile - app:app"]

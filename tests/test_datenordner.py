@@ -56,6 +56,17 @@ def test_verwaister_nas_pfad_wird_ignoriert(sauber, tmp_path):
     assert (tmp_path / 'daten' / 'belege').is_dir()
 
 
+def test_verwaister_nas_pfad_auch_nicht_als_datenordner(sauber, tmp_path):
+    """Postgres ohne DATA_DIR: datenordner() griff auf den toten Pfad zurück,
+    obwohl das Log „wird ignoriert“ meldete (Copilot-Review 0.9.2)."""
+    sauber.setenv('DATABASE_URL', 'postgresql://nk@db/nk')
+    sauber.setenv('NAS_MOUNT_PATH', str(tmp_path / 'weg'))
+    with pytest.raises(datenordner.DatenordnerFehler, match='DATA_DIR'):
+        datenordner.datenordner()
+    (tmp_path / 'weg').mkdir()
+    assert datenordner.datenordner() == tmp_path / 'weg'
+
+
 def test_ohne_jeden_hinweis_bricht_ab(sauber):
     with pytest.raises(datenordner.DatenordnerFehler, match='DATA_DIR'):
         datenordner.datenordner()

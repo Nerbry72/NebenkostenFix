@@ -61,9 +61,10 @@ def datenordner() -> Path:
     if aus_db:
         return Path(aus_db)
     nas = (os.environ.get('NAS_MOUNT_PATH') or '').strip()
-    if nas:
+    if nas and os.path.isdir(nas):
         # Postgres im Entwicklerstapel ohne DATA_DIR: der alte Belegordner
-        # ist der einzige beständige Ort (Verhalten vor NK-132).
+        # ist der einzige beständige Ort (Verhalten vor NK-132). Nur wenn er
+        # noch existiert, sonst wie belegordner(): ignorieren.
         return Path(os.path.abspath(nas))
     raise DatenordnerFehler(
         'Es ist kein Datenordner festgelegt. Setzen Sie DATA_DIR auf den '
