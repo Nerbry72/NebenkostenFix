@@ -150,7 +150,7 @@ docker compose pull && docker compose up -d    # Update auf die neueste Version
 ```
 
 Nach einem Update passt die Anwendung das Datenbankschema beim Start selbst an und sichert
-vorher automatisch. Eine bestimmte Version starten Sie mit `NK_VERSION=0.9.0` in der `.env`.
+vorher automatisch. Eine bestimmte Version starten Sie mit `NK_VERSION=0.9.1` in der `.env`.
 
 Tritt ein unerwarteter Fehler auf, zeigt die Anwendung eine **Vorgangsnummer**. Unter dieser
 Nummer steht im Protokoll, was passiert ist:
@@ -193,7 +193,7 @@ braucht weder Python noch Docker noch eine Kommandozeile.
 Die Prüfsumme jeder Setup-Exe steht im Release (`SHA256SUMS.txt`):
 
 ```powershell
-Get-FileHash .\NebenkostenFix-0.9.0-Setup.exe -Algorithm SHA256
+Get-FileHash .\NebenkostenFix-0.9.1-Setup.exe -Algorithm SHA256
 ```
 
 ---
