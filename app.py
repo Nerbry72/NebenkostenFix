@@ -737,7 +737,7 @@ def _index_mit_kennung(basis_verz) -> str:
     import hashlib
 
     html = (Path(basis_verz) / 'index.html').read_text(encoding='utf-8')
-    for name in ('app.js', 'style.css', 'umzug.js'):
+    for name in ('app.js', 'style.css', 'umzug.js', 'formular.js'):
         datei = Path(basis_verz) / name
         if not datei.is_file():
             continue

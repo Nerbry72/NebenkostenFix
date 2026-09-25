@@ -2264,3 +2264,9 @@ td .btn-icon,
 }
 
 .jahr-warnungen { color: #B45309; }
+
+/* Die Rückfrage wechselt ihren Hauptknopf zwischen btn-primary und
+   btn-gefahr; ohne das blendete „Löschen“ beim Öffnen von Violett nach Rot. */
+#frage-ja {
+    transition: none;
+}

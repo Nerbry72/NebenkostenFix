@@ -56,6 +56,9 @@ DIALOGE = {
     'jahresassistent': 'oeffneJahrAssistent()',  # NK-160
 }
 
+RUECKFRAGE_BEJAHEN = ("() => { if (document.getElementById('frage-modal')"
+                      ".classList.contains('active')) frageAntwort(true); }")
+
 # Prüft im Browser: Überlauf, abgeschnittene Knöpfe, leerer Bereich.
 PRUEFUNG_JS = """
 (bereich) => {
@@ -242,6 +245,18 @@ def rundgang(chromium: str | None, ausgabe: Path) -> list[str]:
                     gang.pruefen(f'dialog/{name}')
                     seite.keyboard.press('Escape')
                     seite.wait_for_timeout(200)
+                    # Fragt die App „Eingaben verwerfen?“, bejahen -- wie
+                    # früher der Browserdialog über seite.on('dialog').
+                    seite.evaluate(RUECKFRAGE_BEJAHEN)
+                    seite.wait_for_timeout(200)
+                # Die Rückfrage selbst (frage-modal statt confirm()).
+                gang.schritt = 'rueckfrage'
+                seite.evaluate("() => { frageLoeschen('Möchten Sie diese Rechnung wirklich löschen?'); }")
+                seite.wait_for_timeout(300)
+                gang.aufnahme('dialog-rueckfrage')
+                gang.pruefen('dialog/rueckfrage')
+                seite.keyboard.press('Escape')
+                seite.wait_for_timeout(200)
                 # Die festgesetzte Beispiel-Abrechnung ansehen: der Schnappschuss
                 # liefert Beträge als Text (json_sicher), nicht als Zahl.
                 gang.schritt = 'abrechnung-ansehen'

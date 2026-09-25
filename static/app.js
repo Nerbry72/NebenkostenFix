@@ -703,11 +703,49 @@ function zeigeErsteSchritte() {
 // (Escape, Klick daneben, X, Abbrechen); Speichern schließt ohne Frage.
 const dialogAusloeser = new WeakMap();
 
-function darfDialogSchliessen(overlay) {
+// Rückfrage im Design der App statt des Browserdialogs: die Windows-App zeigte sonst
+// ein Systemfenster „127.0.0.1 sagt …“. Escape, Klick daneben, X und
+// Abbrechen heißen „nein“ -- jedes Schließen ohne den Hauptknopf.
+function frage(text, ja = 'Weiter', gefahr = false, titel = 'Bitte bestätigen') {
+    const overlay = document.getElementById('frage-modal');
+    const knopf = document.getElementById('frage-ja');
+    document.getElementById('frage-titel').textContent = titel;
+    document.getElementById('frage-text').textContent = text;
+    knopf.textContent = ja;
+    knopf.className = gefahr ? 'btn-gefahr' : 'btn-primary';
+    overlay.dataset.antwort = '';
+    overlay.classList.add('active');
+    return new Promise(erledigt => {
+        const wache = new MutationObserver(() => {
+            if (overlay.classList.contains('active')) return;
+            wache.disconnect();
+            erledigt(overlay.dataset.antwort === 'ja');
+        });
+        wache.observe(overlay, { attributes: true, attributeFilter: ['class'] });
+    });
+}
+
+function frageLoeschen(text) {
+    return frage(text, 'Löschen', true, 'Löschen bestätigen');
+}
+
+function frageAntwort(ja) {
+    const overlay = document.getElementById('frage-modal');
+    overlay.dataset.antwort = ja ? 'ja' : '';
+    overlay.classList.remove('active');
+}
+window.frageAntwort = frageAntwort;
+
+async function darfDialogSchliessen(overlay) {
     if (overlay.dataset.geaendert !== '1') return true;
-    const ja = confirm('Ihre Eingaben in diesem Dialog sind noch nicht gespeichert. Trotzdem schließen?');
+    const ja = await frage('Ihre Eingaben in diesem Dialog sind noch nicht gespeichert. Trotzdem schließen?',
+        'Verwerfen', true, 'Eingaben verwerfen?');
     if (ja) overlay.dataset.geaendert = '';
     return ja;
+}
+
+async function schliessenNachFrage(overlay) {
+    if (await darfDialogSchliessen(overlay)) overlay.classList.remove('active');
 }
 
 function fokussierbar(bereich) {
@@ -730,7 +768,7 @@ function initModalBedienung() {
             // Nur der oberste Dialog: über dem Jahresassistenten liegen oft
             // der Rechnungs- oder Ablesedialog (NK-160).
             const oben = [...document.querySelectorAll('.modal-overlay.active')].pop();
-            if (oben && darfDialogSchliessen(oben)) oben.classList.remove('active');
+            if (oben) schliessenNachFrage(oben);
         }
         if (e.key === 'Tab') {
             const offen = [...document.querySelectorAll('.modal-overlay.active')].pop();
@@ -758,14 +796,16 @@ function initModalBedienung() {
         const schliesst = knopf.querySelector('.ph-x') || knopf.textContent.trim() === 'Abbrechen';
         if (!schliesst) return;
         const overlay = knopf.closest('.modal-overlay');
-        if (!darfDialogSchliessen(overlay)) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
+        if (overlay.dataset.geaendert !== '1') return;
+        e.preventDefault();
+        e.stopPropagation();
+        // Nach „Verwerfen“ denselben Knopf noch einmal auslösen; dann ist
+        // nichts mehr geändert und sein eigener Handler schließt.
+        darfDialogSchliessen(overlay).then(ja => { if (ja) knopf.click(); });
     }, true);
     document.querySelectorAll('.modal-overlay').forEach(overlay => {
         overlay.addEventListener('mousedown', (e) => {
-            if (e.target === overlay && darfDialogSchliessen(overlay)) overlay.classList.remove('active');
+            if (e.target === overlay) schliessenNachFrage(overlay);
         });
         const modal = overlay.querySelector('.modal');
         if (modal) {
@@ -1038,7 +1078,7 @@ async function deleteProperty(id) {
         await beispielLoeschen(null);
         return;
     }
-    if (!confirm('Möchten Sie diese Immobilie samt aller Wohnungen und Mieter wirklich löschen?')) return;
+    if (!await frageLoeschen('Möchten Sie diese Immobilie samt aller Wohnungen und Mieter wirklich löschen?')) return;
     try {
         const response = await fetch(`/api/properties/${id}`, { method: 'DELETE' });
         if (!response.ok) throw await serverFehler(response);
@@ -1449,7 +1489,7 @@ async function saveHeizungsanlage() {
 }
 
 async function deleteHeizungsanlage(anlage) {
-    if (!confirm(`Anlage „${anlage.name}" löschen?`)) return;
+    if (!await frageLoeschen(`Anlage „${anlage.name}" löschen?`)) return;
     try {
         const response = await fetch(`/api/heizungsanlagen/${anlage.id}`, { method: 'DELETE' });
         if (!response.ok) throw await serverFehler(response);
@@ -1497,7 +1537,7 @@ async function saveApartment() {
 }
 
 async function deleteApartment(id) {
-    if (!confirm('Möchten Sie diese Wohnung samt aller Mieter wirklich löschen?')) return;
+    if (!await frageLoeschen('Möchten Sie diese Wohnung samt aller Mieter wirklich löschen?')) return;
     try {
         const response = await fetch(`/api/apartments/${id}`, { method: 'DELETE' });
         if (!response.ok) throw await serverFehler(response);
@@ -1724,7 +1764,7 @@ async function saveTenant() {
 }
 
 async function deleteTenant(id) {
-    if (!confirm(
+    if (!await frageLoeschen(
         'Möchten Sie dieses Mietverhältnis wirklich löschen?\n\n' +
         'Sofort gelöscht werden Mietvertrag und Kostenprofile. Festgesetzte ' +
         'Abrechnungen und Zahlungen unterliegen der Aufbewahrungspflicht ' +
@@ -1839,9 +1879,10 @@ async function nachUpdatesSuchen() {
 window.nachUpdatesSuchen = nachUpdatesSuchen;
 
 async function updateInstallieren() {
-    if (!confirm(
+    if (!await frage(
         'Das Update wird geladen, geprüft und installiert. Die Anwendung schließt sich dafür ' +
-        'kurz. Beim nächsten Start sichert sie Ihre Daten automatisch, bevor sie sie umstellt.'
+        'kurz. Beim nächsten Start sichert sie Ihre Daten automatisch, bevor sie sie umstellt.',
+        'Installieren'
     )) return;
     const stand = document.getElementById('update-stand');
     stand.textContent = 'Update wird geladen …';
@@ -2741,7 +2782,7 @@ async function saveHouseholdSize() {
 }
 
 async function deleteHouseholdSize(id, tenantId) {
-    if (!confirm('Möchten Sie diesen Stichtag wirklich löschen?')) return;
+    if (!await frageLoeschen('Möchten Sie diesen Stichtag wirklich löschen?')) return;
     try {
         const res = await fetch(`/api/haushaltsgroessen/${id}`, { method: 'DELETE' });
         if (!res.ok) throw await serverFehler(res);
@@ -2862,7 +2903,7 @@ async function saveMeter() {
 }
 
 async function deleteMeter(id) {
-    if(!confirm('Zähler wirklich löschen?')) return;
+    if(!await frageLoeschen('Zähler wirklich löschen?')) return;
     try {
         const res = await fetch(`/api/meters/${id}`, {method:'DELETE'});
         if(!res.ok) throw await serverFehler(res);
@@ -2935,7 +2976,7 @@ function closeHistoryModal() {
 }
 
 async function deleteReading(id) {
-    if(!confirm('Zählerstand wirklich löschen?')) return;
+    if(!await frageLoeschen('Zählerstand wirklich löschen?')) return;
     try {
         const res = await fetch(`/api/readings/${id}`, {method:'DELETE'});
         if(!res.ok) throw await serverFehler(res);
@@ -3540,7 +3581,7 @@ async function saveInvoice() {
 }
 
 async function deleteDocument(id) {
-    if(!confirm('Sammelrechnung wirklich löschen?')) return;
+    if(!await frageLoeschen('Sammelrechnung wirklich löschen?')) return;
     try {
         const res = await fetch(`/api/invoice_documents/${id}`, { method: 'DELETE' });
         if(!res.ok) throw await serverFehler(res);
@@ -3549,7 +3590,7 @@ async function deleteDocument(id) {
 }
 
 async function deleteInvoice(id) {
-    if(!confirm('Möchten Sie diese Rechnung wirklich löschen?')) return;
+    if(!await frageLoeschen('Möchten Sie diese Rechnung wirklich löschen?')) return;
     try {
         const res = await fetch(`/api/invoices/${id}`, { method: 'DELETE' });
         if(!res.ok) throw await serverFehler(res);
@@ -3624,7 +3665,7 @@ async function addProvider() {
 }
 
 async function deleteProvider(id) {
-    if(!confirm('Anbieter wirklich löschen?')) return;
+    if(!await frageLoeschen('Anbieter wirklich löschen?')) return;
     try {
         const res = await fetch(`/api/providers/${id}`, { method: 'DELETE' });
         if(!res.ok) throw await serverFehler(res);
@@ -3928,10 +3969,10 @@ async function sicherungEinspielen(knopf) {
             `Die Sicherung '${name}' ist verschlüsselt. Geben Sie die Passphrase ein, mit der sie erstellt wurde.`);
         if (passphrase === null) return;
     }
-    if (!confirm(
+    if (!await frage(
         `Sicherung '${name}' einspielen?\n\n` +
         'Datenbank und Belege werden vollständig durch den Inhalt des Archivs ersetzt. ' +
-        'Der heutige Stand wird vorher selbst gesichert. Weiter?')) {
+        'Der heutige Stand wird vorher selbst gesichert. Weiter?', 'Einspielen')) {
         return;
     }
     try {
@@ -4915,7 +4956,7 @@ async function fetchBillingHistory() {
 }
 
 async function deleteBillingReport(id) {
-    if (!confirm('Möchten Sie diese Abrechnung wirklich löschen? Die PDF-Datei und alle Historien-Einträge werden unwiderruflich entfernt.')) return;
+    if (!await frageLoeschen('Möchten Sie diese Abrechnung wirklich löschen? Die PDF-Datei und alle Historien-Einträge werden unwiderruflich entfernt.')) return;
     
     try {
         const res = await fetch(`/api/billing/reports/${id}`, { method: 'DELETE' });
@@ -5040,7 +5081,7 @@ function berichtVersionenBlock(id, umschlag) {
 }
 
 async function korrekturErstellen(id) {
-    if (!confirm('Eine Korrektur rechnet diese Abrechnung gegen die aktuellen Daten neu und legt eine neue Version an. Fortfahren?')) return;
+    if (!await frage('Eine Korrektur rechnet diese Abrechnung gegen die aktuellen Daten neu und legt eine neue Version an. Fortfahren?', 'Erstellen')) return;
     try {
         const res = await fetch(`/api/billing/reports/${id}/korrektur`, {
             method: 'POST',
@@ -5067,7 +5108,7 @@ async function openReportDetails(id) {
         const data = umschlag.ergebnis || umschlag;
         // Der Schnappschuss hält Beträge als Text ("828.32", json_sicher),
         // damit sie exakt bleiben; .toFixed gibt es nur an Zahlen.
-        const betrag = w => Number(w || 0).toFixed(2).replace('.', ',');
+        const formatiereBetrag = w => Number(w || 0).toFixed(2).replace('.', ',');
         
         const modal = document.getElementById('report-details-modal');
         const body = document.getElementById('report-details-body');
@@ -5131,7 +5172,7 @@ async function openReportDetails(id) {
                     <td style="font-weight: 500; padding: 12px 8px;">${escapeHtml(item.category)}</td>
                     <td style="color: var(--text-muted); font-size: 0.9rem; white-space: nowrap; padding: 12px 8px;">${escapeHtml(item.period)}</td>
                     <td style="color: var(--text-muted); font-size: 0.875rem; padding: 12px 8px;">${hasSub ? '' : itemDesc}</td>
-                    <td style="font-weight: 600; text-align: right; white-space: nowrap; padding: 12px 8px;">${betrag(item.tenant_cost)} €</td>
+                    <td style="font-weight: 600; text-align: right; white-space: nowrap; padding: 12px 8px;">${formatiereBetrag(item.tenant_cost)} €</td>
                     <td style="text-align: center; padding: 12px 8px;">${belegHtml}</td>
                 </tr>
             `;
@@ -5162,7 +5203,7 @@ async function openReportDetails(id) {
                                     ${icon} ${subDesc}
                                 </div>
                             </td>
-                            <td style="color: var(--text-muted); font-size: 0.85rem; text-align: right; padding: 4px 8px;">${betrag(sub.cost)} €</td>
+                            <td style="color: var(--text-muted); font-size: 0.85rem; text-align: right; padding: 4px 8px;">${formatiereBetrag(sub.cost)} €</td>
                             <td></td>
                         </tr>
                     `;
@@ -5173,12 +5214,12 @@ async function openReportDetails(id) {
         html += `
                 <tr style="border-top: 2px solid var(--text-color);">
                     <td colspan="3" style="font-weight: 700; text-align: right; padding: 12px 8px;">Gesamtkosten der Periode:</td>
-                    <td style="font-weight: 700; text-align: right; padding: 12px 8px;">${betrag(data.total_amount)} €</td>
+                    <td style="font-weight: 700; text-align: right; padding: 12px 8px;">${formatiereBetrag(data.total_amount)} €</td>
                     <td></td>
                 </tr>
                 <tr>
                     <td colspan="3" style="font-weight: 700; text-align: right; padding: 12px 8px;">Abzüglich geleistete Vorauszahlungen:</td>
-                    <td style="font-weight: 700; text-align: right; padding: 12px 8px; color: var(--danger-color);">- ${betrag(data.prepaid_amount)} €</td>
+                    <td style="font-weight: 700; text-align: right; padding: 12px 8px; color: var(--danger-color);">- ${formatiereBetrag(data.prepaid_amount)} €</td>
                     <td></td>
                 </tr>
                 <tr style="background: var(--bg-hover);">
@@ -5186,7 +5227,7 @@ async function openReportDetails(id) {
                         ${data.balance > 0 ? 'Nachzahlung des Mieters:' : (data.balance < 0 ? 'Guthaben des Mieters:' : 'Saldobetrag:')}
                     </td>
                     <td style="font-weight: 800; text-align: right; padding: 16px 8px; font-size: 1.1em; color: var(--primary-color);">
-                        ${betrag(data.balance)} €
+                        ${formatiereBetrag(data.balance)} €
                     </td>
                     <td></td>
                 </tr>
@@ -5792,7 +5833,7 @@ async function beispielAnlegen(knopf) {
 }
 
 async function beispielLoeschen(knopf) {
-    if (!confirm('Das Beispielhaus mit allen Wohnungen, Mietern, Rechnungen, Zahlungen und der '
+    if (!await frageLoeschen('Das Beispielhaus mit allen Wohnungen, Mietern, Rechnungen, Zahlungen und der '
         + 'Beispielabrechnung löschen? Ihre eigenen Daten bleiben unberührt.')) return;
     if (knopf) knopf.disabled = true;
     try {
@@ -6873,15 +6914,16 @@ function renderAptCostsChart(costDistribution) {
 
 // --- Danger Zone ---
 async function resetDatabase() {
-    const confirm1 = confirm("Achtung\n\nMöchten Sie wirklich die gesamte Datenbank löschen und auf den Werkszustand zurücksetzen?");
+    const confirm1 = await frageLoeschen("Achtung\n\nMöchten Sie wirklich die gesamte Datenbank löschen und auf den Werkszustand zurücksetzen?");
     if (!confirm1) return;
     
-    const confirm2 = confirm("Sind Sie wirklich sicher?\nAlle Zählerstände, Rechnungen, Immobilien und Mieter gehen unwiderruflich verloren. Dies kann nicht rückgängig gemacht werden!");
+    const confirm2 = await frageLoeschen("Sind Sie wirklich sicher?\nAlle Zählerstände, Rechnungen, Immobilien und Mieter gehen unwiderruflich verloren. Dies kann nicht rückgängig gemacht werden!");
     if (!confirm2) return;
     
     // NK-123: die Route verlangt das Geheimnis im Kopf der Anfrage
     // (X-Debug-Secret, NK-001). Ohne ihn antwortet sie mit 401.
-    const geheimnis = prompt("Entwickler-Geheimnis (X-Debug-Secret):\n\nSteht in der Umgebungsdatei als DEBUG_RESET_SECRET.");
+    const geheimnis = await fragePassphrase('Entwickler-Geheimnis',
+        'X-Debug-Secret; steht in der Umgebungsdatei als DEBUG_RESET_SECRET.', false, 'Geheimnis');
     if (geheimnis === null) return;
     
     try {
@@ -6910,8 +6952,9 @@ async function resetDatabase() {
 // --- Passphrase-Dialog (NK-130) ---
 let passphraseErledigt = null;
 
-function fragePassphrase(titel, text, mitWiederholung = false) {
+function fragePassphrase(titel, text, mitWiederholung = false, feld = 'Passphrase') {
     document.getElementById('passphrase-titel').textContent = titel;
+    document.querySelector('label[for="passphrase-eingabe"]').textContent = feld;
     document.getElementById('passphrase-text').textContent = text;
     document.getElementById('passphrase-eingabe').value = '';
     document.getElementById('passphrase-wiederholung').value = '';
@@ -7172,7 +7215,7 @@ async function deleteSelectedPayments() {
     const checkboxes = document.querySelectorAll('.payment-row-cb:checked');
     if (checkboxes.length === 0) return;
     
-    if (!confirm(`Möchten Sie wirklich ${checkboxes.length} Zahlungen löschen?`)) return;
+    if (!await frageLoeschen(`Möchten Sie wirklich ${checkboxes.length} Zahlungen löschen?`)) return;
     
     const ids = Array.from(checkboxes).map(cb => parseInt(cb.value));
     
@@ -7356,7 +7399,7 @@ async function savePayment() {
 }
 
 async function deletePayment(id) {
-    if (!confirm('Zahlung wirklich löschen?')) return;
+    if (!await frageLoeschen('Zahlung wirklich löschen?')) return;
     try {
         const res = await fetch(`/api/payments/${id}`, { method: 'DELETE' });
         if (!res.ok) throw await serverFehler(res);
