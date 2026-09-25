@@ -223,7 +223,7 @@ def rundgang(chromium: str | None, ausgabe: Path) -> list[str]:
                     seite.click('#password')
                     seite.keyboard.type('a')
                     seite.click('button[type=submit]')
-                    seite.keyboard.type('b')
+                    seite.press('#password', 'b')
                     hinweis = seite.eval_on_selector('#password', 'e => e.validationMessage')
                     if '(bisher 2)' not in hinweis:
                         befunde.append(f'einrichtung: Hinweis beim Tippen „{hinweis}“')
