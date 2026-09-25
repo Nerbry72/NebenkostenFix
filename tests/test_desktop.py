@@ -348,3 +348,14 @@ def test_startseite_und_fehlerseite():
     assert '<svg' in seite and 'Nebenkosten<b>Fix</b>' in seite and 'wird gestartet' in seite
     fehler = desktop.fehlerseite('Datenbank <gesperrt>')
     assert '&lt;gesperrt&gt;' in fehler and 'NebenkostenFix konnte nicht starten' in fehler
+
+
+def test_bruecke_zeigt_pywebview_nur_methoden():
+    """pywebview steigt nach jedem Seitenaufbau in jedes öffentliche Attribut
+    der Brücke hinab. Hing das Fenster öffentlich daran, lief das durch dessen
+    .NET-Objekte und ließ die Oberfläche hängen („Keine Rückmeldung“, 0.9.0)."""
+    import inspect
+    bruecke = desktop.Bruecke()
+    oeffentlich = [name for name in dir(bruecke) if not name.startswith('_')]
+    assert oeffentlich
+    assert all(inspect.ismethod(getattr(bruecke, name)) for name in oeffentlich)

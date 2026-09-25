@@ -198,11 +198,14 @@ class Bruecke:
     """Was die Oberfläche über window.pywebview.api aufruft."""
 
     def __init__(self):
-        self.fenster = None
+        # Mit Unterstrich: pywebview durchsucht nach jedem Seitenaufbau alle
+        # öffentlichen Attribute der Brücke rekursiv. Das Fenster samt seinen
+        # .NET-Objekten blockierte dabei die Oberfläche (0.9.0).
+        self._fenster = None
 
     def speichern(self, dateiname: str, inhalt_base64: str):
         import webview
-        ziel = self.fenster.create_file_dialog(
+        ziel = self._fenster.create_file_dialog(
             webview.SAVE_DIALOG, save_filename=Path(dateiname).name)
         if not ziel:
             return None
@@ -227,7 +230,7 @@ class Bruecke:
         import webview
 
         import umzug
-        auswahl = self.fenster.create_file_dialog(
+        auswahl = self._fenster.create_file_dialog(
             webview.OPEN_DIALOG,
             file_types=('NebenkostenFix-Paket (*.nkfix;*.nkbak;*.tar.gz)', 'Alle Dateien (*.*)'))
         if not auswahl:
@@ -238,7 +241,7 @@ class Bruecke:
         import webview
 
         import umzug
-        ziel = self.fenster.create_file_dialog(
+        ziel = self._fenster.create_file_dialog(
             webview.SAVE_DIALOG, save_filename=Path(dateiname).name)
         if not ziel:
             return None
@@ -246,7 +249,7 @@ class Bruecke:
 
     def ordner_waehlen(self):
         import webview
-        auswahl = self.fenster.create_file_dialog(webview.FOLDER_DIALOG)
+        auswahl = self._fenster.create_file_dialog(webview.FOLDER_DIALOG)
         if not auswahl:
             return None
         ordner = auswahl if isinstance(auswahl, str) else auswahl[0]
@@ -457,7 +460,7 @@ def fenster_starten(datenordner: Path) -> int:  # pragma: no cover - braucht GUI
     fenster = webview.create_window(
         TITEL, html=startseite(), js_api=bruecke,
         width=1440, height=900, min_size=(1024, 700), text_select=True)
-    bruecke.fenster = fenster
+    bruecke._fenster = fenster
 
     def nach_vorne():
         fenster.restore()
