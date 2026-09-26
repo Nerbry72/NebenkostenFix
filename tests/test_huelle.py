@@ -53,3 +53,37 @@ def test_links_mit_target_blank_gehen_in_der_app_an_die_huelle():
 def test_ordnerwahl_nur_in_der_app_sichtbar():
     assert 'id="btn-sicherung-ordner" style="display: none;"' in INDEX
     assert "ordnerKnopf.style.display = huelle.aktiv() ? '' : 'none'" in APP_JS
+
+
+def test_die_huelle_gibt_die_pdf_seite_an_die_app_weiter():
+    """Fund 0.9.2: fetch verwirft den Anker #page=N, die Brücke bekam nur die
+    Datei. Die Hülle muss die Seite selbst mitgeben."""
+    import json
+    import shutil
+    import subprocess
+    import pytest
+    node = shutil.which('node')
+    if not node:
+        pytest.skip('node fehlt')
+    probe = '''
+        let aufruf = null;
+        const window = {pywebview: {api: {oeffnen: async (...a) => { aufruf = a; }}}};
+        const fetch = async () => ({ok: true, headers: {get: () => 'inline; filename="r.pdf"'},
+                                   blob: async () => null});
+        const showError = m => { throw new Error(m); };
+        const meldungZu = e => String(e);
+        ''' + _huelle_block() + '''
+        huelle._base64 = async () => 'QQ==';
+        (async () => {
+            const ergebnis = [];
+            for (const adresse of ['http://h/api/dateien/rechnung/5#page=3', 'http://h/api/dateien/rechnung/5']) {
+                await huelle.oeffnen(adresse);
+                ergebnis.push(aufruf);
+            }
+            console.log(JSON.stringify(ergebnis));
+        })();
+    '''
+    ausgabe = subprocess.run([node, '-e', probe], capture_output=True, text=True, timeout=30, check=True)
+    mit, ohne = json.loads(ausgabe.stdout)
+    assert mit == ['r.pdf', 'QQ==', 3]
+    assert ohne == ['r.pdf', 'QQ==', None]

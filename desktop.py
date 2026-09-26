@@ -30,6 +30,7 @@ import argparse
 import base64
 import contextlib
 import hmac
+import html
 import json
 import logging
 import os
@@ -213,11 +214,18 @@ class Bruecke:
         Path(pfad).write_bytes(base64.b64decode(inhalt_base64))
         return pfad
 
-    def oeffnen(self, dateiname: str, inhalt_base64: str):
+    def oeffnen(self, dateiname: str, inhalt_base64: str, seite=None):
         ordner = Path(tempfile.gettempdir()) / TITEL
         ordner.mkdir(exist_ok=True)
         pfad = ordner / Path(dateiname).name
         pfad.write_bytes(base64.b64decode(inhalt_base64))
+        if seite and pfad.suffix.lower() == '.pdf':
+            # os.startfile kennt keinen Anker #page=N; eine Weiterleitung im
+            # Standardbrowser nimmt ihn mit (Fund 0.9.2).
+            ziel = f'{pfad.as_uri()}#page={int(seite)}'
+            pfad = pfad.with_suffix('.html')
+            pfad.write_text(f'<meta http-equiv="refresh" content="0; url={html.escape(ziel)}">',
+                            encoding='utf-8')
         if sys.platform == 'win32':  # pragma: no cover - Windows
             # Bandit-Ausnahme (B606): Standardprogramm des Nutzers, kein Befehl
             os.startfile(pfad)  # nosec B606

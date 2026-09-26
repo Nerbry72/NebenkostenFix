@@ -386,3 +386,20 @@ def test_paket_waehlen_hat_gueltige_dateifilter(monkeypatch, tmp_path):
     bruecke = desktop.Bruecke()
     bruecke._fenster = Fenster()
     assert bruecke.paket_waehlen() == os.path.realpath(paket)
+
+
+def test_pdf_oeffnet_auf_der_angegebenen_seite(monkeypatch, tmp_path):
+    """os.startfile kennt keinen Anker: das PDF ging auf Seite 1 auf statt
+    auf der Seite der Rechnung (#page=N im Browser, Fund 0.9.2). Mit Seite
+    öffnet die App eine Weiterleitung, die den Anker mitnimmt."""
+    import base64
+    monkeypatch.setattr(desktop.tempfile, 'gettempdir', lambda: str(tmp_path))
+    inhalt = base64.b64encode(b'%PDF-1.4').decode()
+    bruecke = desktop.Bruecke()
+
+    ohne = Path(bruecke.oeffnen('rechnung.pdf', inhalt))
+    assert ohne.suffix == '.pdf' and ohne.read_bytes() == b'%PDF-1.4'
+
+    mit = Path(bruecke.oeffnen('rechnung.pdf', inhalt, 3))
+    assert mit.suffix == '.html'
+    assert f'{ohne.as_uri()}#page=3' in mit.read_text(encoding='utf-8')
