@@ -313,10 +313,10 @@ Tests laufen nie gegen einen Datenordner mit echten Daten.
 
 1. Einen Feature-Branch von `main` abzweigen, z. B. `feature/zaehler-import` oder
    `fix/pdf-umbruch`.
-2. Committen und pushen. Die CI (`ci.yml`) prüft jeden Push.
-3. Einen Pull Request nach `main` öffnen. Zusätzlich laufen der Windows-Bau mit
-   Installer-, Update- und Umzugsprobe (`windows.yml`) und der Browser-Rundgang
-   (`rundgang.yml`).
+2. Committen und pushen.
+3. Einen Pull Request nach `main` öffnen. Dann laufen die CI (`ci.yml`), der Windows-Bau
+   mit Installer-, Update- und Umzugsprobe (`windows.yml`) und der Browser-Rundgang
+   (`rundgang.yml`), jeweils einmal pro Stand.
 4. `SOFTWARE_VERSION` in `abrechnung_version.py` anheben. Die CI lehnt einen Pull Request ab,
    dessen Version schon veröffentlicht ist.
 5. Nach dem Merge baut `release.yml` alles und veröffentlicht es.
@@ -326,8 +326,8 @@ Tests laufen nie gegen einen Datenordner mit echten Daten.
 Die Versionsnummer steht an genau einer Stelle: `SOFTWARE_VERSION` in `abrechnung_version.py`
 (Schema `x.y.z`). Jeder Merge nach `main` löst `release.yml` aus:
 
-1. Alle Tests (Linux und Windows), Lint, Bandit, pip-audit, Secret-Scan und
-   Browser-Rundgang. Ist eine Prüfung rot, wird nichts veröffentlicht.
+1. Die Tests laufen nicht noch einmal: `main` nimmt nur aktuelle Pull Requests mit grünen
+   Checks an. Ein Commit ohne gemergten Pull Request wird nicht veröffentlicht.
 2. Windows-App bauen (PyInstaller und Inno Setup), still installieren, über eine Vorversion
    aktualisieren und wieder deinstallieren.
 3. Docker-Abbild bauen, Rauchtest, dann für amd64 und arm64 nach

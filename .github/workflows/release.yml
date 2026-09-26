@@ -1,8 +1,10 @@
-# Jeder Push auf main (also jeder Merge) wird ein Release: dieselben Tests
-# wie im Pull Request, dann das Docker-Abbild (amd64 + arm64) nach GHCR und
-# der Windows-Installer, zuletzt das GitHub-Release vX.Y.Z mit der Setup-Exe
-# und ihrer Pruefsumme. Die Nummer steht nur in abrechnung_version.py.
-# Ein roter Test haelt alles an; es wird nichts veroeffentlicht.
+# Jeder Merge nach main wird ein Release: der Windows-Installer (Bau samt
+# Installations- und Update-Probe), das Docker-Abbild (Rauchtest, dann amd64
+# + arm64 nach GHCR), zuletzt das GitHub-Release vX.Y.Z mit der Setup-Exe und
+# ihrer Pruefsumme. Die Nummer steht nur in abrechnung_version.py.
+# Die Tests laufen nicht noch einmal: main nimmt nur Pull Requests an, die
+# aktuell und gruen sind, der gemergte Stand ist also der gepruefte. Ein
+# Commit ohne gemergten Pull Request wird deshalb nicht veroeffentlicht.
 name: release
 
 on:
@@ -24,12 +26,25 @@ jobs:
   version:
     name: Versionsnummer
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       wert: ${{ steps.v.outputs.wert }}
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+      - name: Nur gemergte Pull Requests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          n=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
+            --jq '[.[] | select(.merged_at != null and .base.ref == "main")] | length')
+          if [ "$n" = 0 ]; then
+            echo "::error::$GITHUB_SHA stammt aus keinem gemergten Pull Request. Ungeprueft wird nichts veroeffentlicht."
+            exit 1
+          fi
       - id: v
         run: |
           v=$(python3 -c "from abrechnung_version import SOFTWARE_VERSION as v; print(v)")
@@ -43,21 +58,15 @@ jobs:
           echo "wert=$v" >> "$GITHUB_OUTPUT"
           echo "## NebenkostenFix $v" >> "$GITHUB_STEP_SUMMARY"
 
-  ci:
-    needs: version
-    uses: ./.github/workflows/ci.yml
-
-  rundgang:
-    needs: version
-    uses: ./.github/workflows/rundgang.yml
-
   windows:
     needs: version
     uses: ./.github/workflows/windows.yml
+    with:
+      nur_paket: true
 
   docker:
     name: Docker-Abbild
-    needs: [version, ci, rundgang, windows]
+    needs: [version, windows]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:

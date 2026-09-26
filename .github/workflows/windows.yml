@@ -1,21 +1,32 @@
 # Windows-Weg: die Testsuite auf windows-latest und der Bau der Desktop-App
 # (PyInstaller + Inno Setup) samt Selbsttest, Update-Probe und Umzug
 # Linux <-> Windows. Laeuft ohne Secrets und ohne echte Daten. Bei Pull
-# Requests nach main und vor jedem Release (release.yml).
+# Requests nach main. Das Release (release.yml) ruft nur den Bau auf
+# (nur_paket), die Tests sind im Pull Request schon gelaufen.
 name: windows
 
 on:
   pull_request:
     branches: [main]
   workflow_call:
+    inputs:
+      nur_paket:
+        type: boolean
+        default: false
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# Neuer Push auf denselben Pull Request bricht den alten Lauf ab.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   tests:
     name: Tests auf Windows
+    if: ${{ !inputs.nur_paket }}
     runs-on: windows-latest
     timeout-minutes: 40
     steps:
@@ -198,6 +209,7 @@ jobs:
 
   umzug-zurueck:
     name: Umzug Windows -> Linux
+    if: ${{ !inputs.nur_paket }}
     runs-on: ubuntu-latest
     needs: paket
     timeout-minutes: 15
