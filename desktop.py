@@ -232,7 +232,7 @@ class Bruecke:
         import umzug
         auswahl = self._fenster.create_file_dialog(
             webview.OPEN_DIALOG,
-            file_types=('NebenkostenFix-Paket (*.nkfix;*.nkbak;*.tar.gz)', 'Alle Dateien (*.*)'))
+            file_types=('NebenkostenFix Paket (*.nkfix;*.nkbak;*.tar.gz)', 'Alle Dateien (*.*)'))
         if not auswahl:
             return None
         return umzug.freigeben(auswahl if isinstance(auswahl, str) else auswahl[0])
