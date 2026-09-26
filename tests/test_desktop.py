@@ -359,3 +359,47 @@ def test_bruecke_zeigt_pywebview_nur_methoden():
     oeffentlich = [name for name in dir(bruecke) if not name.startswith('_')]
     assert oeffentlich
     assert all(inspect.ismethod(getattr(bruecke, name)) for name in oeffentlich)
+
+
+def test_paket_waehlen_hat_gueltige_dateifilter(monkeypatch, tmp_path):
+    """pywebview prüft jeden Eintrag in file_types und wirft sonst ValueError;
+    die Oberfläche meldete dann nur „Der Datei-Dialog ließ sich nicht öffnen.“
+    (0.9.2, Bindestrich in „NebenkostenFix-Paket“)."""
+    import re
+    import types
+
+    import umzug
+    # Aus pywebview 6.2.1, webview/util.py parse_file_type
+    gueltig = r'^([\w ]+)\((\*(?:\.(?:\w+|\*))*(?:;\*(?:\.(?:\w+|\*))*)*)\)$'
+    paket = tmp_path / 'umzug.nkfix'
+    paket.write_bytes(b'')
+
+    class Fenster:
+        def create_file_dialog(self, art, file_types=(), **_):
+            for filter_ in file_types:
+                if not re.search(gueltig, filter_):
+                    raise ValueError(f'{filter_} is not a valid file filter')
+            return (str(paket),)
+
+    monkeypatch.setitem(sys.modules, 'webview', types.SimpleNamespace(OPEN_DIALOG=10))
+    monkeypatch.setattr(umzug, '_freigegeben', set())
+    bruecke = desktop.Bruecke()
+    bruecke._fenster = Fenster()
+    assert bruecke.paket_waehlen() == os.path.realpath(paket)
+
+
+def test_pdf_oeffnet_auf_der_angegebenen_seite(monkeypatch, tmp_path):
+    """os.startfile kennt keinen Anker: das PDF ging auf Seite 1 auf statt
+    auf der Seite der Rechnung (#page=N im Browser, Fund 0.9.2). Mit Seite
+    öffnet die App eine Weiterleitung, die den Anker mitnimmt."""
+    import base64
+    monkeypatch.setattr(desktop.tempfile, 'gettempdir', lambda: str(tmp_path))
+    inhalt = base64.b64encode(b'%PDF-1.4').decode()
+    bruecke = desktop.Bruecke()
+
+    ohne = Path(bruecke.oeffnen('rechnung.pdf', inhalt))
+    assert ohne.suffix == '.pdf' and ohne.read_bytes() == b'%PDF-1.4'
+
+    mit = Path(bruecke.oeffnen('rechnung.pdf', inhalt, 3))
+    assert mit.suffix == '.html'
+    assert f'{ohne.as_uri()}#page=3' in mit.read_text(encoding='utf-8')

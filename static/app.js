@@ -344,7 +344,10 @@ const huelle = {
             const antwort = await fetch(adresse);
             if (!antwort.ok) throw await serverFehler(antwort);
             const name = this._dateiname(antwort, 'datei');
-            await window.pywebview.api.oeffnen(name, await this._base64(await antwort.blob()));
+            // fetch verwirft den Anker #page=N; die Brücke braucht die Seite selbst.
+            const seite = adresse.match(/#page=(\d+)/);
+            await window.pywebview.api.oeffnen(name, await this._base64(await antwort.blob()),
+                seite ? Number(seite[1]) : null);
         } catch (e) {
             showError(meldungZu(e, 'Die Datei konnte nicht geöffnet werden.'));
         }
