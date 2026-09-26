@@ -1,6 +1,6 @@
 ; Installer von NebenkostenFix (NK-079, NK-155, D-84, D-95, F-82). Inno Setup 6.
 ;
-;   iscc /DAppVersion=0.9.2 packaging\windows\installer.iss
+;   iscc /DAppVersion=0.9.3 packaging\windows\installer.iss
 ;
 ; Erwartet das PyInstaller-Ergebnis unter dist\NebenkostenFix\ (Wurzel
 ; des Repos). Optional:
