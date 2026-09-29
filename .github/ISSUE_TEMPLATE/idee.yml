@@ -1,0 +1,26 @@
+name: Idee vorschlagen
+description: Etwas fehlt oder könnte einfacher gehen.
+labels: [idee]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Für offene Fragen und erste Gedanken sind die
+        [Discussions](https://github.com/Nerbry72/NebenkostenFix/discussions) oft der bessere Ort.
+  - type: textarea
+    id: anlass
+    attributes:
+      label: Worum geht es?
+      description: Welche Aufgabe wollen Sie erledigen, und wo hakt es heute?
+    validations:
+      required: true
+  - type: textarea
+    id: vorschlag
+    attributes:
+      label: Vorschlag
+      description: Wie könnte es aussehen? Gern mit Beispiel, bitte ohne echte Mieterdaten.
+  - type: textarea
+    id: rechtsgrundlage
+    attributes:
+      label: Rechtsgrundlage (falls bekannt)
+      description: z. B. Paragraf der BetrKV oder HeizkostenV, wenn es um eine Abrechnungsregel geht.

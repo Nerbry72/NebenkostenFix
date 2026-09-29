@@ -23,6 +23,7 @@ ERWARTET = {
     'zeilen': {'properties': 1, 'users': 1, 'cost_categories': 18, 'vermieterdaten': 0},
     'belege': {'a/b.pdf': 'aa'},
     'fehlend': 0,
+    'einstellungen': {'haftung': {'version': 1}, 'updates_automatisch': False},
 }
 ANGEKOMMEN = {
     'zeilen': {'properties': 1, 'users': 1, 'cost_categories': 19, 'vermieterdaten': 1},
@@ -32,7 +33,7 @@ ANGEKOMMEN = {
     'vermieter': {'name': kreuz.VERMIETER['VERMIETER_NAME'],
                   'iban': kreuz.VERMIETER['VERMIETER_IBAN']},
     'logo': True,
-    'lizenz': True,
+    'einstellungen': {'haftung': {'version': 1}, 'updates_automatisch': False},
 }
 
 
@@ -50,7 +51,7 @@ def test_vergleich_meldet_jede_abweichung():
         (lambda a: a.update(anmeldung=False), 'Passwort'),
         (lambda a: a.update(vermieter={'name': None, 'iban': None}), 'Vermieter'),
         (lambda a: a.update(logo=False), 'Logo'),
-        (lambda a: a.update(lizenz=False), 'Lizenz'),
+        (lambda a: a.update(einstellungen={}), 'Einstellungen'),
     ]
     for aendern, muster in faelle:
         angekommen = copy.deepcopy(ANGEKOMMEN)

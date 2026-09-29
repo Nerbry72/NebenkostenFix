@@ -1,9 +1,39 @@
-# NebenkostenFix
+<p align="center">
+  <img src="docs/bilder/logo.svg" width="96" height="96" alt="">
+</p>
 
-Nebenkostenabrechnung für private Vermieter mit ein bis fünfzehn Wohnungen.
-Immobilien, Wohnungen, Mieter, Zählerstände und Rechnungen liegen an einer Stelle,
-am Ende steht eine fertige Abrechnung als PDF. Die Regeln folgen BetrKV, HeizkostenV
-und CO2KostAufG.
+<h1 align="center">NebenkostenFix</h1>
+
+<p align="center">
+  <strong>Die Nebenkostenabrechnung für private Vermieter. Kostenlos, und Ihre Daten bleiben bei Ihnen.</strong><br>
+  <em>Free utility cost statements for private landlords in Germany, self-hosted on your own PC or server.</em>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Nerbry72/NebenkostenFix/releases/latest"><img src="https://img.shields.io/github/v/release/Nerbry72/NebenkostenFix?label=Version&color=4F46E5" alt="Version"></a>
+  <a href="https://github.com/Nerbry72/NebenkostenFix/actions/workflows/ci.yml"><img src="https://github.com/Nerbry72/NebenkostenFix/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://github.com/Nerbry72/NebenkostenFix/releases"><img src="https://img.shields.io/github/downloads/Nerbry72/NebenkostenFix/total?label=Downloads" alt="Downloads"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/Nerbry72/NebenkostenFix?label=Lizenz" alt="Lizenz"></a>
+  <a href="https://github.com/Nerbry72/NebenkostenFix/commits/main"><img src="https://img.shields.io/github/last-commit/Nerbry72/NebenkostenFix?label=letzter%20Commit" alt="Letzter Commit"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Nerbry72/NebenkostenFix/releases/latest"><strong>Herunterladen</strong></a> ·
+  <a href="#docker">Docker</a> ·
+  <a href="#updates">Updates</a> ·
+  <a href="#mitmachen">Mitmachen</a> ·
+  <a href="https://ko-fi.com/nerbry72">Unterstützen</a>
+</p>
+
+<p align="center">
+  <img src="docs/bilder/uebersicht.png" width="880" alt="Die Übersicht von NebenkostenFix mit den ersten Schritten">
+</p>
+
+Immobilien, Wohnungen, Mieter, Zählerstände und Rechnungen liegen an einer Stelle. Am Ende
+steht eine fertige Abrechnung als PDF. Die Regeln folgen BetrKV, HeizkostenV und CO2KostAufG.
+Gedacht für private Vermieter mit ein bis fünfzehn Wohnungen.
+
+## Was es kann
 
 - **Immobilien und Wohnungen** mit beliebig vielen Einheiten und Umlageschlüsseln
 - **Mieter** mit Ein- und Auszug, anteilige Abrechnung und Leerstand inbegriffen
@@ -15,20 +45,63 @@ und CO2KostAufG.
 - **Import** aus Excel oder CSV, **Umzug** zwischen Rechnern als eine `.nkfix`-Datei
 - **Anmeldung** mit Benutzername und Passwort, bis zu zwei Konten
 
-Es gibt NebenkostenFix in zwei Formen:
+<table>
+  <tr>
+    <td width="50%"><img src="docs/bilder/abrechnung.png" alt="Abrechnungen mit Historie"></td>
+    <td width="50%"><img src="docs/bilder/hilfe.png" alt="Hilfe mit Begriffen von A bis Z und Über NebenkostenFix"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Abrechnung: jede Kostenart, jeder Schlüssel, nachvollziehbar</sub></td>
+    <td align="center"><sub>Hilfe mit Begriffen A–Z, direkt in der App</sub></td>
+  </tr>
+</table>
 
-| | Docker | Windows-App |
+## Ihre Daten bleiben bei Ihnen
+
+- **Kein Konto beim Herausgeber, kein Server, keine Telemetrie, keine Werbung.** Alles liegt in
+  einem Ordner auf Ihrem PC oder Server.
+- **Von sich aus** geht die App nur für die Suche nach Updates ins Netz, höchstens einmal am
+  Tag und ohne Ihre Daten. Abschalten lässt sich das unter Einstellungen → Updates.
+- **Umzug und Sicherung** sind eine einzige `.nkfix`-Datei. Sie sind an kein Gerät und an
+  keinen Anbieter gebunden.
+
+Mehr dazu in [PRIVACY.md](PRIVACY.md).
+
+## Installation
+
+Es gibt NebenkostenFix in zwei Formen. Beide nutzen denselben Datenbestand, ein Umzug in beide
+Richtungen ist eine Datei (siehe [Umzug](#umzug-auf-einen-anderen-rechner)).
+
+| | Windows-App | Docker |
 | --- | --- | --- |
-| für | NAS (z. B. Synology), Raspberry Pi, Heimserver | einen einzelnen Windows-PC |
-| Zugriff | Browser, von jedem Gerät im Netz | eigenes Fenster auf dem PC |
-| Installation | `docker compose up -d` | `NebenkostenFix-<Version>-Setup.exe` |
+| für | einen einzelnen Windows-PC | NAS (z. B. Synology), Raspberry Pi, Heimserver |
+| Zugriff | eigenes Fenster auf dem PC | Browser, von jedem Gerät im Netz |
+| Installation | [`NebenkostenFix-<Version>-Setup.exe`](https://github.com/Nerbry72/NebenkostenFix/releases/latest) | `docker compose up -d` |
 
-Beide nutzen denselben Datenbestand. Ein Umzug in beide Richtungen ist mit einer
-Datei erledigt (siehe [Umzug](#umzug-auf-einen-anderen-rechner)).
+### Windows-App
 
----
+Für einen einzelnen PC (Windows 10 ab 1809 oder Windows 11) gibt es einen Installer. Er
+braucht weder Python noch Docker noch eine Kommandozeile.
 
-## Installation mit Docker
+1. Unter [**Releases**](https://github.com/Nerbry72/NebenkostenFix/releases/latest) die neueste `NebenkostenFix-<Version>-Setup.exe` herunterladen.
+2. Ausführen und den Schritten folgen. Die App startet in ihrem eigenen Fenster (Edge WebView2).
+3. Beim ersten Start ein Konto anlegen. Auf dem eigenen PC braucht das keinen Einmal-Code.
+
+- **Programm:** `C:\Program Files\NebenkostenFix`
+- **Daten:** `Dokumente\NebenkostenFix`, im Installer änderbar und nie im Programmordner.
+  Liegt „Dokumente“ in OneDrive, schlägt die App einen lokalen Ort vor.
+- **Update:** Die App meldet neue Versionen selbst (siehe [Updates](#updates)). Die neue
+  Setup-Exe über die alte zu installieren geht ebenso. Die Daten bleiben, vorher wird gesichert.
+- **Deinstallation:** Die Daten bleiben stehen, der Deinstaller sagt, wo sie liegen.
+- **Passwort vergessen:** Menü „Hilfe“.
+
+Die Prüfsumme jeder Setup-Exe steht im Release (`SHA256SUMS.txt`):
+
+```powershell
+Get-FileHash .\NebenkostenFix-0.10.0-Setup.exe -Algorithm SHA256
+```
+
+### Docker
 
 Nötig ist ein Rechner mit Docker und dem Compose-Plugin. Eine Datenbank, einen
 Webserver, Python oder eine `.env` braucht es nicht. Das Abbild gibt es für amd64 und
@@ -41,17 +114,22 @@ mkdir nebenkostenfix && cd nebenkostenfix
 # docker-compose.yml aus diesem Repository hierher kopieren
 ```
 
-**2. Anmelden bei der Registry (solange das Repository privat ist)**
+<details>
+<summary>Solange das Paket nicht öffentlich ist: Anmeldung bei der Registry</summary>
 
-Das Abbild liegt unter `ghcr.io/nerbry72/nebenkostenfix`. Solange Repository und Paket
-privat sind, braucht `docker` einmalig eine Anmeldung. Dafür dient ein GitHub-Token mit
-dem Recht `read:packages`:
+Das Abbild liegt unter `ghcr.io/nerbry72/nebenkostenfix`. Ist das Paket privat, braucht
+`docker` einmalig eine Anmeldung mit einem GitHub-Token mit dem Recht `read:packages`:
 
 ```bash
 docker login ghcr.io -u <github-name>
 ```
 
-**3. Starten**
+Auf der Synology: Container Manager → Registry → Einstellungen, dort `ghcr.io` mit
+GitHub-Name und Token hinzufügen.
+
+</details>
+
+**2. Starten**
 
 ```bash
 docker compose up -d
@@ -60,7 +138,7 @@ docker compose up -d
 Neben der Compose-Datei entsteht der Datenordner `daten/`. Wer aus dem Quellcode
 bauen will, startet mit `docker compose up -d --build`.
 
-**4. Einrichten im Browser**
+**3. Einrichten im Browser**
 
 `http://<rechner>:6060` öffnen. Solange es noch kein Konto gibt, zeigt die Anwendung die
 Einrichtung. Dort vergeben Sie Benutzername und Passwort (mindestens zehn Zeichen)
@@ -75,14 +153,14 @@ docker compose logs web | grep Einmal-Code
 Nach fünf falschen Versuchen gilt ein neuer Code. Nach der Einrichtung verschwindet die
 Datei. Den Sitzungsschlüssel erzeugt die Anwendung selbst, er liegt in `daten/secret_key`.
 
-**5. Prüfen**
+**4. Prüfen**
 
 ```bash
 docker compose ps                         # STATUS: Up (healthy)
 curl http://localhost:6060/api/health     # {"status":"ok", ...}
 ```
 
-### Synology (ohne Kommandozeile)
+#### Synology (ohne Kommandozeile)
 
 1. **Ordner anlegen:** In der File Station einen Ordner anlegen, z. B. `docker/nebenkostenfix`.
 2. **Projekt anlegen:** Container Manager → Projekt → Erstellen. Als Name `nebenkostenfix`
@@ -91,16 +169,14 @@ curl http://localhost:6060/api/health     # {"status":"ok", ...}
 3. **Nutzer eintragen:** In der Compose-Datei (oder einer `.env` daneben) `PUID` und `PGID`
    auf den DSM-Nutzer setzen, dem der Ordner gehört (per SSH: `id <name>`). Sonst kann der
    Container nicht in `daten/` schreiben.
-4. **Registry:** Solange das Paket privat ist, unter Container Manager → Registry →
-   Einstellungen `ghcr.io` mit GitHub-Name und Token hinzufügen.
-5. **Starten:** Mit „Weiter“ bis „Fertig“. Der Container Manager lädt das Abbild und startet
+4. **Starten:** Mit „Weiter“ bis „Fertig“. Der Container Manager lädt das Abbild und startet
    es.
-6. **Einmal-Code:** In der File Station `docker/nebenkostenfix/daten/ERSTEINRICHTUNG-CODE.txt`
+5. **Einmal-Code:** In der File Station `docker/nebenkostenfix/daten/ERSTEINRICHTUNG-CODE.txt`
    öffnen.
-7. **Einrichten:** `http://<synology>:6060` im Browser öffnen, Konto anlegen und den Code
+6. **Einrichten:** `http://<synology>:6060` im Browser öffnen, Konto anlegen und den Code
    eintragen.
 
-### Einstellungen
+#### Einstellungen
 
 Die Anwendung läuft ohne jede Einstellung. Wer etwas ändern will, legt eine `.env` neben
 die Compose-Datei. `.env.example` erklärt jeden Wert. Die wichtigsten:
@@ -118,7 +194,7 @@ die Compose-Datei. `.env.example` erklärt jeden Wert. Die wichtigsten:
 | `VERMIETER_NAME` / `VERMIETER_IBAN` | Zahlungs-QR-Code auf der Abrechnung | leer |
 | `LOG_LEVEL` | `DEBUG` … `CRITICAL` | `INFO` |
 
-### HTTPS und Reverse Proxy
+#### HTTPS und Reverse Proxy
 
 Im eigenen LAN reicht `http://`. Passwort und Mieterdaten gehen dann aber im Klartext
 durchs Netz, und die Anwendung warnt beim Start. Für den Zugriff von außen gehört ein
@@ -140,7 +216,7 @@ Reverse Proxy mit Zertifikat davor:
 Danach in der `.env` `BEHIND_HTTPS=1` setzen und den Port nur noch lokal binden:
 `APP_PORT=127.0.0.1:6060`.
 
-### Betrieb
+#### Betrieb
 
 ```bash
 docker compose logs -f web                     # Protokoll mitlesen
@@ -150,7 +226,7 @@ docker compose pull && docker compose up -d    # Update auf die neueste Version
 ```
 
 Nach einem Update passt die Anwendung das Datenbankschema beim Start selbst an und sichert
-vorher automatisch. Eine bestimmte Version starten Sie mit `NK_VERSION=0.9.3` in der `.env`.
+vorher automatisch. Eine bestimmte Version starten Sie mit `NK_VERSION=0.10.0` in der `.env`.
 
 Tritt ein unerwarteter Fehler auf, zeigt die Anwendung eine **Vorgangsnummer**. Unter dieser
 Nummer steht im Protokoll, was passiert ist:
@@ -159,7 +235,7 @@ Nummer steht im Protokoll, was passiert ist:
 grep A1B2C3D4 daten/nebenkosten.log
 ```
 
-### Konten auf der Kommandozeile
+#### Konten auf der Kommandozeile
 
 Ein zweites Konto legen Sie in der Oberfläche unter Einstellungen an. Für den Notfall gibt
 es die Kommandozeile:
@@ -173,28 +249,19 @@ docker compose exec web flask users disable <name>
 
 ---
 
-## Windows-App
+## Updates
 
-Für einen einzelnen PC (Windows 10 ab 1809 oder Windows 11) gibt es einen Installer. Er
-braucht weder Python noch Docker noch eine Kommandozeile.
+Beim Start sieht NebenkostenFix höchstens einmal am Tag nach, ob es eine neue Version gibt,
+und meldet sie mit einem kurzen Hinweis. „Später erinnern“ schiebt ihn auf, unter
+Einstellungen → Updates lässt sich die Suche abschalten oder von Hand anstoßen.
 
-1. Unter **Releases** die neueste `NebenkostenFix-<Version>-Setup.exe` herunterladen.
-2. Ausführen und den Schritten folgen. Die App startet in ihrem eigenen Fenster (Edge WebView2).
-3. Beim ersten Start ein Konto anlegen. Auf dem eigenen PC braucht das keinen Einmal-Code.
+- **Windows-App:** „Update installieren“ lädt die neue Setup-Exe, prüft Signatur und
+  Prüfsumme, sichert Ihre Daten und installiert. Die App startet danach neu.
+- **Docker:** Die App nennt die neue Version. Aktualisiert wird wie gewohnt mit
+  `docker compose pull && docker compose up -d`.
+- **Microsoft Store:** Dort aktualisiert der Store, die App sucht nicht selbst.
 
-- **Programm:** `C:\Program Files\NebenkostenFix`
-- **Daten:** `Dokumente\NebenkostenFix`, im Installer änderbar und nie im Programmordner.
-  Liegt „Dokumente“ in OneDrive, schlägt die App einen lokalen Ort vor.
-- **Update:** Die neue Setup-Exe über die alte installieren. Die Daten bleiben, vorher wird
-  gesichert.
-- **Deinstallation:** Die Daten bleiben stehen, der Deinstaller sagt, wo sie liegen.
-- **Passwort vergessen:** Menü „Hilfe“.
-
-Die Prüfsumme jeder Setup-Exe steht im Release (`SHA256SUMS.txt`):
-
-```powershell
-Get-FileHash .\NebenkostenFix-0.9.3-Setup.exe -Algorithm SHA256
-```
+Jede Version beschreiben die [Releases](https://github.com/Nerbry72/NebenkostenFix/releases).
 
 ---
 
@@ -220,7 +287,7 @@ binden Sie ihn dort ein oder betreiben den Container direkt auf dem NAS.
 ### Sichern und Zurückholen
 
 Eine Sicherung ist eine `.nkfix`-Datei, also ein ZIP. Darin stecken die Datenbank, alle
-Belege, Vermieterdaten, Logo und Lizenz sowie eine Prüfsumme je Datei. In der Oberfläche
+Belege, Vermieterdaten, Logo und Einstellungen sowie eine Prüfsumme je Datei. In der Oberfläche
 steht das unter Einstellungen → Sicherung. Auf der Kommandozeile:
 
 ```bash
@@ -276,14 +343,43 @@ Probelauf mit Fehlern je Zeile. Übernommen wird nur, wenn keine Zeile einen Feh
 - Schreibende Anfragen von fremden Seiten lehnt die Anwendung ab. Jede Antwort trägt eine
   Content-Security-Policy ohne fremde Quellen.
 - Der Container läuft nicht als root.
-- Die Anwendung ruft nie von selbst nach Hause.
+- Updates sind signiert. Ein verändertes Manifest oder ein Installer mit falscher Prüfsumme
+  wird verworfen.
 
-Sicherheitslücken bitte nicht als öffentliches Issue melden, sondern direkt an den
-Maintainer.
+Sicherheitslücken bitte nicht als öffentliches Issue melden, sondern vertraulich wie in
+[SECURITY.md](SECURITY.md) beschrieben.
+
+---
+
+## Haftung
+
+NebenkostenFix ist kostenlos und wird ohne Gewähr bereitgestellt. Der Entwickler übernimmt
+keine Haftung für die Richtigkeit Ihrer Abrechnungen, soweit das Gesetz das zulässt. Die
+Anwendung ist keine Rechtsberatung. Prüfen Sie jede Abrechnung selbst, bevor Sie sie
+verschicken.
+
+## Unterstützen
+
+NebenkostenFix ist kostenlos und bleibt es. Wenn es Ihnen Arbeit spart, freue ich mich über
+einen Kaffee:
+
+<a href="https://ko-fi.com/nerbry72"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Auf Ko-fi unterstützen"></a>
+
+Genauso hilft ein Stern für das Repository, ein Fehlerbericht oder eine Empfehlung an andere
+Vermieter.
+
+## Mitmachen
+
+- **Fehler gefunden?** [Fehler melden](https://github.com/Nerbry72/NebenkostenFix/issues/new?template=fehler.yml),
+  in der App auch über Hilfe → „Über NebenkostenFix“. Bitte ohne echte Mieterdaten.
+- **Idee oder Frage?** In den [Discussions](https://github.com/Nerbry72/NebenkostenFix/discussions).
+- **Code beitragen?** [CONTRIBUTING.md](CONTRIBUTING.md) erklärt Umgebung, Tests und Ablauf.
 
 ---
 
 ## Entwicklung
+
+Wie Sie mitmachen, steht in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Voraussetzungen
 
@@ -332,8 +428,9 @@ Die Versionsnummer steht an genau einer Stelle: `SOFTWARE_VERSION` in `abrechnun
    aktualisieren und wieder deinstallieren.
 3. Docker-Abbild bauen, Rauchtest, dann für amd64 und arm64 nach
    `ghcr.io/nerbry72/nebenkostenfix:<version>` und `:latest` schieben.
-4. GitHub-Release `v<version>` mit `NebenkostenFix-<version>-Setup.exe` und `SHA256SUMS.txt`
-   anlegen.
+4. GitHub-Release `v<version>` mit `NebenkostenFix-<version>-Setup.exe`, `SHA256SUMS.txt` und
+   dem signierten `update.json` anlegen. Aus dem `update.json` erfahren die installierten Apps
+   von der neuen Version.
 
 ### Aufbau
 
@@ -348,3 +445,12 @@ Die Versionsnummer steht an genau einer Stelle: `SOFTWARE_VERSION` in `abrechnun
 | `static/` | Oberfläche (HTML, CSS, JavaScript ohne Framework) |
 | `docs/glossar.md` | verbindliche Begriffe der Oberfläche, gegen die `make ui` prüft |
 | `tests/` | pytest |
+
+---
+
+## Lizenz
+
+NebenkostenFix steht unter der [GNU General Public License v3.0](LICENSE) oder, nach Ihrer
+Wahl, einer späteren Fassung (GPL-3.0-or-later). Sie dürfen es nutzen, weitergeben und
+verändern. Veränderte Fassungen müssen unter derselben Lizenz stehen und ihren Quellcode
+offenlegen.

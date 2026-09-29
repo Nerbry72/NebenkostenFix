@@ -1,0 +1,72 @@
+# „Fehler melden“ (NK-181). Die App öffnet diese Vorlage aus „Über
+# NebenkostenFix“ und füllt version, weg und system vor (marke.fehler_melden_url).
+# Die ids dieser drei Felder deshalb nicht umbenennen.
+name: Fehler melden
+description: Etwas rechnet falsch, stürzt ab oder verhält sich anders als erwartet.
+labels: [fehler]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Danke fürs Melden! **Bitte keine echten Mieterdaten** (Namen, Adressen, IBAN,
+        Beträge aus einer echten Abrechnung) und keine Belege anhängen. Ein erfundenes
+        Beispiel oder die Beispielimmobilie aus der App reicht fast immer.
+
+        Eine Sicherheitslücke bitte **nicht** hier melden, sondern wie in
+        [SECURITY.md](https://github.com/Nerbry72/NebenkostenFix/blob/main/SECURITY.md) beschrieben.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Steht unter Hilfe → „Über NebenkostenFix“.
+      placeholder: z. B. 0.10.0
+    validations:
+      required: true
+  - type: dropdown
+    id: weg
+    attributes:
+      label: Installiert als
+      options:
+        - Docker
+        - Windows-App
+        - Microsoft Store
+        - aus dem Quellcode
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Betriebssystem
+      description: Bei Docker das System des Servers (z. B. Synology DSM 7.2, Raspberry Pi OS).
+      placeholder: z. B. Windows 11 oder Linux 6.1
+  - type: textarea
+    id: schritte
+    attributes:
+      label: Schritte
+      description: Was haben Sie nacheinander getan?
+      placeholder: |
+        1. Abrechnung → Jahr 2025 gewählt
+        2. „PDF erstellen“ geklickt
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: erwartet
+    attributes:
+      label: Erwartet
+      description: Was hätte passieren sollen?
+    validations:
+      required: true
+  - type: textarea
+    id: passiert
+    attributes:
+      label: Passiert
+      description: Was ist stattdessen passiert? Zeigt die App eine Vorgangsnummer, bitte angeben.
+    validations:
+      required: true
+  - type: textarea
+    id: protokoll
+    attributes:
+      label: Auszug aus dem Protokoll (freiwillig)
+      description: Die Zeilen zur Vorgangsnummer aus `nebenkosten.log`. Vorher auf persönliche Daten durchsehen.
+      render: text

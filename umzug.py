@@ -324,6 +324,7 @@ def bestandsbericht(app) -> dict:
     """Was nach einer Übernahme da ist -- für die Proben der CI (Quelle und
     gebaute Windows-App, ``scripts/umzug_kreuzprobe.py``, ``paketprobe.py``).
     Nur Zahlen, Prüfsummen und Kontennamen, keine Mieterdaten."""
+    import einstellungen
     import vermieter_logo
     from models import User, Vermieterdaten, db
 
@@ -344,7 +345,8 @@ def bestandsbericht(app) -> dict:
         'vermieter': {'name': zeile.name if zeile else None,
                       'iban': zeile.iban if zeile else None},
         'logo': vermieter_logo.pfad(ordner) is not None,
-        'lizenz': (ordner / backup.LIZENZ_IM_ARCHIV).is_file(),
+        'einstellungen': {k: einstellungen.lesen(ordner)[k]
+                          for k in einstellungen.UEBERTRAGBAR},
         'konten': konten,
     }
 

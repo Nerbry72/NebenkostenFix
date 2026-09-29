@@ -236,12 +236,13 @@ function initApp() {
     ladeSicherungsStatus();
     ladeUmzug();
     ladeGesperrteMieter();
-    ladeLizenz();
+    ladeUpdateEinstellung();
     ladeBegriffe();
     fetchBillingSuggestions();
     fetchBillingHistory();
     fetchPayments();
     zeigeEinstellungsgruppe(gemerkteEinstellungsgruppe());
+    startHinweise();
 }
 
 if (document.readyState === 'loading') {
@@ -338,6 +339,11 @@ const huelle = {
     async oeffnen(adresse) {
         if (!this.aktiv()) {
             window.open(adresse, '_blank', 'noopener');
+            return;
+        }
+        // Projektseite, Ko-fi: im Standardbrowser, nicht im Fenster (NK-175).
+        if (/^https:\/\/(github\.com|ko-fi\.com)\//.test(adresse)) {
+            await window.pywebview.api.extern_oeffnen(adresse);
             return;
         }
         try {
@@ -456,7 +462,7 @@ function initTabs() {
                     ladeSicherungsStatus();
                     ladeUmzug();
                     ladeGesperrteMieter();
-                    ladeLizenz();
+                    ladeUpdateEinstellung();
                 }
                 if (item.dataset.tab === 'reports') fetchAnalytics();
             }
@@ -535,6 +541,27 @@ async function ladeBegriffe() {
     }
 }
 
+// „Über NebenkostenFix“ (NK-179): Adressen aus marke.py, einmal je Sitzung.
+let ueberGeladen = false;
+
+async function ladeUeber() {
+    if (ueberGeladen) return;
+    try {
+        const res = await fetch('/api/ueber');
+        if (!res.ok) return;
+        const ueber = await res.json();
+        document.getElementById('ueber-stand').textContent = `Version ${ueber.version} · ${ueber.weg}`;
+        for (const [id, schluessel] of [['ueber-projektseite', 'projektseite'], ['ueber-neuigkeiten', 'neuigkeiten'],
+            ['ueber-fehler-melden', 'fehler_melden'], ['ueber-unterstuetzen', 'unterstuetzen'], ['ueber-lizenz', 'lizenz']]) {
+            document.getElementById(id).href = ueber[schluessel];
+        }
+        document.getElementById('ueber-haftung').innerHTML = ueber.haftung.map(satz => `<p>${escapeHtml(satz)}</p>`).join('');
+        ueberGeladen = true;
+    } catch (e) {
+        console.error('Über-Angaben nicht geladen', e);
+    }
+}
+
 function zeigeHilfe(abschnitt) {
     schliesseBegriffBlase();
     document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
@@ -547,6 +574,7 @@ function zeigeHilfe(abschnitt) {
     hilfe.classList.add('active');
     hilfe.style.display = 'block';
     hilfeChecklisteLaden();
+    ladeUeber();
     const ziel = abschnitt && document.getElementById(abschnitt);
     if (ziel) {
         ziel.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -748,6 +776,8 @@ async function darfDialogSchliessen(overlay) {
 }
 
 async function schliessenNachFrage(overlay) {
+    // data-fest: nur der eigene Knopf schließt (Haftungshinweis, NK-174).
+    if (overlay.dataset.fest) return;
     if (await darfDialogSchliessen(overlay)) overlay.classList.remove('active');
 }
 
@@ -1800,7 +1830,7 @@ async function deleteTenant(id) {
 // NK-156 (K8): Einstellungen in Gruppen. Eine eigene Klasse statt
 // ``hidden``, damit die Gruppe nie eine Karte zeigt, die aus anderem Grund
 // verborgen ist (Gefahrenzone nur im Entwicklungsstapel).
-const EINSTELLUNGS_GRUPPEN = ['vermieter', 'sicherung', 'konto', 'lizenz', 'datenschutz'];
+const EINSTELLUNGS_GRUPPEN = ['vermieter', 'sicherung', 'konto', 'updates', 'datenschutz'];
 
 function zeigeEinstellungsgruppe(gruppe) {
     if (!EINSTELLUNGS_GRUPPEN.includes(gruppe)) gruppe = 'vermieter';
@@ -1828,41 +1858,118 @@ function gemerkteEinstellungsgruppe() {
     }
 }
 
-// NK-080 (D-93): die Lizenz gilt nur fuer Updates. Angezeigt wird ihr Stand,
-// nichts in der Oberflaeche wird durch sie gesperrt.
-async function ladeLizenz() {
-    const ziel = document.getElementById('lizenz-stand');
-    if (!ziel) return;
+// NK-174, NK-175: erst der Haftungshinweis (einmal je Fassung), danach die
+// Suche beim Start. Die Suche ist still: kein Netz, kein Fenster.
+async function startHinweise() {
     try {
-        const res = await fetch('/api/lizenz');
-        if (!res.ok) throw await serverFehler(res);
-        ziel.textContent = (await res.json()).text;
+        const res = await fetch('/api/haftung');
+        if (res.ok) {
+            const stand = await res.json();
+            if (!stand.bestaetigt) await haftungZeigen(stand);
+        }
     } catch (e) {
-        console.error('Lizenzstand nicht ladbar', e);
+        console.error('Haftungshinweis nicht ladbar', e);
+    }
+    try {
+        const res = await fetch('/api/aktualisierung/automatisch');
+        if (!res.ok) return;
+        const ergebnis = await res.json();
+        if (ergebnis.neu) updateHinweisZeigen(ergebnis);
+    } catch (e) {
+        // still: die Suche beim Start meldet nie einen Fehler
     }
 }
-window.ladeLizenz = ladeLizenz;
 
-async function lizenzEinspielen(feld) {
-    const datei = feld.files && feld.files[0];
-    feld.value = '';
-    if (!datei) return;
+function haftungZeigen(stand) {
+    const overlay = document.getElementById('haftung-modal');
+    document.getElementById('haftung-titel').textContent = stand.titel;
+    const text = document.getElementById('haftung-text');
+    text.innerHTML = stand.text.map(satz => `<p>${escapeHtml(satz)}</p>`).join('');
+    overlay.dataset.version = stand.version;
+    overlay.classList.add('active');
+    return new Promise(erledigt => {
+        const wache = new MutationObserver(() => {
+            if (overlay.classList.contains('active')) return;
+            wache.disconnect();
+            erledigt();
+        });
+        wache.observe(overlay, { attributes: true, attributeFilter: ['class'] });
+    });
+}
+
+async function haftungBestaetigen() {
+    const overlay = document.getElementById('haftung-modal');
     try {
-        const res = await fetch('/api/lizenz', {
+        const res = await fetch('/api/haftung', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ inhalt: await datei.text() })
+            body: JSON.stringify({ version: Number(overlay.dataset.version) })
         });
         if (!res.ok) throw await serverFehler(res);
-        document.getElementById('lizenz-stand').textContent = (await res.json()).text;
-        showSuccess('Lizenz gespeichert.');
+        overlay.classList.remove('active');
     } catch (e) {
-        showError(meldungZu(e, 'Die Lizenzdatei konnte nicht gespeichert werden.'));
+        showError(meldungZu(e, 'Der Hinweis konnte nicht gespeichert werden.'));
     }
 }
-window.lizenzEinspielen = lizenzEinspielen;
+window.haftungBestaetigen = haftungBestaetigen;
 
-// NK-081: nur auf Knopfdruck. Docker bekommt einen Hinweis auf das neue
+function updateHinweisZeigen(ergebnis) {
+    document.getElementById('update-titel').textContent = `Version ${ergebnis.version} ist da`;
+    document.getElementById('update-text').textContent =
+        ergebnis.text + (ergebnis.hinweise ? '\n\n' + ergebnis.hinweise : '');
+    document.getElementById('update-notizen').href = ergebnis.notizen;
+    document.getElementById('update-jetzt').style.display = ergebnis.installierbar ? '' : 'none';
+    document.getElementById('update-modal').classList.add('active');
+}
+
+function updateSpaeter() {
+    document.getElementById('update-modal').classList.remove('active');
+}
+window.updateSpaeter = updateSpaeter;
+
+function updateJetzt() {
+    updateSpaeter();
+    updateInstallieren();
+}
+window.updateJetzt = updateJetzt;
+
+async function ladeUpdateEinstellung() {
+    const feld = document.getElementById('update-automatisch');
+    if (!feld) return;
+    try {
+        const res = await fetch('/api/aktualisierung/einstellung');
+        if (!res.ok) throw await serverFehler(res);
+        const stand = await res.json();
+        feld.checked = stand.automatisch;
+        if (stand.paketmodus) {
+            // Store-Paket: der Store aktualisiert, die App sucht nicht selbst.
+            document.getElementById('update-automatisch-zeile').style.display = 'none';
+            document.getElementById('update-erklaerung').textContent =
+                'Diese Installation stammt aus dem Microsoft Store. Er installiert neue Versionen automatisch.';
+        }
+    } catch (e) {
+        console.error('Update-Einstellung nicht ladbar', e);
+    }
+}
+window.ladeUpdateEinstellung = ladeUpdateEinstellung;
+
+async function updateAutomatischSetzen(feld) {
+    try {
+        const res = await fetch('/api/aktualisierung/einstellung', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ automatisch: feld.checked })
+        });
+        if (!res.ok) throw await serverFehler(res);
+        feld.checked = (await res.json()).automatisch;
+    } catch (e) {
+        feld.checked = !feld.checked;
+        showError(meldungZu(e, 'Die Einstellung konnte nicht gespeichert werden.'));
+    }
+}
+window.updateAutomatischSetzen = updateAutomatischSetzen;
+
+// NK-081, NK-175: auf Knopfdruck. Docker bekommt einen Hinweis auf das neue
 // Abbild, die Windows-App einen Knopf, der den geprueften Installer startet.
 async function nachUpdatesSuchen() {
     const stand = document.getElementById('update-stand');
@@ -1883,8 +1990,8 @@ window.nachUpdatesSuchen = nachUpdatesSuchen;
 
 async function updateInstallieren() {
     if (!await frage(
-        'Das Update wird geladen, geprüft und installiert. Die Anwendung schließt sich dafür ' +
-        'kurz. Beim nächsten Start sichert sie Ihre Daten automatisch, bevor sie sie umstellt.',
+        'Das Update wird geladen und geprüft. Vorher sichert die Anwendung Ihre Daten. ' +
+        'Dann schließt sie sich kurz und startet mit der neuen Version neu.',
         'Installieren'
     )) return;
     const stand = document.getElementById('update-stand');

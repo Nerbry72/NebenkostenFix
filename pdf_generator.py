@@ -15,15 +15,51 @@ import marke
 from abrechnung_version import SOFTWARE_VERSION, REGEL_VERSION
 
 
-def _fuss_zeichnen(canvas, doc):
-    """Zeichnet auf jedem Blatt den Fuß mit Software- und Regelstand.
+def _zeichen_malen(canvas, x, y, kante):
+    """Das Zeichen aus ``marke`` als Vektor, linke untere Ecke bei x, y.
+    Das Raster zählt von oben, die PDF-Seite von unten."""
+    mass = kante / marke.RASTER
 
-    R-DOC-02 (NK-062): wer das Blatt später prüft -- Mieter, Gericht,
+    def punkt(px, py):
+        return x + px * mass, y + kante - py * mass
+
+    def linie(punkte, schliessen):
+        pfad = canvas.beginPath()
+        pfad.moveTo(*punkt(*punkte[0]))
+        for p in punkte[1:]:
+            pfad.lineTo(*punkt(*p))
+        if schliessen:
+            pfad.close()
+        return pfad
+
+    farbe = colors.HexColor(marke.FARBE)
+    weiss = colors.HexColor(marke.WEISS)
+    canvas.setLineJoin(1)
+    canvas.setLineCap(1)
+    canvas.setFillColor(farbe)
+    canvas.roundRect(x, y, kante, kante, marke.ECKENRADIUS * mass, stroke=0, fill=1)
+    canvas.setFillColor(weiss)
+    canvas.setStrokeColor(weiss)
+    canvas.setLineWidth(2 * mass)
+    canvas.drawPath(linie(marke.HAUS, True), stroke=1, fill=1)
+    canvas.setStrokeColor(farbe)
+    canvas.setLineWidth(marke.HAKEN_BREITE * mass)
+    canvas.drawPath(linie(marke.HAKEN, False), stroke=1, fill=0)
+
+
+def _fuss_zeichnen(canvas, doc):
+    """Zeichnet auf jedem Blatt Kopf und Fuß.
+
+    Kopf (NK-177): Zeichen und Name rechts oben im Seitenrand, über dem
+    Satzspiegel -- Anschriftfeld und Absender des Vermieters bleiben, wo
+    sie sind.
+
+    Fuß, R-DOC-02 (NK-062): wer das Blatt später prüft -- Mieter, Gericht,
     Vermieter selbst -- soll sehen, mit welchem Stand der Software und
     welchem Rechenstand der Regeln es entstanden ist. Die Stände kommen
     aus ``abrechnung_version`` -- dieselben, die NK-061 mit der Version
     der finalisierten Abrechnung abspeichert: Blatt und Versionssatz
-    erzählen dieselbe Sache.
+    erzählen dieselbe Sache. Dahinter die Projektseite als Link (NK-178).
     """
     try:
         regelstand = datetime.strptime(
@@ -32,12 +68,25 @@ def _fuss_zeichnen(canvas, doc):
         # Der Regelstand ist kein Datum mehr (etwa ein Hash): dann steht
         # er roh im Fuß -- die Version der Abrechnung trägt ihn genauso.
         regelstand = REGEL_VERSION
+    projektseite = marke.REPO_URL.removeprefix('https://')
     text = (f'Erstellt mit {marke.PRODUKT} {SOFTWARE_VERSION} '
-            f'· Rechenstand der Regeln: {regelstand}')
+            f'· Rechenstand der Regeln: {regelstand} · ')
     canvas.saveState()
+
+    kante, rechts, oben = 14, A4[0] - 56.7, A4[1] - 38
+    canvas.setFont('Helvetica-Bold', 9)
+    name_breite = canvas.stringWidth(marke.PRODUKT, 'Helvetica-Bold', 9)
+    _zeichen_malen(canvas, rechts - name_breite - 5 - kante, oben - 3.5, kante)
+    canvas.setFillColor(colors.HexColor(marke.FARBE_DUNKEL))
+    canvas.drawRightString(rechts, oben, marke.PRODUKT)
+
     canvas.setFont('Helvetica', 8)
     canvas.setFillColor(colors.grey)
-    canvas.drawCentredString(A4[0] / 2, 30, text)
+    breite = canvas.stringWidth(text + projektseite, 'Helvetica', 8)
+    links = (A4[0] - breite) / 2
+    canvas.drawString(links, 30, text + projektseite)
+    start = links + canvas.stringWidth(text, 'Helvetica', 8)
+    canvas.linkURL(marke.REPO_URL, (start, 28, links + breite, 38), relative=0, thickness=0)
     canvas.restoreState()
 
 

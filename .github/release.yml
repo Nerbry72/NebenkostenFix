@@ -1,0 +1,13 @@
+# Gliederung der automatisch erzeugten Release-Notizen (gh release --generate-notes).
+changelog:
+  exclude:
+    labels: [intern-ausblenden]
+  categories:
+    - title: Neu
+      labels: [idee, neu]
+    - title: Behoben
+      labels: [fehler, behoben]
+    - title: Abhängigkeiten
+      labels: [dependencies]
+    - title: Intern
+      labels: ['*']

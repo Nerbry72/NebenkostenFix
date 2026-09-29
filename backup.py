@@ -112,9 +112,13 @@ Format 2. Jede Sicherung ist damit zugleich ein Umzugspaket (``umzug.py``)::
     belege/...                  neutrale Namen (NK-131), gespeichert, nicht
                                 noch einmal komprimiert
     einstellungen.json          was nicht in der Datenbank steht: die
-                                wirksamen Vermieterwerte (auch aus der Umgebung)
+                                wirksamen Vermieterwerte (auch aus der Umgebung),
+                                bestaetigter Haftungshinweis und Update-Einstellung
+                                (NK-174, NK-175)
     einstellungen/vermieter-logo.<png|jpg>   falls hinterlegt (NK-155)
-    lizenz.nklizenz             falls hinterlegt (NK-080)
+
+Pakete bis 0.9 koennen noch ``lizenz.nklizenz`` tragen (NK-080); die Datei
+wird seit NK-176 beim Einspielen uebergangen.
 
 Verschluesselt liegt das ganze ZIP im ``NKVERS1``-Umschlag, die Endung
 bleibt ``.nkfix`` (der Kopf verraet die Verschluesselung). Alte
@@ -161,9 +165,6 @@ BELEGE_IM_ARCHIV = 'belege'
 ENDUNG = '.nkfix'
 EINSTELLUNGEN_IM_ARCHIV = 'einstellungen.json'
 LOGO_IM_ARCHIV = 'einstellungen'
-# Name im Archiv und im Datenordner (= lizenz.DATEINAME; hier nicht
-# importiert: die Sicherung traegt die Datei nur, sie fragt sie nie, E-9).
-LIZENZ_IM_ARCHIV = 'lizenz.nklizenz'
 # Kennung im Manifest und im Kopf verschluesselter Dateien. Bleibt beim alten
 # Namen: sie ist ein Formatmerkmal, keine Marke, und alte Sicherungen tragen sie.
 ANWENDUNG = 'nebenkostenabrechnung'
@@ -488,31 +489,31 @@ def _zusatzdateien(app, arbeit: Path) -> list[tuple[str, Path]]:
     nur ueber ``VERMIETER_NAME``/``VERMIETER_IBAN`` gesetzt hat, verloere sie
     sonst beim Wechsel in die Windows-App.
     """
+    import einstellungen as app_einstellungen
     import datenordner
     import vermieter_logo
     from girocode_generator import iban_saeubern
 
+    try:
+        ordner = datenordner.datenordner()
+    except datenordner.DatenordnerFehler:
+        ordner = datenbankpfad(app).parent
+    stand = app_einstellungen.lesen(ordner)
     einstellungen = {
         'format': 1,
         'vermieter_umgebung': {
             'name': os.environ.get('VERMIETER_NAME', '').strip(),
             'iban': iban_saeubern(os.environ.get('VERMIETER_IBAN', '')),
         },
+        'anwendung': {k: stand[k] for k in app_einstellungen.UEBERTRAGBAR},
     }
     datei = arbeit / EINSTELLUNGEN_IM_ARCHIV
     datei.write_text(json.dumps(einstellungen, ensure_ascii=False, indent=2),
                      encoding='utf-8')
     zusatz = [(EINSTELLUNGEN_IM_ARCHIV, datei)]
-    try:
-        ordner = datenordner.datenordner()
-    except datenordner.DatenordnerFehler:
-        ordner = datenbankpfad(app).parent
     logo = vermieter_logo.pfad(ordner)
     if logo is not None:
         zusatz.append((f'{LOGO_IM_ARCHIV}/{logo.name}', logo))
-    lizenzdatei = ordner / LIZENZ_IM_ARCHIV
-    if lizenzdatei.is_file():
-        zusatz.append((LIZENZ_IM_ARCHIV, lizenzdatei))
     return zusatz
 
 
@@ -891,13 +892,15 @@ def _einspielen_klartext(app, archiv, sicherheitskopie_nach=None,
 
 
 def _zusatz_anwenden(app, entpackt: Path, manifest: dict) -> dict:
-    """Logo, Lizenz und festgeschriebene Vermieterwerte eines Pakets (Format 2).
+    """Logo, Einstellungen und festgeschriebene Vermieterwerte eines Pakets
+    (Format 2).
 
     Das Paket ist der ganze Bestand: ein Logo, das es nicht enthaelt, gibt es
-    danach nicht mehr. Die Lizenz bleibt, wenn das Paket keine mitbringt --
-    sie gehoert zum Kaeufer, nicht zu einem Bestand. Vermieterwerte aus der
-    Umgebung des alten Rechners landen in der Datenbank, aber nur in leeren
-    Feldern: was dort schon steht, war die wirksame Angabe.
+    danach nicht mehr. Haftungshinweis und Update-Einstellung kommen mit
+    (NK-174, NK-175); ein Paket ohne sie laesst die vorhandenen stehen. Eine
+    Lizenzdatei aus Paketen bis 0.9 wird uebergangen (NK-176). Vermieterwerte
+    aus der Umgebung des alten Rechners landen in der Datenbank, aber nur in
+    leeren Feldern: was dort schon steht, war die wirksame Angabe.
     """
     if manifest.get('format', 1) < 2:
         return {}
@@ -909,7 +912,7 @@ def _zusatz_anwenden(app, entpackt: Path, manifest: dict) -> dict:
     except datenordner.DatenordnerFehler:
         ordner = datenbankpfad(app).parent
     ordner.mkdir(parents=True, exist_ok=True)
-    ergebnis = {'logo': False, 'lizenz': False, 'vermieter_festgeschrieben': []}
+    ergebnis = {'logo': False, 'einstellungen': [], 'vermieter_festgeschrieben': []}
 
     while vermieter_logo.loeschen(ordner):
         pass
@@ -921,22 +924,34 @@ def _zusatz_anwenden(app, entpackt: Path, manifest: dict) -> dict:
             ergebnis['logo'] = True
             break
 
-    lizenzdatei = entpackt / LIZENZ_IM_ARCHIV
-    if lizenzdatei.is_file():
-        shutil.copy2(lizenzdatei, ordner / LIZENZ_IM_ARCHIV)
-        ergebnis['lizenz'] = True
-
     einstellungen_datei = entpackt / EINSTELLUNGEN_IM_ARCHIV
     if einstellungen_datei.is_file():
         try:
             einstellungen = json.loads(einstellungen_datei.read_text(encoding='utf-8'))
         except ValueError as fehler:
             raise SicherungsFehler(f'{EINSTELLUNGEN_IM_ARCHIV} ist unlesbar: {fehler}')
+        ergebnis['einstellungen'] = _anwendung_uebernehmen(
+            ordner, einstellungen.get('anwendung'))
         umgebung = einstellungen.get('vermieter_umgebung') or {}
         ergebnis['vermieter_festgeschrieben'] = _vermieter_festschreiben(
             app, str(umgebung.get('name') or '').strip()[:200],
             str(umgebung.get('iban') or '').strip()[:34])
     return ergebnis
+
+
+def _anwendung_uebernehmen(ordner: Path, werte) -> list[str]:
+    import einstellungen as app_einstellungen
+
+    if not isinstance(werte, dict):
+        return []
+    # Nur bekannte Schluessel mit dem erwarteten Typ; ein ``None`` beim
+    # Hinweis heisst „nie bestaetigt“ und ueberschreibt nichts.
+    werte = {k: v for k, v in werte.items()
+             if (k == 'haftung' and isinstance(v, dict))
+             or (k == 'updates_automatisch' and isinstance(v, bool))}
+    if werte:
+        app_einstellungen.schreiben(ordner, **werte)
+    return sorted(werte)
 
 
 def _vermieter_festschreiben(app, name: str, iban: str) -> list[str]:

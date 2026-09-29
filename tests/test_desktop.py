@@ -361,6 +361,22 @@ def test_bruecke_zeigt_pywebview_nur_methoden():
     assert all(inspect.ismethod(getattr(bruecke, name)) for name in oeffentlich)
 
 
+def test_extern_nur_projektseite_und_kofi(monkeypatch):
+    """NK-175/NK-179: der Standardbrowser öffnet nur Projektseite und Ko-fi."""
+    import marke
+    import webbrowser
+    geoeffnet = []
+    monkeypatch.setattr(webbrowser, 'open', lambda adresse: geoeffnet.append(adresse) or True)
+    bruecke = desktop.Bruecke()
+    erlaubt = [marke.REPO_URL, marke.REPO_URL + '/releases/tag/v1.0.0', marke.KOFI_URL]
+    for adresse in erlaubt:
+        assert bruecke.extern_oeffnen(adresse)
+    for adresse in (marke.REPO_URL + '.boese.example', 'https://example.com/',
+                    'file:///C:/Windows/System32/calc.exe', marke.KOFI_URL + 'x'):
+        assert not bruecke.extern_oeffnen(adresse)
+    assert geoeffnet == erlaubt
+
+
 def test_paket_waehlen_hat_gueltige_dateifilter(monkeypatch, tmp_path):
     """pywebview prüft jeden Eintrag in file_types und wirft sonst ValueError;
     die Oberfläche meldete dann nur „Der Datei-Dialog ließ sich nicht öffnen.“

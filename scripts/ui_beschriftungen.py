@@ -79,6 +79,8 @@ VERBEN: set[str] = {
     "zur\u00fcck",
     # NK-124/NK-160: die Zustellung einer Abrechnung melden (Fristen).
     "melden",
+    # NK-174/NK-175: Haftungshinweis quittieren, Update-Hinweis vertagen.
+    "verstanden", "erinnern",
 }
 
 # Knopftexte, die zwar mit einem Verb aus der Liste beginnen, aber das

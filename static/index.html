@@ -302,7 +302,7 @@
                     <div>
                         <h2>Einstellungen</h2>
                         <p class="section-untertitel">Vermieter und Anbieter, Datensicherung, Konto,
-                            Lizenz und Datenschutz</p>
+                            Updates und Datenschutz</p>
                     </div>
                 </div>
 
@@ -316,8 +316,8 @@
                         onclick="zeigeEinstellungsgruppe('sicherung')"><i class="ph ph-hard-drives" aria-hidden="true"></i> Datensicherung</button>
                     <button type="button" class="filter-pill" role="tab" data-gruppe="konto"
                         onclick="zeigeEinstellungsgruppe('konto')"><i class="ph ph-user-circle" aria-hidden="true"></i> Konto</button>
-                    <button type="button" class="filter-pill" role="tab" data-gruppe="lizenz"
-                        onclick="zeigeEinstellungsgruppe('lizenz')"><i class="ph ph-seal-check" aria-hidden="true"></i> Lizenz &amp; Updates</button>
+                    <button type="button" class="filter-pill" role="tab" data-gruppe="updates"
+                        onclick="zeigeEinstellungsgruppe('updates')"><i class="ph ph-arrows-clockwise" aria-hidden="true"></i> Updates</button>
                     <button type="button" class="filter-pill" role="tab" data-gruppe="datenschutz"
                         onclick="zeigeEinstellungsgruppe('datenschutz')"><i class="ph ph-shield-check" aria-hidden="true"></i> Datenschutz</button>
                 </div>
@@ -437,24 +437,22 @@
                         </div>
                     </div>
 
-                    <!-- NK-080/NK-081 (D-93): die Lizenz gilt fuer Updates,
-                         nie fuer die Daten. Nichts in der Anwendung haengt an
-                         ihr, gefragt wird sie nur von der Update-Suche. -->
-                    <div data-gruppe="lizenz" class="dashboard-card glass-panel">
+                    <!-- NK-175: Updates kommen von der Projektseite auf GitHub,
+                         signiert. Im Store-Paket installiert der Store selbst. -->
+                    <div data-gruppe="updates" class="dashboard-card glass-panel">
                         <div class="abstand-unten-klein">
-                            <h3>Lizenz und Updates</h3>
+                            <h3>Updates</h3>
                         </div>
-                        <p id="lizenz-stand" style="margin: 0 0 12px; color: var(--text-muted); line-height: 1.5; font-size: 0.9rem;">
-                            Lizenz wird geladen …
+                        <label id="update-automatisch-zeile" class="schalter-zeile">
+                            <input type="checkbox" id="update-automatisch" onchange="updateAutomatischSetzen(this)">
+                            Automatisch nach Updates suchen
+                        </label>
+                        <p id="update-erklaerung" class="karten-text">
+                            Beim Start fragt die Anwendung höchstens einmal am Tag auf der Projektseite nach
+                            einer neuen Version. Dabei wird nichts von Ihren Daten übertragen.
                         </p>
-                        <input type="file" id="lizenz-datei" accept=".nklizenz,application/json"
-                            style="display: none;" onchange="lizenzEinspielen(this)">
                         <div class="knopf-zeile">
-                            <button class="btn-secondary" id="btn-lizenz-einspielen"
-                                onclick="document.getElementById('lizenz-datei').click()"
-                                title="Die Lizenzdatei (.nklizenz) aus Ihrer Kaufbestätigung">Lizenzdatei einspielen</button>
-                            <button class="btn-secondary" id="btn-update-suchen" onclick="nachUpdatesSuchen()"
-                                title="Fragt nur auf Knopfdruck nach einer neuen Version, nie von selbst">Nach Updates suchen</button>
+                            <button class="btn-secondary" id="btn-update-suchen" onclick="nachUpdatesSuchen()">Nach Updates suchen</button>
                             <button class="btn-primary" id="btn-update-installieren" style="display: none;"
                                 onclick="updateInstallieren()">Update installieren</button>
                         </div>
@@ -578,7 +576,7 @@
                         </div>
                         <p class="karten-text">
                             Ein Umzugspaket (.nkfix) enthält alles: Daten, Belege und PDFs, Konten,
-                            Vermieterdaten, Logo und Lizenz. Übernehmen Sie es auf dem neuen Rechner —
+                            Vermieterdaten, Logo und Einstellungen. Übernehmen Sie es auf dem neuen Rechner —
                             etwa von Docker in die Windows-App oder umgekehrt.
                         </p>
                         <div class="karten-abschnitt">
@@ -785,6 +783,26 @@
                     <div class="dashboard-card glass-panel" id="hilfe-begriffe">
                         <div class="karten-kopf"><h3>Begriffe von A bis Z</h3></div>
                         <dl class="hilfe-begriffe" id="hilfe-begriffe-liste"></dl>
+                    </div>
+
+                    <!-- NK-179: Stand, Projektseite, Fehler melden, Ko-fi. Die Adressen
+                         kommen aus marke.py über /api/ueber; in der App öffnen sie im
+                         Standardbrowser (target="_blank" geht an die Hülle). -->
+                    <div class="dashboard-card glass-panel" id="hilfe-ueber">
+                        <div class="karten-kopf">
+                            <h3><img class="ueber-zeichen" src="/static/marke/zeichen.svg" alt="" width="24" height="24"> Über NebenkostenFix</h3>
+                        </div>
+                        <p class="karten-text" id="ueber-stand">Version wird geladen …</p>
+                        <ul class="hilfe-liste ueber-links">
+                            <li><a id="ueber-projektseite" target="_blank" rel="noopener">Projektseite auf GitHub</a></li>
+                            <li><a id="ueber-neuigkeiten" target="_blank" rel="noopener">Was ist neu?</a></li>
+                            <li><a id="ueber-fehler-melden" target="_blank" rel="noopener">Fehler melden</a>
+                                <small class="feld-hilfe">Übertragen werden nur Version, Auslieferungsweg und Betriebssystem, keine Daten aus Ihrer Abrechnung.</small></li>
+                            <li><a id="ueber-unterstuetzen" target="_blank" rel="noopener">Unterstützen (Ko-fi)</a></li>
+                            <li><a id="ueber-lizenz" target="_blank" rel="noopener">Lizenz (GPL-3.0)</a></li>
+                        </ul>
+                        <h4 class="hilfe-frage">Haftung</h4>
+                        <div class="karten-text" id="ueber-haftung"></div>
                     </div>
                 </div>
             </section>
@@ -2133,6 +2151,38 @@
                 <button type="button" class="btn-primary" onclick="huelle.drucken()">
                     <i class="ph ph-printer" style="margin-right: 6px;"></i> Drucken / als PDF speichern
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- NK-175: eine neue Version, gefunden bei der Suche beim Start. -->
+    <div class="modal-overlay" id="update-modal">
+        <div class="modal glass-panel">
+            <div class="modal-header">
+                <h2 id="update-titel">Neue Version verfügbar</h2>
+                <button class="btn-icon" aria-label="Schließen" onclick="updateSpaeter()"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <p id="update-text" class="modal-text"></p>
+                <a id="update-notizen" href="#" target="_blank" rel="noopener">Was ist neu?</a>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" onclick="updateSpaeter()">Später erinnern</button>
+                <button type="button" class="btn-primary" id="update-jetzt" onclick="updateJetzt()">Jetzt aktualisieren</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- NK-174: Haftungshinweis, einmal je Fassung. Ohne Schließen-Knopf:
+         der einzige Weg weiter ist „Verstanden“. -->
+    <div class="modal-overlay" id="haftung-modal" data-fest="1">
+        <div class="modal glass-panel" role="alertdialog" aria-labelledby="haftung-titel">
+            <div class="modal-header">
+                <h2 id="haftung-titel">Bevor es losgeht</h2>
+            </div>
+            <div class="modal-body modal-text" id="haftung-text"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn-primary" onclick="haftungBestaetigen()">Verstanden</button>
             </div>
         </div>
     </div>

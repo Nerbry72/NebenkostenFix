@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Frage stellen
+    url: https://github.com/Nerbry72/NebenkostenFix/discussions
+    about: Fragen zur Bedienung oder zur Abrechnung, Erfahrungen und Ideen im Gespräch.
+  - name: Sicherheitslücke melden
+    url: https://github.com/Nerbry72/NebenkostenFix/security/advisories/new
+    about: Vertraulich, nicht als öffentliches Issue.

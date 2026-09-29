@@ -175,7 +175,7 @@ def test_der_dockerfile_kopiert_pauschal():
 
 NUR_ENTWICKLUNG = frozenset({
     'scripts/e2e.py',
-    'scripts/lizenz_werkzeug.py',  # NK-080: Werkzeug des Herausgebers
+    'scripts/update_signieren.py',  # NK-175: Werkzeug des Herausgebers
     # NK-155: erzeugt Icons und Bilder der Marke. Nicht „marke.py“: im
     # Ordner scripts/ verdeckte der Name das Modul marke (NK-161).
     'scripts/marke_bilder.py',

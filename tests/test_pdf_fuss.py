@@ -1,4 +1,5 @@
-"""Der Fuß jedes Blatts: Software- und Regelstand (R-DOC-02, NK-062).
+"""Kopf und Fuß jedes Blatts: Software- und Regelstand (R-DOC-02, NK-062),
+Zeichen und Name (NK-177), Projektseite als Link (NK-178).
 
 Wer das Blatt später prüft -- der Mieter, ein Gericht, der Vermieter
 selbst -- soll ohne Rückfrage sehen, mit welchem Stand der Software und
@@ -25,7 +26,9 @@ from decimal import Decimal
 import pytest
 import reportlab.rl_config
 
+import marke
 from abrechnung_version import SOFTWARE_VERSION, REGEL_VERSION
+from reportlab.lib.pagesizes import A4
 from pdf_generator import PDFGenerator
 
 FARM = 'Haus am Anger'
@@ -134,7 +137,8 @@ def _fuss(sftware: str, regelstand: str) -> str:
     except ValueError:
         stand = regelstand
     return (f'ErstelltmitNebenkostenFix{sftware}'
-            f'·RechenstandderRegeln:{stand}')
+            f'·RechenstandderRegeln:{stand}'
+            f'·github.com/Nerbry72/NebenkostenFix')
 
 
 # --- Der Fuß: beide Stände, auf jedem Blatt ---------------------------------
@@ -145,7 +149,8 @@ def test_der_fuss_traegt_software_und_rechenstand(unkomprimiert):
     Stände, die NK-061 in die Version der finalisierten Abrechnung
     schreibt."""
     erwartet = _fuss(SOFTWARE_VERSION, REGEL_VERSION)
-    assert erwartet == f'ErstelltmitNebenkostenFix{SOFTWARE_VERSION}·RechenstandderRegeln:28.08.2026'
+    assert erwartet == (f'ErstelltmitNebenkostenFix{SOFTWARE_VERSION}·RechenstandderRegeln:28.08.2026'
+                        '·github.com/Nerbry72/NebenkostenFix')
 
     for detailliert in (False, True):
         pdf = _erzeuge(_viele_zeilen(), detailliert)
@@ -167,3 +172,36 @@ def test_der_fuss_steht_auf_jedem_blatt(unkomprimiert):
     traeger = [b for b in _blaetter(pdf) if erwartet in b]
     assert len(traeger) == seiten, (
         f'{len(traeger)} von {seiten} Blättern tragen den Fuß')
+
+
+# --- Kopf und Link (NK-177, NK-178) -----------------------------------------
+
+
+def _seiten(pdf: bytes) -> int:
+    return len(re.findall(rb'/Type /Page(?![sA-Za-z])', pdf))
+
+
+def test_die_projektseite_ist_auf_jedem_blatt_verlinkt():
+    """Der Link im Fuß zeigt auf die eine Adresse aus ``marke`` -- je
+    Blatt genau einer, sonst nichts."""
+    pdf = _erzeuge(_viele_zeilen())
+    ziele = re.findall(rb'/URI \(([^)]*)\)', pdf)
+    assert ziele == [marke.REPO_URL.encode()] * _seiten(pdf)
+
+
+def test_zeichen_und_name_stehen_oben_im_rand(unkomprimiert):
+    """Jedes Blatt trägt oben Zeichen und Name -- im Seitenrand über dem
+    Satzspiegel, damit Anschriftfeld und Absender des Vermieters bleiben,
+    wo sie waren."""
+    pdf = _erzeuge(_viele_zeilen())
+    hoehen = [float(y) for y in re.findall(
+        rb'1 0 0 1 [\d.]+ ([\d.]+) Tm \(NebenkostenFix\) Tj', pdf)]
+    assert len(hoehen) == _seiten(pdf) >= 2
+    satzspiegel_oben = A4[1] - 56.7
+    assert all(y > satzspiegel_oben for y in hoehen), hoehen
+    # Das Zeichen als Vektor (Farbe der Marke), kein eingebettetes Bild.
+    farbe = marke.FARBE.lstrip('#')
+    # ReportLab schreibt Farbanteile ohne führende Null: .309804 statt 0.309804.
+    rgb = ' '.join(f'{int(farbe[i:i + 2], 16) / 255:.6g}'.removeprefix('0')
+                   for i in (0, 2, 4))
+    assert pdf.count(f'{rgb} rg'.encode()) >= _seiten(pdf)

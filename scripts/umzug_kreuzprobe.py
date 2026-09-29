@@ -95,7 +95,9 @@ def _anlegen(anwendung, daten: Path, paket: Path) -> dict:
         db.session.commit()
         db.session.remove()
     (daten / 'vermieter-logo.png').write_bytes(PNG)
-    (daten / 'lizenz.nklizenz').write_text('{"probe": "fiktiv"}', encoding='utf-8')
+    import einstellungen
+    einstellungen.schreiben(daten, updates_automatisch=False,
+                            haftung={'version': 1, 'bestaetigt_am': '2026-01-01T00:00:00+00:00'})
     umzug.paket_erstellen(anwendung.app, paket)
     return umzug.bestandsbericht(anwendung.app)
 
@@ -141,8 +143,8 @@ def vergleichen(erwartet: dict, angekommen: dict) -> list[str]:
         fehler.append(f'Vermieterwerte nicht festgeschrieben: {angekommen.get("vermieter")}')
     if not angekommen.get('logo'):
         fehler.append('Logo fehlt')
-    if not angekommen.get('lizenz'):
-        fehler.append('Lizenzdatei fehlt')
+    if angekommen.get('einstellungen') != erwartet.get('einstellungen'):
+        fehler.append(f'Einstellungen nicht übernommen: {angekommen.get("einstellungen")}')
     return fehler
 
 

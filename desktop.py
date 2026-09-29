@@ -193,6 +193,11 @@ def datenordner_bestimmen(fragen: bool = True, vorgabe: str | None = None) -> Pa
     return ordner
 
 
+def extern_erlaubt(adresse: str) -> bool:
+    return any(adresse == ziel or adresse.startswith(ziel + '/')
+               for ziel in (marke.REPO_URL, marke.KOFI_URL))
+
+
 # --- Brücke für das Fenster (NK-152) ---------------------------------------
 
 class Bruecke:
@@ -230,6 +235,15 @@ class Bruecke:
             # Bandit-Ausnahme (B606): Standardprogramm des Nutzers, kein Befehl
             os.startfile(pfad)  # nosec B606
         return str(pfad)
+
+    def extern_oeffnen(self, adresse: str):
+        """Projektseite und Ko-fi im Standardbrowser (NK-175, NK-179).
+        Nur diese Adressen: eine Seite im Fenster soll keine beliebige
+        Adresse aufrufen lassen koennen."""
+        if not extern_erlaubt(adresse):
+            return False
+        import webbrowser
+        return webbrowser.open(adresse)
 
     # NK-164: Umzugspaket. Große Pakete gehen nicht als base64 durch die
     # Brücke: der Dialog gibt einen Pfad frei, den der Server dann annimmt
@@ -502,6 +516,10 @@ def fenster_starten(datenordner: Path) -> int:  # pragma: no cover - braucht GUI
             # Bandit-Ausnahme (B606): oeffnet den Datenordner im Explorer
             MenuAction('Datenordner anzeigen',
                        lambda: os.startfile(datenordner)),  # nosec B606
+            MenuSeparator(),
+            # NK-179: springt in der Oberfläche zu „Über NebenkostenFix“.
+            MenuAction(f'Über {marke.PRODUKT}',
+                       lambda: fenster.evaluate_js("zeigeHilfe('hilfe-ueber')")),
         ]),
     ]
     speicher = windows_ordner.lokaler_ordner() / 'WebView2'

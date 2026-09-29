@@ -24,6 +24,7 @@ import backup
 import umzug
 
 ALT_USER = 'alt-vermieter'
+HAFTUNG = {'version': 1, 'bestaetigt_am': '2026-01-01T00:00:00+00:00'}
 ALT_PASS = 'altes-passwort-123'
 PNG = (b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00'
        b'\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05'
@@ -32,13 +33,14 @@ PNG = (b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08
 
 def _aufraeumen(app):
     import datenordner
-    import lizenz
+    import einstellungen
     import vermieter_logo
 
     ordner = datenordner.datenordner()
     while vermieter_logo.loeschen(ordner):
         pass
-    (ordner / lizenz.DATEINAME).unlink(missing_ok=True)
+    (ordner / einstellungen.DATEINAME).unlink(missing_ok=True)
+    (ordner / 'lizenz.nklizenz').unlink(missing_ok=True)
     for unter in (umzug.ARBEIT, umzug.IMPORT):
         shutil.rmtree(ordner / unter, ignore_errors=True)
     for rest in list(Path(backup.standardziel(app)).glob('sicherung*')):
@@ -48,11 +50,12 @@ def _aufraeumen(app):
 
 @pytest.fixture
 def bestand(app_ctx, monkeypatch):
-    """Ein Bestand mit Konto, Immobilie, Beleg, Logo, Lizenz und Umgebungswerten."""
+    """Ein Bestand mit Konto, Immobilie, Beleg, Logo, Einstellungen und
+    Umgebungswerten."""
     from flask_migrate import stamp
 
     import datenordner
-    import lizenz
+    import einstellungen
     from models import InvoiceDocument, Property, User, db
 
     stamp(revision='head')
@@ -75,7 +78,8 @@ def bestand(app_ctx, monkeypatch):
 
     ordner = datenordner.datenordner()
     (ordner / 'vermieter-logo.png').write_bytes(PNG)
-    (ordner / lizenz.DATEINAME).write_text('{"lizenz": "fiktiv"}', encoding='utf-8')
+    einstellungen.schreiben(ordner, haftung=HAFTUNG, updates_automatisch=False,
+                            update_geprueft='2026-01-01T00:00:00+00:00')
     monkeypatch.setenv('VERMIETER_NAME', 'Anna Vermieterin')
     monkeypatch.setenv('VERMIETER_IBAN', 'DE02 1203 0000 0000 2020 51')
     yield app_ctx
@@ -123,11 +127,6 @@ def _manifest_aendern(aendern):
 
 # --- Format ----------------------------------------------------------------------
 
-def test_lizenzname_im_paket_ist_der_des_datenordners():
-    import lizenz
-    assert backup.LIZENZ_IM_ARCHIV == lizenz.DATEINAME
-
-
 def test_paket_ist_zip_mit_allem(bestand, tmp_path):
     paket = _paket(bestand, tmp_path)
     assert zipfile.is_zipfile(paket)
@@ -137,15 +136,18 @@ def test_paket_ist_zip_mit_allem(bestand, tmp_path):
         einstellungen = json.loads(z.read(backup.EINSTELLUNGEN_IM_ARCHIV))
         belegeintrag = z.getinfo('belege/2025/gas.pdf')
     assert {backup.MANIFEST_NAME, backup.DB_IM_ARCHIV, 'belege/2025/gas.pdf',
-            'einstellungen.json', 'einstellungen/vermieter-logo.png',
-            'lizenz.nklizenz'} <= namen
+            'einstellungen.json', 'einstellungen/vermieter-logo.png'} <= namen
+    assert 'lizenz.nklizenz' not in namen
     assert manifest['format'] == 2 and manifest['produkt'] == 'NebenkostenFix'
     assert manifest['quelle']['betrieb'] in ('docker', 'server', 'windows-app')
     assert manifest['zaehlwerte']['properties'] == 1
     assert manifest['zaehlwerte']['users'] == 1
-    assert {e['pfad'] for e in manifest['zusatz']} >= {'einstellungen.json', 'lizenz.nklizenz'}
+    assert {e['pfad'] for e in manifest['zusatz']} >= {'einstellungen.json'}
     assert einstellungen['vermieter_umgebung'] == {'name': 'Anna Vermieterin',
                                                    'iban': 'DE02120300000000202051'}
+    # Hinweis und Update-Einstellung wandern mit, der Zeitpunkt der letzten
+    # Suche gehoert zum Rechner (NK-174, NK-175).
+    assert einstellungen['anwendung'] == {'haftung': HAFTUNG, 'updates_automatisch': False}
     # PDFs werden gespeichert, nicht noch einmal komprimiert.
     assert belegeintrag.compress_type == zipfile.ZIP_STORED
 
@@ -185,7 +187,7 @@ def test_export_ohne_anmeldung_gesperrt(bestand):
 
 def test_rundlauf_ueber_die_api_ersetzt_alles(bestand, tmp_path, monkeypatch):
     import datenordner
-    import lizenz
+    import einstellungen
     from models import Property, User, Vermieterdaten, db
 
     paket = _paket(bestand, tmp_path)
@@ -194,7 +196,7 @@ def test_rundlauf_ueber_die_api_ersetzt_alles(bestand, tmp_path, monkeypatch):
     monkeypatch.delenv('VERMIETER_IBAN')
     ordner = datenordner.datenordner()
     (ordner / 'vermieter-logo.png').unlink()
-    (ordner / lizenz.DATEINAME).unlink()
+    (ordner / einstellungen.DATEINAME).unlink()
     db.session.add(Property(name='Nur auf dem neuen Rechner'))
     neu = User(username='neu')
     neu.set_password('neues-passwort-1')
@@ -219,7 +221,8 @@ def test_rundlauf_ueber_die_api_ersetzt_alles(bestand, tmp_path, monkeypatch):
     bericht = antwort.get_json()
     assert bericht['anmelden'] is True
     assert bericht['belege'] == 1 and bericht['fehlende_verweise'] == []
-    assert bericht['zusatz'] == {'logo': True, 'lizenz': True,
+    assert bericht['zusatz'] == {'logo': True,
+                                 'einstellungen': ['haftung', 'updates_automatisch'],
                                  'vermieter_festgeschrieben': ['name', 'iban']}
     assert Path(bericht['sicherheitskopie']).is_file()
     assert bericht['nicht_im_paket']
@@ -227,7 +230,9 @@ def test_rundlauf_ueber_die_api_ersetzt_alles(bestand, tmp_path, monkeypatch):
     assert _hausnamen(bestand.app) == ['Musterhaus Lindenstraße']
     assert (backup.belegwurzel() / '2025' / 'gas.pdf').is_file()
     assert (ordner / 'vermieter-logo.png').read_bytes() == PNG
-    assert (ordner / lizenz.DATEINAME).is_file()
+    stand = einstellungen.lesen(ordner)
+    assert stand['haftung'] == HAFTUNG and stand['updates_automatisch'] is False
+    assert stand['update_geprueft'] is None
     with bestand.app.app_context():
         zeile = Vermieterdaten.einziger()
         assert (zeile.name, zeile.iban) == ('Anna Vermieterin', 'DE02120300000000202051')
@@ -249,6 +254,37 @@ def test_vorhandene_vermieterwerte_bleiben(bestand, tmp_path, monkeypatch):
     with bestand.app.app_context():
         assert Vermieterdaten.einziger().name == 'Schon eingetragen'
         db.session.remove()
+
+
+def test_altes_paket_mit_lizenz_bleibt_einlesbar(bestand, tmp_path):
+    """Pakete bis 0.9 tragen ``lizenz.nklizenz`` und keine App-Einstellungen;
+    beides schadet nicht (NK-176)."""
+    import hashlib
+
+    import datenordner
+    import einstellungen
+
+    lizenz = b'{"format": "nk-lizenz-1", "daten": {}, "signatur": ""}'
+
+    def alt(manifest, inhalt):
+        manifest['zusatz'].append({'pfad': 'lizenz.nklizenz', 'groesse': len(lizenz),
+                                   'sha256': hashlib.sha256(lizenz).hexdigest()})
+        werte = json.loads(inhalt[backup.EINSTELLUNGEN_IM_ARCHIV])
+        del werte['anwendung']
+        neu = json.dumps(werte).encode()
+        inhalt[backup.EINSTELLUNGEN_IM_ARCHIV] = neu
+        for eintrag in manifest['zusatz']:
+            if eintrag['pfad'] == backup.EINSTELLUNGEN_IM_ARCHIV:
+                eintrag.update(groesse=len(neu), sha256=hashlib.sha256(neu).hexdigest())
+
+    paket = _umbauen(_paket(bestand, tmp_path), tmp_path / 'alt.nkfix',
+                     _manifest_aendern(alt), zusatz=[('lizenz.nklizenz', lizenz)])
+    ordner = datenordner.datenordner()
+    bericht = umzug.uebernehmen(bestand.app, paket)
+    assert bericht['zusatz']['einstellungen'] == []
+    assert not (ordner / 'lizenz.nklizenz').exists()
+    # Was hier schon bestaetigt war, bleibt.
+    assert einstellungen.lesen(ordner)['haftung'] == HAFTUNG
 
 
 def test_paket_ohne_logo_entfernt_das_logo(bestand, tmp_path):
