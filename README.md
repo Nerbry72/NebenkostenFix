@@ -20,6 +20,8 @@
 <p align="center">
   <a href="https://github.com/Nerbry72/NebenkostenFix/releases/latest"><strong>Herunterladen</strong></a> ·
   <a href="#docker">Docker</a> ·
+  <a href="docs/handbuch/handbuch.md">Handbuch</a> ·
+  <a href="docs/handbuch/faq.md">Häufige Fragen</a> ·
   <a href="#updates">Updates</a> ·
   <a href="#mitmachen">Mitmachen</a> ·
   <a href="https://ko-fi.com/nerbry72">Unterstützen</a>
@@ -32,6 +34,9 @@
 Immobilien, Wohnungen, Mieter, Zählerstände und Rechnungen liegen an einer Stelle. Am Ende
 steht eine fertige Abrechnung als PDF. Die Regeln folgen BetrKV, HeizkostenV und CO2KostAufG.
 Gedacht für private Vermieter mit ein bis fünfzehn Wohnungen.
+
+Wie Sie Ihre erste Abrechnung erstellen, erklärt das [Handbuch](docs/handbuch/handbuch.md).
+Kurze Antworten stehen in den [häufigen Fragen](docs/handbuch/faq.md).
 
 ## Was es kann
 
@@ -100,6 +105,13 @@ Die Prüfsumme jeder Setup-Exe steht im Release (`SHA256SUMS.txt`):
 ```powershell
 Get-FileHash .\NebenkostenFix-0.10.0-Setup.exe -Algorithm SHA256
 ```
+
+**Warnung von Windows SmartScreen:** Die Setup-Exe ist nicht mit einem Code-Signing-Zertifikat
+signiert, das kostet jedes Jahr Geld. Windows zeigt deshalb beim ersten Start „Der Computer
+wurde durch Windows geschützt“. Laden Sie das Setup nur hier unter Releases herunter und
+vergleichen Sie die Prüfsumme. Stimmt sie, klicken Sie auf „Weitere Informationen“ und dann
+auf „Trotzdem ausführen“. Updates aus der App heraus prüft NebenkostenFix selbst über eine
+digitale Signatur. Die spätere Fassung aus dem Microsoft Store kommt ohne diese Warnung aus.
 
 ### Docker
 
@@ -288,7 +300,7 @@ binden Sie ihn dort ein oder betreiben den Container direkt auf dem NAS.
 
 Eine Sicherung ist eine `.nkfix`-Datei, also ein ZIP. Darin stecken die Datenbank, alle
 Belege, Vermieterdaten, Logo und Einstellungen sowie eine Prüfsumme je Datei. In der Oberfläche
-steht das unter Einstellungen → Sicherung. Auf der Kommandozeile:
+steht das unter Einstellungen → Datensicherung. Auf der Kommandozeile:
 
 ```bash
 docker compose exec web flask backup create
@@ -316,11 +328,11 @@ in `BACKUP_ZIELE` ein.
 Dieselbe `.nkfix`-Datei ist auch das Umzugspaket, zwischen Docker und Windows in beide
 Richtungen.
 
-1. **Alter Rechner:** Einstellungen → Sicherung → „Alles exportieren“
+1. **Alter Rechner:** Einstellungen → Datensicherung → „Alles exportieren“
    (oder `docker compose exec web flask umzug export`).
 2. **Neuer Rechner, frisch installiert:** Auf der Einrichtungsseite „Daten aus einer anderen
    Installation übernehmen“ wählen. Danach melden Sie sich mit dem bisherigen Konto an.
-3. **Neuer Rechner, schon in Benutzung:** Einstellungen → Sicherung → „Daten übernehmen
+3. **Neuer Rechner, schon in Benutzung:** Einstellungen → Datensicherung → „Daten übernehmen
    (ersetzt alles)“. Der jetzige Stand wird vorher gesichert.
 
 Große Pakete lädt der Browser in Stücken hoch. Nach einem Abbruch geht es an derselben
