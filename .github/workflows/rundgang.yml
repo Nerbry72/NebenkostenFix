@@ -8,11 +8,15 @@ name: rundgang
 on:
   pull_request:
     branches: [main]
-  workflow_call:
   workflow_dispatch:
 
 permissions:
   contents: read
+
+# Neuer Push auf denselben Pull Request bricht den alten Lauf ab.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   rundgang:
