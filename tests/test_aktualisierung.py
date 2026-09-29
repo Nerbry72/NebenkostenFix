@@ -191,10 +191,20 @@ def test_automatisch_findet_und_erinnert_beim_naechsten_start(schluessel, quelle
     ergebnis = aktualisierung.automatisch('0.9.0', True, tmp_path, laden=laden, jetzt=JETZT)
     assert ergebnis['neu'] and ergebnis['version'] == '0.9.1'
     assert gefragt == [(quelle, aktualisierung.AUTOMATISCH_ZEIT_S)]
-    # „Später erinnern“: der nächste Start, auch eine Minute später, meldet es wieder.
+    # „Später erinnern“: der nächste Start, auch eine Minute später, meldet es
+    # wieder -- ohne neue Abfrage, höchstens eine in 24 Stunden (PRIVACY.md).
     wieder = aktualisierung.automatisch('0.9.0', True, tmp_path, laden=laden,
                                         jetzt=JETZT + timedelta(minutes=1))
-    assert wieder['version'] == '0.9.1' and len(gefragt) == 2
+    assert wieder == ergebnis and len(gefragt) == 1
+    # Nach dem Update auf 0.9.1 ist das Gemerkte erledigt.
+    assert aktualisierung.automatisch('0.9.1', True, tmp_path, laden=laden,
+                                      jetzt=JETZT + timedelta(hours=1)) is None
+    assert len(gefragt) == 1
+    # Die nächste Suche nach 24 Stunden ohne Neues vergisst den alten Fund.
+    laden = _lader({quelle: _manifest(schluessel, version='0.9.0')}, gefragt)
+    assert aktualisierung.automatisch('0.9.0', True, tmp_path, laden=laden,
+                                      jetzt=JETZT + timedelta(hours=24)) is None
+    assert len(gefragt) == 2 and einstellungen.lesen(tmp_path)['update_gefunden'] is None
 
 
 def test_automatisch_hoechstens_alle_24_stunden(schluessel, quelle, tmp_path):

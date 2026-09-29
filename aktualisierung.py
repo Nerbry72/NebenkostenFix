@@ -244,10 +244,10 @@ def automatisch(aktuelle_version: str, desktop: bool, ordner=None,
     """Die Suche beim Start (NK-175). ``None`` heißt: nichts zeigen.
 
     Still bei jedem Fehler -- offline, Quelle weg, Manifest kaputt --, denn
-    niemand hat gefragt. Solange nichts Neues da ist, wird höchstens alle
-    24 Stunden gesucht; der
+    niemand hat gefragt. Gesucht wird höchstens alle 24 Stunden; der
     Zeitpunkt zählt auch, wenn die Suche scheitert, sonst fragte eine App
-    ohne Netz bei jedem Start.
+    ohne Netz bei jedem Start. Ein gefundenes Update meldet jeder Start
+    wieder („Später erinnern“, Glossar), aus dem gemerkten Ergebnis.
     """
     import einstellungen
 
@@ -262,15 +262,18 @@ def automatisch(aktuelle_version: str, desktop: bool, ordner=None,
     except (TypeError, ValueError):
         zuletzt = None
     if zuletzt is not None and timedelta(0) <= jetzt - zuletzt < AUTOMATISCH_ABSTAND:
+        # Nach einem Update der App gilt das Gemerkte nicht mehr.
+        gefunden = stand['update_gefunden']
+        if isinstance(gefunden, dict) and gefunden.get('aktuell') == aktuelle_version:
+            return gefunden
         return None
     try:
-        einstellungen.schreiben(ordner, update_geprueft=jetzt.isoformat())
+        einstellungen.schreiben(ordner, update_geprueft=jetzt.isoformat(),
+                                update_gefunden=None)
         ergebnis = suchen(aktuelle_version, desktop, oeffentlich, laden,
                           AUTOMATISCH_ZEIT_S)
         if ergebnis['neu']:
-            # „Später erinnern“ (Glossar): ein gefundenes Update meldet auch
-            # der nächste Start, diese Suche zählt nicht für den Abstand.
-            einstellungen.schreiben(ordner, update_geprueft=None)
+            einstellungen.schreiben(ordner, update_gefunden=ergebnis)
     except (AktualisierungsFehler, OSError, ValueError):
         return None
     return ergebnis if ergebnis['neu'] else None
