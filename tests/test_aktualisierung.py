@@ -88,7 +88,14 @@ def test_ohne_herausgeberschluessel_kein_manifest(monkeypatch, quelle):
     assert gefragt == []  # kein Netzabruf, wenn nichts prüfbar ist
 
 
-def test_nur_https(monkeypatch, schluessel):
+def test_eingebauter_herausgeberschluessel_ist_gueltig():
+    """Ein Tippfehler im Schlüssel ließe jede installierte App alle Updates ablehnen."""
+    assert aktualisierung.schluessel_laden() is not None
+
+
+def test_nur_https(monkeypatch, schluessel, kein_update_netz):
+    # Die Prüfung sitzt im echten Lader und greift vor jedem Netzzugriff.
+    monkeypatch.setattr(aktualisierung, '_laden', kein_update_netz)
     monkeypatch.setenv('NK_UPDATE_QUELLE', 'http://beispiel.invalid/m.json')
     with pytest.raises(AktualisierungsFehler, match='https'):
         aktualisierung.suchen('0.9.0', desktop=True)
@@ -146,9 +153,16 @@ def test_installer_mit_pruefsumme(schluessel, quelle, tmp_path):
         aktualisierung.installer_laden('0.9.0', laden=_lader(antworten), ziel=tmp_path)
 
 
-def test_installer_startet_still():
+def test_installer_startet_still_und_die_app_danach_wieder():
     quelltext = (WURZEL / 'aktualisierung.py').read_text(encoding='utf-8')
-    assert "'/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'" in quelltext
+    assert "'/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NEUSTART=1']" in quelltext
+    assert 'subprocess.Popen(befehl, close_fds=True)' in quelltext
+    # Der normale Start-Haken trägt skipifsilent; ohne eigenen Eintrag bliebe
+    # die App nach dem stillen Update geschlossen.
+    iss = (WURZEL / 'packaging/windows/installer.iss').read_text(encoding='utf-8')
+    assert ('Filename: "{app}\\{#AppExe}"; Flags: nowait runasoriginaluser; '
+            'Check: NachUpdateStarten\n') in iss
+    assert "WizardSilent and (ExpandConstant('{param:NEUSTART|0}') = '1')" in iss
 
 
 def test_paketmodus_schaltet_den_updater_ab(schluessel, quelle, monkeypatch, tmp_path):
@@ -171,30 +185,33 @@ def test_paketmodus_ausserhalb_von_windows_aus():
 
 # --- Suche beim Start (NK-175) ----------------------------------------------------
 
-def test_automatisch_findet_und_merkt_sich_den_zeitpunkt(schluessel, quelle, tmp_path):
+def test_automatisch_findet_und_erinnert_beim_naechsten_start(schluessel, quelle, tmp_path):
     gefragt = []
     laden = _lader({quelle: _manifest(schluessel)}, gefragt)
     ergebnis = aktualisierung.automatisch('0.9.0', True, tmp_path, laden=laden, jetzt=JETZT)
     assert ergebnis['neu'] and ergebnis['version'] == '0.9.1'
     assert gefragt == [(quelle, aktualisierung.AUTOMATISCH_ZEIT_S)]
-    assert einstellungen.lesen(tmp_path)['update_geprueft'] == JETZT.isoformat()
+    # „Später erinnern“: der nächste Start, auch eine Minute später, meldet es wieder.
+    wieder = aktualisierung.automatisch('0.9.0', True, tmp_path, laden=laden,
+                                        jetzt=JETZT + timedelta(minutes=1))
+    assert wieder['version'] == '0.9.1' and len(gefragt) == 2
 
 
 def test_automatisch_hoechstens_alle_24_stunden(schluessel, quelle, tmp_path):
     gefragt = []
-    laden = _lader({quelle: _manifest(schluessel)}, gefragt)
-    aktualisierung.automatisch('0.9.0', True, tmp_path, laden=laden, jetzt=JETZT)
+    laden = _lader({quelle: _manifest(schluessel, version='0.9.0')}, gefragt)
+    assert aktualisierung.automatisch('0.9.0', True, tmp_path, laden=laden, jetzt=JETZT) is None
+    assert einstellungen.lesen(tmp_path)['update_geprueft'] == JETZT.isoformat()
     kurz_davor = JETZT + timedelta(hours=23, minutes=59)
-    assert aktualisierung.automatisch('0.9.0', True, tmp_path, laden=laden,
-                                      jetzt=kurz_davor) is None
+    aktualisierung.automatisch('0.9.0', True, tmp_path, laden=laden, jetzt=kurz_davor)
     assert len(gefragt) == 1
-    danach = JETZT + timedelta(hours=24)
-    assert aktualisierung.automatisch('0.9.0', True, tmp_path, laden=laden,
-                                      jetzt=danach)['neu']
+    aktualisierung.automatisch('0.9.0', True, tmp_path, laden=laden,
+                               jetzt=JETZT + timedelta(hours=24))
     assert len(gefragt) == 2
     # Eine Uhr, die zurückgestellt wurde, sperrt die Suche nicht für immer.
-    assert aktualisierung.automatisch('0.9.0', True, tmp_path, laden=laden,
-                                      jetzt=JETZT - timedelta(days=3))['neu']
+    aktualisierung.automatisch('0.9.0', True, tmp_path, laden=laden,
+                               jetzt=JETZT - timedelta(days=3))
+    assert len(gefragt) == 3
 
 
 def test_automatisch_aus_heisst_keine_abfrage(quelle, tmp_path):
@@ -345,3 +362,27 @@ def test_api_haftung(auth_client, monkeypatch, tmp_path):
     # Neue Fassung: der Hinweis kommt noch einmal.
     monkeypatch.setattr(haftung, 'VERSION', haftung.VERSION + 1)
     assert auth_client.get('/api/haftung').get_json()['bestaetigt'] is False
+
+
+def test_einstellungen_gleichzeitig_geht_nichts_verloren(tmp_path):
+    """Suche beim Start und „Verstanden“ zugleich: jede Änderung bleibt."""
+    import threading
+
+    fehler = []
+
+    def schreibe(feld, werte):
+        try:
+            for wert in werte:
+                einstellungen.schreiben(tmp_path, **{feld: wert})
+        except Exception as e:  # noqa: BLE001 - jeder Fehler zählt
+            fehler.append(e)
+
+    faeden = [threading.Thread(target=schreibe, args=('update_geprueft', [str(i) for i in range(150)])),
+              threading.Thread(target=schreibe, args=('haftung', [{'version': i} for i in range(150)]))]
+    for faden in faeden:
+        faden.start()
+    for faden in faeden:
+        faden.join()
+    assert fehler == []
+    stand = einstellungen.lesen(tmp_path)
+    assert stand['update_geprueft'] == '149' and stand['haftung'] == {'version': 149}

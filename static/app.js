@@ -569,7 +569,10 @@ function zeigeHilfe(abschnitt) {
         tab.classList.remove('active');
         tab.style.display = 'none';
     });
-    document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
+    // data-fest bleibt offen: „Über …“ im Menü der Windows-App darf den
+    // Haftungshinweis nicht wegklicken (NK-174).
+    document.querySelectorAll('.modal-overlay.active:not([data-fest])')
+        .forEach(m => m.classList.remove('active'));
     const hilfe = document.getElementById('tab-hilfe');
     hilfe.classList.add('active');
     hilfe.style.display = 'block';

@@ -104,3 +104,21 @@ def auth_client(app_ctx):
 def anon_client(app_ctx):
     """Nicht angemeldeter Testclient."""
     return app_ctx.app.test_client()
+
+
+@pytest.fixture(autouse=True)
+def kein_update_netz(monkeypatch):
+    """Kein Test fragt GitHub nach Updates (NK-175).
+
+    Mit eingebautem Herausgeberschlüssel ginge ``/api/aktualisierung`` sonst
+    wirklich ins Netz. Wer ein Manifest braucht, gibt ``laden`` mit oder
+    setzt ``_laden`` selbst. Die Fixture liefert das echte ``_laden``.
+    """
+    import aktualisierung
+
+    echt = aktualisierung._laden
+
+    def kein_netz(adresse, grenze, zeit=20):
+        raise aktualisierung.AktualisierungsFehler('Tests laden nichts aus dem Netz.')
+    monkeypatch.setattr(aktualisierung, '_laden', kein_netz)
+    return echt

@@ -16,6 +16,8 @@ import json
 import os
 from pathlib import Path
 
+from dateisperre import dateisperre
+
 DATEINAME = 'app-einstellungen.json'
 STANDARD = {'haftung': None, 'updates_automatisch': True, 'update_geprueft': None}
 UEBERTRAGBAR = ('haftung', 'updates_automatisch')
@@ -44,9 +46,12 @@ def schreiben(ordner: str | os.PathLike | None = None, **aenderungen) -> dict:
     if unbekannt:
         raise KeyError(', '.join(sorted(unbekannt)))
     datei = _datei(ordner)
-    stand = {**lesen(datei.parent), **aenderungen}
     datei.parent.mkdir(parents=True, exist_ok=True)
-    temp = datei.with_name(datei.name + '.neu')
-    temp.write_text(json.dumps(stand, ensure_ascii=False, indent=2), encoding='utf-8')
-    os.replace(temp, datei)
+    # Am Stück: Suche beim Start, „Verstanden“ und der Schalter können
+    # gleichzeitig kommen und überschrieben sich sonst gegenseitig.
+    with dateisperre(str(datei) + '.lock'):
+        stand = {**lesen(datei.parent), **aenderungen}
+        temp = datei.with_name(datei.name + '.neu')
+        temp.write_text(json.dumps(stand, ensure_ascii=False, indent=2), encoding='utf-8')
+        os.replace(temp, datei)
     return stand

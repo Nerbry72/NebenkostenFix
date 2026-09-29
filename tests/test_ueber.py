@@ -44,3 +44,14 @@ def test_api_ueber_zeigt_auf_die_konstanten(auth_client, monkeypatch):
 def test_api_ueber_kennt_den_store(auth_client, monkeypatch):
     monkeypatch.setattr(aktualisierung, 'paketmodus', lambda: True)
     assert auth_client.get('/api/ueber').get_json()['weg'] == 'Microsoft Store'
+
+
+def test_hilfe_laesst_den_haftungshinweis_offen():
+    """„Über …“ im Menü ruft zeigeHilfe; der feste Dialog bleibt (NK-174)."""
+    import re
+    from pathlib import Path
+
+    js = (Path(__file__).resolve().parents[1] / 'static/app.js').read_text(encoding='utf-8')
+    rumpf = re.search(r'function zeigeHilfe\(abschnitt\) \{(.*?)\n\}', js, re.S).group(1)
+    assert ".modal-overlay.active:not([data-fest])" in rumpf
+    assert ".modal-overlay.active')" not in rumpf

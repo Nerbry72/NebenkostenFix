@@ -2,8 +2,8 @@
 # wie im Pull Request, dann das Docker-Abbild (amd64 + arm64) nach GHCR und
 # der Windows-Installer, zuletzt das GitHub-Release vX.Y.Z mit der Setup-Exe
 # und ihrer Pruefsumme. Die Nummer steht nur in abrechnung_version.py.
-# Ist das Secret UPDATE_SCHLUESSEL gesetzt, haengt zusaetzlich das signierte
-# update.json am Release; daraus liest die App, ob es etwas Neues gibt (NK-175).
+# Am Release haengt ausserdem das signierte update.json; daraus liest die App,
+# ob es etwas Neues gibt (NK-175). Ohne Secret UPDATE_SCHLUESSEL kein Release.
 # Ein roter Test haelt alles an; es wird nichts veroeffentlicht.
 name: release
 
@@ -135,16 +135,15 @@ jobs:
           exe="NebenkostenFix-${VERSION}-Setup.exe"
           cp "$(find windows -name "$exe" | head -n1)" "$exe"
           sha256sum "$exe" > SHA256SUMS.txt
-      # Ohne Secret gibt es kein update.json; die App meldet dann schlicht
-      # nichts Neues. Der private Schluessel liegt nur im Secret.
+      # Ohne update.json saehe keine installierte App dieses Release, deshalb
+      # bricht der Lauf ohne Secret ab. Der private Schluessel liegt nur dort.
       - name: Update-Manifest signieren
         env:
           UPDATE_SCHLUESSEL: ${{ secrets.UPDATE_SCHLUESSEL }}
         run: |
           if [ -z "$UPDATE_SCHLUESSEL" ]; then
-            echo "::notice::Secret UPDATE_SCHLUESSEL fehlt, kein update.json."
-            echo "- update.json: fehlt (Secret UPDATE_SCHLUESSEL nicht gesetzt)" >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+            echo "::error::Secret UPDATE_SCHLUESSEL fehlt, ohne update.json kein Release."
+            exit 1
           fi
           pip install --quiet cryptography==50.0.1
           umask 077

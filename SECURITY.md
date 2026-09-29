@@ -23,7 +23,8 @@ Docker weisen auf neue Versionen hin (abschaltbar unter Einstellungen → Update
 
 ## Was die Anwendung selbst tut
 
-- Ohne Anmeldung öffnet sich keine Seite außer `/api/health`.
+- Ohne Anmeldung erreichbar sind nur Anmeldung, Ersteinrichtung und `/api/health`,
+  dazu Stil, Zeichen und Schrift dieser Seiten.
 - Nach fünf Fehlversuchen je Konto oder zwanzig je Adresse ist die Anmeldung 15 Minuten gesperrt.
 - Schreibende Anfragen von fremden Seiten lehnt sie ab. Jede Antwort trägt eine
   Content-Security-Policy ohne fremde Quellen.

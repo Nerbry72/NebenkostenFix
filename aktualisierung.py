@@ -68,7 +68,7 @@ AUTOMATISCH_ABSTAND = timedelta(hours=24)
 # erzeugt das Paar einmal offline (``scripts/update_signieren.py schluessel``),
 # der private Teil liegt nur als Actions-Secret ``UPDATE_SCHLUESSEL`` bei
 # GitHub. Solange das hier leer ist, nimmt die App kein Manifest an.
-HERAUSGEBER_SCHLUESSEL = ''
+HERAUSGEBER_SCHLUESSEL = 'D2DuitCVsfZ2Cr+Vk8mRI4NhS8mvgRMXlQMLia7H7XY='
 
 
 class AktualisierungsFehler(Exception):
@@ -244,7 +244,8 @@ def automatisch(aktuelle_version: str, desktop: bool, ordner=None,
     """Die Suche beim Start (NK-175). ``None`` heißt: nichts zeigen.
 
     Still bei jedem Fehler -- offline, Quelle weg, Manifest kaputt --, denn
-    niemand hat gefragt. Gesucht wird höchstens alle 24 Stunden; der
+    niemand hat gefragt. Solange nichts Neues da ist, wird höchstens alle
+    24 Stunden gesucht; der
     Zeitpunkt zählt auch, wenn die Suche scheitert, sonst fragte eine App
     ohne Netz bei jedem Start.
     """
@@ -266,6 +267,10 @@ def automatisch(aktuelle_version: str, desktop: bool, ordner=None,
         einstellungen.schreiben(ordner, update_geprueft=jetzt.isoformat())
         ergebnis = suchen(aktuelle_version, desktop, oeffentlich, laden,
                           AUTOMATISCH_ZEIT_S)
+        if ergebnis['neu']:
+            # „Später erinnern“ (Glossar): ein gefundenes Update meldet auch
+            # der nächste Start, diese Suche zählt nicht für den Abstand.
+            einstellungen.schreiben(ordner, update_geprueft=None)
     except (AktualisierungsFehler, OSError, ValueError):
         return None
     return ergebnis if ergebnis['neu'] else None
@@ -298,8 +303,10 @@ def installer_starten(datei: Path) -> None:  # pragma: no cover - Windows
     """Startet den Installer und kehrt zurück; er schließt die App selbst."""
     if sys.platform != 'win32':
         raise AktualisierungsFehler('Installieren geht nur in der Windows-App.')
+    # Still (NK-175); die Abfrage nach Adminrechten bleibt, solange nach
+    # Programme installiert wird. /NEUSTART=1: der Installer startet die App
+    # danach wieder (installer.iss).
+    befehl = [str(datei), '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NEUSTART=1']
     # Bandit-Ausnahme (B603): Pfad aus installer_laden (geprüfte Prüfsumme),
-    # feste Argumente, keine Shell. Still (NK-175); die Abfrage nach
-    # Adminrechten bleibt, solange nach Programme installiert wird.
-    subprocess.Popen([str(datei), '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'],  # nosec B603
-                     close_fds=True)
+    # feste Argumente, keine Shell.
+    subprocess.Popen(befehl, close_fds=True)  # nosec B603
