@@ -2,7 +2,7 @@
 # Index-Digest: dasselbe Abbild baut auf dem PC und auf dem Raspberry Pi bzw.
 # der Synology, und ein Bau von morgen nimmt dieselbe Basis wie heute.
 # python:3.11-slim (Debian trixie, Python 3.11.16), Stand 2026-09-24.
-FROM python:3.11-slim@sha256:da047cb8f9d1d98e5c070f5300ba9f7274e33b8fc0e5be5ed88740aed1b95ba9
+FROM python:3.14-slim@sha256:51dafde81dbdb6ebde285137a295cf18a47ca95234fe388a343719cb97305b3d
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
