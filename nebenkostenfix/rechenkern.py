@@ -1115,46 +1115,54 @@ def _personentage_im_haus(vorgang: Vorgang, von: date, bis: date):
     return eigene, alle, parteien
 
 
-def _allgemeinquoten(vorgang: Vorgang, haupt: Zaehler, unter, von: date, bis: date):
-    """``(Mieter, Vermieter)``: die Anteile am Allgemeinverbrauch in ``[von, bis)``.
+def _allgemeinquoten(vorgang: Vorgang, haupt: Zaehler, unter, von: date, bis: date,
+                     fenster_von: date, fenster_bis: date):
+    """``(Mieter, Vermieter)``: die Anteile am Allgemeinverbrauch der Rechnung ``[von, bis)``.
 
-    F-122: der Zeitraum zerfaellt an jedem Einzug, Auszug und jeder Aenderung
+    F-122: die Rechnung zerfaellt an jedem Einzug, Auszug und jeder Aenderung
     der Haushaltsgroesse in Abschnitte gleicher Belegung. In jedem Abschnitt
     wird der Allgemeinverbrauch gemessen und nach Personentagen geteilt; die
-    Quote ist der Anteil an der Summe. So gilt dieselbe Regel fuer jeden
-    Zeitraum, und die Anteile aller Mieter plus der Vermieteranteil ergeben
-    die Rechnung -- auch wenn der Verbrauch uebers Jahr ungleich liegt.
+    Quote ist der Anteil an der Summe. Der Mieter traegt nur aus seinem
+    Abrechnungsfenster ``[fenster_von, fenster_bis)``, der Vermieter aus der
+    ganzen Rechnung. Mal dem Allgemeinbetrag der ganzen Rechnung ergeben die
+    Anteile aller Mieter plus der Vermieteranteil die Rechnung -- auch wenn
+    der Verbrauch uebers Jahr ungleich liegt.
 
-    ``None``, wenn es nur einen Abschnitt gibt (dann ist die Quote das
-    Verhaeltnis der Personentage, wie seit NK-097) oder der Allgemeinverbrauch
-    nicht positiv ist (D-73 regelt den Fall).
+    D-73 je Abschnitt: misst ein Abschnitt negativen Allgemeinverbrauch, zaehlt
+    er als null. Niemand bekommt eine Gutschrift, und die positiven Abschnitte
+    teilen sich, was die Rechnung netto an Allgemeinverbrauch hat.
+
+    ``None``, wenn die Belegung ueber die ganze Rechnung gleich bleibt (dann
+    ist die Quote das Verhaeltnis der Personentage, wie seit NK-097) oder kein
+    Abschnitt positiv ist.
     """
-    grenzen = {von, bis}
+    belegung = {von, bis}
     for m in vorgang.mieter_der_immobilie:
-        grenzen |= {m.einzug, mietende(m.auszug, bis)}
-        grenzen |= {h.gueltig_ab for h in m.haushaltsgroessen}
-    grenzen = [g for g in sorted(grenzen) if von <= g <= bis]
-    if len(grenzen) <= 2:
+        belegung |= {m.einzug, mietende(m.auszug, bis)}
+        belegung |= {h.gueltig_ab for h in m.haushaltsgroessen}
+    belegung = {g for g in sorted(belegung) if von <= g <= bis}
+    if len(belegung) <= 2:
         return None
+    grenzen = [g for g in sorted(belegung | {fenster_von, fenster_bis}) if von <= g <= bis]
 
-    menge = mieter = vermieter = NULL
+    summe = mieter = vermieter = NULL
     for a, e in zip(grenzen, grenzen[1:]):
+        allgemein = dec(verbrauch_in(haupt, a, e)['consumption']) - sum(
+            dec(verbrauch_in(z, a, e)['consumption']) for z in unter)
+        if allgemein <= 0:
+            continue
         eigene, alle, _ = _personentage_im_haus(vorgang, a, e)
         leer = sum(b.unbelegt for b in _leerstandsbilanz(vorgang, a, e)
                    if b.traegt_der_vermieter)
         if alle + leer <= 0:
             continue
-        allgemein = dec(verbrauch_in(haupt, a, e)['consumption']) - sum(
-            dec(verbrauch_in(z, a, e)['consumption']) for z in unter)
-        menge += allgemein
-        mieter += allgemein * dec(eigene) / dec(alle + leer)
+        summe += allgemein
+        if fenster_von <= a and e <= fenster_bis:
+            mieter += allgemein * dec(eigene) / dec(alle + leer)
         vermieter += allgemein * dec(leer) / dec(alle + leer)
-    if menge <= 0:
+    if summe <= 0:
         return None
-    # ponytail: ein negativer Abschnitt in einem positiven Zeitraum kann die
-    # Quote ueber 1 schieben; geklemmt, bis ein echter Bestand das zeigt.
-    klemme = lambda q: min(Decimal(1), max(NULL, q))  # noqa: E731
-    return klemme(mieter / menge), klemme(vermieter / menge)
+    return mieter / summe, vermieter / summe
 
 
 def _leerstandsbilanz(vorgang: Vorgang, von: date, bis: date, nur=None) -> list:
@@ -2721,12 +2729,27 @@ def rechne(vorgang: Vorgang) -> dict:
                         if b.traegt_der_vermieter)
                     total_person_days += vermieter_pt
 
-                    # F-122: wechselt die Belegung im Fenster, wird je
+                    # Der Allgemeinbetrag der ganzen Rechnung (D-73: nie negativ).
+                    haupt = verbrauch_in(main_meter, inv.beginn, inv.ende_grenze)
+                    unter = [verbrauch_in(m, inv.beginn, inv.ende_grenze)
+                             for m in all_sub_meters]
+                    if preis_ht_eff is not None:
+                        allgemein_voll = (
+                            max(NULL, dec(haupt['ht']) - sum(dec(d['ht']) for d in unter))
+                            * preis_ht_eff
+                            + max(NULL, dec(haupt['nt']) - sum(dec(d['nt']) for d in unter))
+                            * preis_nt_eff)
+                    else:
+                        allgemein_voll = dec(max(0, haupt['consumption'] - sum(
+                            d['consumption'] for d in unter))) * cost_per_unit
+
+                    # F-122: wechselt die Belegung in der Rechnung, wird je
                     # Abschnitt gemessen -- sonst die Quote der Personentage.
                     quoten = _allgemeinquoten(
-                        vorgang, main_meter, all_sub_meters, overlap_von, overlap_bis)
+                        vorgang, main_meter, all_sub_meters, inv.beginn, inv.ende_grenze,
+                        overlap_von, overlap_bis)
                     if quoten:
-                        tenant_allgemein_share_prorated = allgemein_cost * quoten[0]
+                        tenant_allgemein_share_prorated = allgemein_voll * quoten[0]
                         abschnitte_text = ', gemessen je Belegungsabschnitt'
                     elif total_person_days > 0:
                         tenant_allgemein_share_prorated = allgemein_cost * (dec(this_tenant_days) / dec(total_person_days))
@@ -2741,24 +2764,10 @@ def rechne(vorgang: Vorgang) -> dict:
                     if voll_pt > 0:
                         _, voll_mieter_pt, _ = _personentage_im_haus(
                             vorgang, inv.beginn, inv.ende_grenze)
-                        haupt = verbrauch_in(main_meter, inv.beginn, inv.ende_grenze)
-                        unter = [verbrauch_in(m, inv.beginn, inv.ende_grenze)
-                                 for m in all_sub_meters]
-                        if preis_ht_eff is not None:
-                            allgemein_voll = (
-                                max(NULL, dec(haupt['ht']) - sum(dec(d['ht']) for d in unter))
-                                * preis_ht_eff
-                                + max(NULL, dec(haupt['nt']) - sum(dec(d['nt']) for d in unter))
-                                * preis_nt_eff)
-                        else:
-                            allgemein_voll = dec(max(0, haupt['consumption'] - sum(
-                                d['consumption'] for d in unter))) * cost_per_unit
-                        voll_quoten = _allgemeinquoten(
-                            vorgang, main_meter, all_sub_meters, inv.beginn, inv.ende_grenze)
                         anteil = _vermieterpersonenanteil(
                             vorgang, f"{cat.name} (Allgemeinverbrauch)", inv, voll_bilanz,
                             voll_pt, voll_mieter_pt + voll_pt, betrag=allgemein_voll,
-                            quote=voll_quoten[1] if voll_quoten else None)
+                            quote=quoten[1] if quoten else None)
                         if anteil:
                             vermieter_positionen.append(anteil)
 

@@ -36,7 +36,7 @@ def _zaehler(id, staende, wohnung_id=None):
                    staende=tuple(Stand(d, s) for d, s in zip((BEGINN, MITTE, GRENZE), staende)))
 
 
-def _welt(wer, haushalt_erster=()):
+def _welt(wer, haushalt_erster=(), haupt=(0.0, 48.0, 100.0), betrag='1000.00'):
     """1000,00 EUR für 100 m³, also 10 EUR je m³; alle Zähler am 01.07. abgelesen.
 
     Wohnung 3 steht bis 30.06. leer (4 m³), ab 01.07. wohnt Mieter 3 dort.
@@ -52,9 +52,9 @@ def _welt(wer, haushalt_erster=()):
         immobilie_name='Hauptstrasse 1', beginn=BEGINN, ende=ENDE,
         wohnungen=wohnungen, mieter_der_immobilie=mieter,
         profile={WASSER.id: 'direkt'},
-        rechnungen=(Rechnung(id=1, kategorie=WASSER, betrag=Decimal('1000.00'),
+        rechnungen=(Rechnung(id=1, kategorie=WASSER, betrag=Decimal(betrag),
                              beginn=BEGINN, ende=ENDE),),
-        zaehler=(_zaehler(10, (0.0, 48.0, 100.0)),
+        zaehler=(_zaehler(10, haupt),
                  _zaehler(11, (0.0, 10.0, 30.0), 1),
                  _zaehler(12, (0.0, 10.0, 30.0), 2),
                  _zaehler(13, (0.0, 4.0, 10.0), 3)),
@@ -62,9 +62,9 @@ def _welt(wer, haushalt_erster=()):
     return replace(vorgang, beginn=MITTE) if wer == 3 else vorgang
 
 
-def _summe(haushalt_erster=()):
+def _summe(haushalt_erster=(), **welt):
     """Alle drei Mieterzeilen plus der Vermieteranteil."""
-    ergebnisse = [rechne(_welt(wer, haushalt_erster)) for wer in (1, 2, 3)]
+    ergebnisse = [rechne(_welt(wer, haushalt_erster, **welt)) for wer in (1, 2, 3)]
     mieter = sum(e['line_items'][0]['tenant_cost'] for e in ergebnisse)
     return mieter + ergebnisse[0]['landlord_share']['total_amount'], ergebnisse
 
@@ -103,3 +103,22 @@ def test_gleiche_belegung_bleibt_beim_alten():
     posten = rechne(ohne_dritten)['line_items'][0]
     assert '365 von 1095 Personentagen' in posten['description']
     assert posten['tenant_cost'] == Decimal('400.00')  # 300 eigen + 100 allgemein
+
+
+def test_negativer_abschnitt_zaehlt_als_null():
+    """D-73 je Abschnitt: im zweiten Halbjahr misst der Hauptzähler 3 m³ weniger als die Wohnungen.
+
+    910 EUR für 91 m³, also wieder 10 EUR je m³. Allgemein erst 24 m³, dann
+    -3 m³: zusammen 21 m³ = 210 EUR. Niemand bekommt eine Gutschrift, Mieter 3
+    trägt nichts. Die 210 EUR teilen sich wie das erste Halbjahr zu gleichen
+    Dritteln: Mieter 1, Mieter 2 und der Leerstand von Wohnung 3.
+    Vorher: der Vermieter trug 8/21 = 80 EUR -- 10 EUR zu viel verteilt.
+    """
+    welt = {'haupt': (0.0, 48.0, 91.0), 'betrag': '910.00'}
+    summe, ergebnisse = _summe(**welt)
+    allgemein = [p['amount'] for p in ergebnisse[0]['landlord_share']['positions']
+                 if 'Allgemeinverbrauch' in p['category']]
+    assert allgemein == [Decimal('70.00')]
+    assert [e['line_items'][0]['tenant_cost'] for e in ergebnisse] == [
+        Decimal('370.00'), Decimal('370.00'), Decimal('60.00')]
+    assert summe == Decimal('910.00')
