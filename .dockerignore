@@ -75,6 +75,8 @@ scripts/rundgang.py
 scripts/umzug_kreuzprobe.py
 # NK-158: Erzeuger der Hilfebegriffe (liest docs/, das nicht im Abbild ist).
 scripts/hilfe_begriffe.py
+# NK-187: Praxisprobe gegen eine Kopie der echten Datenbank.
+scripts/praxisprobe.py
 
 # Entwicklung. Im Abbild laeuft weder pytest noch der Dev-Stapel.
 tests/
