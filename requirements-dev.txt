@@ -1,7 +1,7 @@
 # Entwicklungs- und Testwerkzeuge fuer `make check`.
 # Runtime deps stay in requirements.txt (already in the image).
 pytest==8.3.5
-pytest-cov==6.0.0
+pytest-cov==7.1.0
 ruff==0.11.2
 # NK-146: Sicherheitspruefung (make sicherheit / make audit)
 bandit==1.9.4
