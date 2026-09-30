@@ -40,6 +40,11 @@ LIZENZDATEI = re.compile(r'^(LICEN[CS]E|COPYING|NOTICE)', re.IGNORECASE)
 VENDOR_LIZENZ = re.compile(r'^(LICEN[CS]E|COPYING|OFL)', re.IGNORECASE)
 VENDOR_NAMEN = {'chartjs': 'Chart.js', 'phosphor': 'Phosphor Icons', 'outfit': 'Schrift Outfit'}
 PYTHON_LIZENZ_URL = 'https://docs.python.org/3/license.html'
+# Pakete, deren Projekt einen Lizenztext hat, die ihn aber nicht mitliefern.
+# Der Wortlaut liegt hier unverändert, Dateiname ist der PEP-503-Name:
+#   proxy-tools.txt  proxy_tools 0.1.0 (von pywebview, nur Windows),
+#                    github.com/jtushman/proxy_tools, LICENSE.txt @ ccd35a5
+ERSATZ = Path(__file__).resolve().parent / 'lizenzen'
 
 
 def _schluessel(name: str) -> str:
@@ -118,7 +123,11 @@ def projektseite(dist: md.Distribution) -> str:
 
 
 def lizenztexte(dist: md.Distribution) -> list[tuple[str, str]]:
-    """(Dateiname, Wortlaut) aus dem .dist-info-Ordner des Pakets."""
+    """(Dateiname, Wortlaut) aus dem .dist-info-Ordner des Pakets.
+
+    Bringt das Paket keinen mit, gilt der Wortlaut aus ``ERSATZ``, falls dort
+    einer für das Paket liegt.
+    """
     texte = []
     for datei in dist.files or []:
         if not datei.parts[0].endswith('.dist-info'):
@@ -128,6 +137,10 @@ def lizenztexte(dist: md.Distribution) -> list[tuple[str, str]]:
                 texte.append(('/'.join(datei.parts[1:]), datei.read_text(encoding='utf-8')))
             except (OSError, UnicodeDecodeError):
                 continue
+    ersatz = ERSATZ / f'{_schluessel(dist.metadata["Name"])}.txt'
+    if not texte and ersatz.is_file():
+        texte.append(('Lizenztext aus dem Quell-Repository, fehlt im Paket',
+                      ersatz.read_text(encoding='utf-8')))
     return sorted(texte)
 
 

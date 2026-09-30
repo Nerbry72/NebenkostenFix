@@ -148,6 +148,29 @@ def test_bau_bricht_ab_wenn_einem_paket_der_lizenztext_fehlt(tmp_path, monkeypat
     assert f'segno {md.version("segno")}' in capsys.readouterr().err
 
 
+def _paket_ohne_lizenzdatei(ordner: Path, name: str) -> md.Distribution:
+    info = ordner / f'{name}-0.1.0.dist-info'
+    info.mkdir()
+    (info / 'METADATA').write_text(f'Metadata-Version: 2.1\nName: {name}\nVersion: 0.1.0\n',
+                                   encoding='utf-8')
+    (info / 'RECORD').write_text(f'{info.name}/METADATA,,\n{name}/__init__.py,,\n',
+                                 encoding='utf-8')
+    return md.PathDistribution(info)
+
+
+def test_fehlt_der_text_im_paket_gilt_der_ersatz(tmp_path):
+    # Windows-CI zu #22: proxy_tools 0.1.0 (von pywebview) liefert keine
+    # Lizenzdatei mit, der Bau brach deshalb ab.
+    texte = drittlizenzen.lizenztexte(_paket_ohne_lizenzdatei(tmp_path, 'proxy_tools'))
+    assert len(texte) == 1
+    assert 'Copyright (c) 2014 Jonathan Tushman' in texte[0][1]
+    assert 'Redistributions in binary form must reproduce' in texte[0][1]
+
+
+def test_ohne_ersatz_bleibt_die_luecke(tmp_path):
+    assert drittlizenzen.lizenztexte(_paket_ohne_lizenzdatei(tmp_path, 'unbekannt')) == []
+
+
 def test_ohne_bau_verweist_der_text_statt_abzubrechen(tmp_path, monkeypatch):
     # In der Entwicklung (kein gebautes THIRD_PARTY_LICENSES.txt) soll der
     # Über-Dialog trotzdem etwas zeigen, etwa unter Debians System-Python.
