@@ -1,17 +1,27 @@
-# Wöchentlich neue Versionen der Abhängigkeiten als Pull Request. Jeder läuft
-# durch dieselbe CI wie jede andere Änderung und wird nicht automatisch gemergt.
 version: 2
+# Ein Sammel-PR je Ökosystem und Monat statt eines PRs je Paket.
 updates:
   - package-ecosystem: pip
     directory: /
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
+      interval: monthly
+    groups:
+      python:
+        patterns: ["*"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
   - package-ecosystem: docker
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
+    # Nur neue Digests von python:3.11-slim (Sicherheitsupdates). Eine neue
+    # Python-Version betrifft CI, Windows-Build und Dockerfile zugleich und
+    # ist eine eigene Aufgabe (tests/test_haertung_abbild.py prüft 3.11).
+    ignore:
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
