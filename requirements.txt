@@ -7,7 +7,7 @@ Flask-SQLAlchemy==3.1.1
 # ohnehin zieht: sonst holt ein Bau von morgen eine andere Version als die,
 # gegen die die Basisrevision geschrieben wurde.
 Flask-Migrate==4.0.7
-alembic==1.19.1
+alembic==1.20.0
 python-dotenv==1.2.3  # NK-146: PYSEC-2026-2270
 gunicorn==22.0.0
 reportlab==4.2.0
