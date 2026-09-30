@@ -432,6 +432,29 @@ def test_hoechstens_drei_offene_uploads(bestand):
     assert kennungen[-1] in offen and kennungen[0] not in offen
 
 
+def test_der_aelteste_upload_faellt_auch_bei_gleicher_dateizeit(bestand):
+    """F-119: die Reihenfolge kommt aus dem Eintrag, nicht aus der Dateizeit.
+
+    Die Dateizeit ist grob (unter Windows bis 16 ms) und kann rückwärts
+    laufen. Hier bekommt der neueste Upload die älteste Zeit -- gelöscht
+    werden muss trotzdem der zuerst begonnene.
+    """
+    import os
+    import time
+    client = bestand.app.test_client()
+    _anmelden(client)
+    kennungen = [client.post('/api/umzug/hochladen', json={'groesse': 4}).get_json()['id']
+                 for _ in range(umzug.HOECHSTENS_OFFEN)]
+    ordner = umzug.arbeitsordner(bestand.app)
+    jetzt = time.time()
+    for alter, kennung in enumerate(kennungen):  # neuester = ältester Zeitstempel
+        os.utime(ordner / f'{kennung}.json', (jetzt - alter, jetzt - alter))
+    client.post('/api/umzug/hochladen', json={'groesse': 4})
+    offen = {p.stem for p in ordner.glob('*.json')}
+    assert kennungen[0] not in offen
+    assert set(kennungen[1:]) <= offen
+
+
 # --- Windows-App: Pfade nur aus dem Dialog der Hülle ----------------------------
 
 def test_pfad_nur_in_der_app_und_nur_freigegeben(bestand, tmp_path, monkeypatch):

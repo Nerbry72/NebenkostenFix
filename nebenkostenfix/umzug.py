@@ -155,6 +155,24 @@ def _teil(app, kennung: str) -> tuple[Path, Path]:
     return ordner / f'{kennung}.teil', ordner / f'{kennung}.json'
 
 
+_letzter_stempel = 0
+
+
+def _stempel() -> int:
+    """Streng steigend im Prozess, auch wo time_ns() grob tickt (Windows)."""
+    global _letzter_stempel
+    _letzter_stempel = max(time.time_ns(), _letzter_stempel + 1)
+    return _letzter_stempel
+
+
+def _begonnen(info: Path) -> int:
+    """F-119: Reihenfolge aus dem Eintrag, nicht aus der groben Dateizeit."""
+    try:
+        return int(json.loads(info.read_text(encoding='utf-8'))['begonnen'])
+    except (OSError, ValueError, KeyError, TypeError):
+        return info.stat().st_mtime_ns  # Eintrag von vor F-119
+
+
 def hochladen_beginnen(app, groesse: int, name: str) -> dict:
     if not isinstance(groesse, int) or groesse <= 0:
         raise UmzugsFehler('Die Datei ist leer.')
@@ -164,7 +182,7 @@ def hochladen_beginnen(app, groesse: int, name: str) -> dict:
             'Einstellung UMZUG_MAX_GB).')
     aufraeumen(app)
     ordner = arbeitsordner(app)
-    offen = sorted(ordner.glob('*.json'), key=lambda p: p.stat().st_mtime)
+    offen = sorted(ordner.glob('*.json'), key=_begonnen)
     for alt in offen[:max(0, len(offen) - HOECHSTENS_OFFEN + 1)]:
         alt.with_suffix('.teil').unlink(missing_ok=True)
         alt.unlink(missing_ok=True)
@@ -177,7 +195,8 @@ def hochladen_beginnen(app, groesse: int, name: str) -> dict:
     kennung = secrets.token_hex(16)
     teil, info = _teil(app, kennung)
     teil.write_bytes(b'')
-    info.write_text(json.dumps({'groesse': groesse, 'name': str(name or '')[:200]}),
+    info.write_text(json.dumps({'groesse': groesse, 'name': str(name or '')[:200],
+                                'begonnen': _stempel()}),
                     encoding='utf-8')
     stueck = min(STUECK, max(64 * 1024, (app.config.get('MAX_CONTENT_LENGTH') or STUECK)
                              - 64 * 1024))
