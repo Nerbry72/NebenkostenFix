@@ -61,7 +61,7 @@ def _altbestand_zuordnen(verbindung):
     # Der Import steht hier und nicht oben: eine Wanderung laeuft auch aus
     # scripts/ heraus, und ein Importfehler auf Modulebene machte dort das
     # ganze Verzeichnis unbrauchbar (Vorbild: 9c1f4a2b7d33).
-    from betrkv import SONSTIGE, bezeichnung, zuordnung
+    from nebenkostenfix.betrkv import SONSTIGE, bezeichnung, zuordnung
 
     zeilen = verbindung.execute(sa.text(
         'SELECT id, name FROM cost_categories WHERE betrkv_nr IS NULL'
@@ -83,7 +83,7 @@ def _altbestand_zuordnen(verbindung):
 
 
 def upgrade():
-    from betrkv import NUMMERN
+    from nebenkostenfix.betrkv import NUMMERN
 
     verbindung = op.get_bind()
 

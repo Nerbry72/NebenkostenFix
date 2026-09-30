@@ -18,15 +18,16 @@ Die Proben hier halten die drei Ebenen fest, auf denen die Frist lebt:
 from __future__ import annotations
 
 import ast
+from tests.importwaechter import importierte_module
 import pathlib
 from datetime import date, timedelta
 
 import pytest
 
-import frist
-from frist import (KENNUNG_NAHT, KENNUNG_VERPASST, einwendungsfrist,
+from nebenkostenfix import frist
+from nebenkostenfix.frist import (KENNUNG_NAHT, KENNUNG_VERPASST, einwendungsfrist,
                    frist_ende, frist_status)
-from zeitraum import ein_jahr_nach
+from nebenkostenfix.zeitraum import ein_jahr_nach
 
 WURZEL = pathlib.Path(__file__).resolve().parents[1]
 
@@ -118,14 +119,9 @@ def test_ohne_heute_wird_der_aktuelle_tag_genommen(monkeypatch):
 
 def test_modul_haengt_an_nichts_als_der_zeit():
     """Kein ORM, kein Rechenkern: die Frist ist reine Arithmetik."""
-    baum = ast.parse((WURZEL / 'frist.py').read_text(encoding='utf-8'))
+    baum = ast.parse((WURZEL / 'nebenkostenfix' / 'frist.py').read_text(encoding='utf-8'))
 
-    importiert = set()
-    for knoten in ast.walk(baum):
-        if isinstance(knoten, ast.Import):
-            importiert.update(a.name.split('.')[0] for a in knoten.names)
-        elif isinstance(knoten, ast.ImportFrom) and knoten.module:
-            importiert.add(knoten.module.split('.')[0])
+    importiert = importierte_module(baum)
 
     assert importiert <= {'calendar', 'datetime'}, \
         f'frist.py zieht fremde Module herein: {importiert}'
@@ -143,7 +139,7 @@ def _mieter(app_ctx, name='Fristmietern'):
 
 
 def _report(modelle, mieter_id, start, ende, kategorie_id=None):
-    from models import TenantBillingReport, db
+    from nebenkostenfix.models import TenantBillingReport, db
     report = TenantBillingReport(
         tenant_id=mieter_id, start_date=start, end_date=ende,
         frist_ende=frist_ende(ende),
@@ -151,7 +147,7 @@ def _report(modelle, mieter_id, start, ende, kategorie_id=None):
     db.session.add(report)
     db.session.flush()
     if kategorie_id:
-        from models import BillingReportCategory
+        from nebenkostenfix.models import BillingReportCategory
         db.session.add(BillingReportCategory(
             report_id=report.id, category_id=kategorie_id,
             start_date=start, end_date=ende))
@@ -163,7 +159,7 @@ def test_vorpruefung_warnt_bei_ueberlappenden_zeitraeumen(auth_client, app_ctx):
     """AK: Zwei Abrechnungen desselben Mieters mit überlappenden
     Zeiträumen erzeugen eine Warnung -- hier als Kachel, die blockiert,
     weil die Erzeugung denselben Antrag mit 400 abweisen wird."""
-    from models import db
+    from nebenkostenfix.models import db
 
     mieter = _mieter(app_ctx)
     _report(None, mieter.id, date(2025, 1, 1), date(2025, 12, 31))
@@ -327,7 +323,7 @@ def test_festsetzung_speichert_das_fristende(auth_client, app_ctx, monkeypatch):
     """Zu jeder Abrechnung wird ein Fristende berechnet und gespeichert --
     unabhaengig davon, ob die Frist noch laeuft (hier: laengst vorbei)."""
     monkeypatch.setattr(frist, '_heute', lambda: date(2027, 1, 2))
-    from models import TenantBillingReport, db
+    from nebenkostenfix.models import TenantBillingReport, db
 
     mieter = _mieter(app_ctx)
     antwort = auth_client.post('/api/billing/finalize', json={
@@ -348,7 +344,7 @@ def _bericht_mit_erstellung(app_ctx, erstellung):
     """Ein Bericht mit bekannten Eckdaten: Zeitraum 2025, erstellt am
     gegebenen Tag. Die Pruefungen an der Zustellung sind damit
     unabhängig vom echten heutigen Tag."""
-    from models import TenantBillingReport, db
+    from nebenkostenfix.models import TenantBillingReport, db
 
     mieter = _mieter(app_ctx)
     report = TenantBillingReport(
@@ -385,7 +381,7 @@ def test_zustellung_nach_der_frist_wird_gewarnt(auth_client, app_ctx):
     """
     # Zeitraum endet am 31.12.2024 -- die Frist endete am 31.12.2025.
     from billing_factories import apt, house, tenant
-    from models import TenantBillingReport, db
+    from nebenkostenfix.models import TenantBillingReport, db
 
     objekt = house(name='Zustellhaus')
     wohnung = apt(objekt, 'OG', 60.0)
@@ -407,7 +403,7 @@ def test_zustellung_nach_der_frist_wird_gewarnt(auth_client, app_ctx):
 
     # Und der Datensatz traegt das Datum trotzdem:
     db.session.expunge_all()
-    from models import TenantBillingReport as _bericht
+    from nebenkostenfix.models import TenantBillingReport as _bericht
     assert db.session.get(_bericht, report.id).zugestellt_am \
         == date(2026, 1, 5)
 

@@ -59,7 +59,7 @@ def upgrade():
     # Der Import steht hier und nicht oben: eine Wanderung laeuft auch aus
     # scripts/ heraus, und ein Importfehler auf Modulebene machte dort das
     # ganze Verzeichnis unbrauchbar (Vorbild: 9c1f4a2b7d33).
-    from heizung import (
+    from nebenkostenfix.heizung import (
         ANTEIL_MAX, ANTEIL_MIN, ANTEIL_VORGABE, HEIZUNG, SCHLUESSEL, VERSORGT)
 
     op.create_table(

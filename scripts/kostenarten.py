@@ -32,7 +32,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from kategorien import (  # noqa: E402  (erst nach sys.path)
+from nebenkostenfix.kategorien import (  # noqa: E402  (erst nach sys.path)
     KategorieFehler,
     dubletten_finden,
     fastdubletten_finden,

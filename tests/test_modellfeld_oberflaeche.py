@@ -25,7 +25,7 @@ Grund neu schreiben — beides ist eine Entscheidung, kein Zufall.
 import inspect
 from pathlib import Path
 
-import models
+from nebenkostenfix import models
 
 WURZEL = Path(__file__).resolve().parents[1]
 INDEX = (WURZEL / 'static' / 'index.html').read_text(encoding='utf-8')

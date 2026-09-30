@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from models import InvoiceDocument, db
+from nebenkostenfix.models import InvoiceDocument, db
 from tests import billing_factories as f
 
 HEUTE = date.today()

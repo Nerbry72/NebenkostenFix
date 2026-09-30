@@ -18,8 +18,8 @@ import doctest
 
 import pytest
 
-import betrkv
-from betrkv import (
+from nebenkostenfix import betrkv
+from nebenkostenfix.betrkv import (
     BEZEICHNUNGEN,
     KATALOG,
     NUMMERN,

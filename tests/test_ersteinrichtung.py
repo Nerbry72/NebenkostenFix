@@ -26,7 +26,7 @@ import re
 
 import pytest
 
-from models import User, db
+from nebenkostenfix.models import User, db
 
 CODE_MUSTER = re.compile(
     r'\b([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{4})\b')
@@ -41,7 +41,7 @@ def _code_frisch():
     Protokollzeile sehen -- im echten Leben startet der Server neu, hier
     ahmt die Fixture den Neustart nach.
     """
-    import auth
+    from nebenkostenfix import auth
     auth_zuruecksetzen(auth)
     yield
     auth_zuruecksetzen(auth)
@@ -405,7 +405,7 @@ def _arbeiter_wechseln(auth):
 def test_zwei_arbeiter_teilen_den_einmal_code(frischer_client, caplog):
     """F-73: Arbeiter A zeigt die Seite und protokolliert den Code, Arbeiter
     B bekommt das Formular. Der Code aus A's Protokoll muss bei B gelten."""
-    import auth
+    from nebenkostenfix import auth
     with caplog.at_level(logging.WARNING):
         frischer_client.get('/einrichtung')
         code = code_aus_protokoll(caplog)
@@ -419,7 +419,7 @@ def test_zwei_arbeiter_teilen_den_einmal_code(frischer_client, caplog):
 def test_der_zweite_arbeiter_protokolliert_denselben_code(frischer_client, caplog):
     """Nach einem Neustart soll der Code im frischen Log stehen -- jeder
     Prozess nennt ihn einmal, und es ist immer derselbe."""
-    import auth
+    from nebenkostenfix import auth
     with caplog.at_level(logging.WARNING):
         frischer_client.get('/einrichtung')
         erster = code_aus_protokoll(caplog)
@@ -431,7 +431,7 @@ def test_der_zweite_arbeiter_protokolliert_denselben_code(frischer_client, caplo
 
 
 def test_die_code_datei_ist_nur_fuer_den_besitzer_lesbar(frischer_client):
-    import auth
+    from nebenkostenfix import auth
     frischer_client.get('/einrichtung')
     pfad = auth._code_ablage()
     assert os.path.exists(pfad)
@@ -442,7 +442,7 @@ def test_die_code_datei_ist_nur_fuer_den_besitzer_lesbar(frischer_client):
 def test_nach_fuenf_fehlversuchen_gilt_ein_neuer_code(frischer_client, caplog):
     """F-75: Raten lohnt nicht. Nach fuenf Fehlversuchen ist der alte Code
     wertlos, der neue steht im Protokoll -- auch fuer den anderen Arbeiter."""
-    import auth
+    from nebenkostenfix import auth
     with caplog.at_level(logging.WARNING):
         frischer_client.get('/einrichtung')
         alt = code_aus_protokoll(caplog)
@@ -474,14 +474,14 @@ def test_die_einrichtung_vergleicht_in_konstanter_zeit():
     """F-75: kein == auf dem Geheimnis, sondern hmac.compare_digest."""
     import inspect
 
-    import auth
+    from nebenkostenfix import auth
     quelle = inspect.getsource(auth._einmal_code_pruefen)
     assert 'compare_digest' in quelle
 
 
 def test_fehlertexte_der_seiten_werden_maskiert():
     """F-75: Fehlertexte landen maskiert in der Seite."""
-    import auth
+    from nebenkostenfix import auth
     seite = auth._einrichtungsseite('<script>alert(1)</script>')
     assert '<script>alert(1)' not in seite
     assert '&lt;script&gt;' in seite
@@ -490,7 +490,7 @@ def test_fehlertexte_der_seiten_werden_maskiert():
 
 
 def test_nach_der_einrichtung_ist_die_code_datei_weg(frischer_client, caplog):
-    import auth
+    from nebenkostenfix import auth
     with caplog.at_level(logging.WARNING):
         frischer_client.get('/einrichtung')
         code = code_aus_protokoll(caplog)
@@ -503,7 +503,7 @@ def test_nach_der_einrichtung_ist_die_code_datei_weg(frischer_client, caplog):
 # --- NK-163: der Code als lesbare Datei im Datenordner ---
 
 def _textdatei():
-    import auth
+    from nebenkostenfix import auth
     return os.path.join(os.path.dirname(auth._code_ablage()), auth.EINMAL_CODE_TEXTDATEI)
 
 
@@ -521,7 +521,7 @@ def test_der_code_steht_lesbar_im_datenordner(frischer_client, caplog):
 
 
 def test_die_textdatei_folgt_dem_neuen_code(frischer_client, caplog):
-    import auth
+    from nebenkostenfix import auth
     frischer_client.get('/einrichtung')
     with open(_textdatei(), encoding='utf-8') as datei:
         vorher = datei.read()

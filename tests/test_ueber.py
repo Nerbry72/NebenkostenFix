@@ -8,11 +8,11 @@ from __future__ import annotations
 
 from urllib.parse import parse_qs, urlsplit
 
-import aktualisierung
+from nebenkostenfix import aktualisierung
 import desktop
-import haftung
-import marke
-from abrechnung_version import SOFTWARE_VERSION
+from nebenkostenfix import haftung
+from nebenkostenfix import marke
+from nebenkostenfix.abrechnung_version import SOFTWARE_VERSION
 
 
 def test_fehler_melden_fuellt_nur_stand_weg_und_system():

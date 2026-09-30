@@ -14,7 +14,7 @@ from decimal import Decimal
 
 import pytest
 
-from models import (db, Heizungsanlage, Meter, CostInvoice, CostCategory)
+from nebenkostenfix.models import (db, Heizungsanlage, Meter, CostInvoice, CostCategory)
 
 
 @pytest.fixture

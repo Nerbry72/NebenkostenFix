@@ -37,8 +37,8 @@ APP = STATIC / "app.js"
 # -- die Oberflaeche zeigt, was das Backend zurueckgibt. Diese Fachmodule
 # werden deshalb mit derselben Sperrliste gelesen.
 BACKEND_DATEIEN: tuple[str, ...] = (
-    "app.py", "rechenkern.py", "heizung.py", "co2.py", "auth.py",
-    "nutzung.py",
+    "app.py", "nebenkostenfix/rechenkern.py", "nebenkostenfix/heizung.py",
+    "nebenkostenfix/co2.py", "nebenkostenfix/auth.py", "nebenkostenfix/nutzung.py",
 )
 
 # Rechenkern-Pakete importierbar machen, auch bei direktem Aufruf:
@@ -313,7 +313,7 @@ def pruefe_navigation(quelle: str) -> list[str]:
 
 def pruefe_umlagearten(quelle: str) -> list[str]:
     """Glossar Par. 2: Auswahl im Kostenprofil traegt ARTEN wortgleich."""
-    from abrechnungsart import ARTEN
+    from nebenkostenfix.abrechnungsart import ARTEN
 
     verstoesse = []
     block = re.search(
@@ -401,7 +401,9 @@ def backend_module(basis: Path | None = None) -> list[str]:
                 ziele = [a.name for a in knoten.names]
             elif isinstance(knoten, ast.ImportFrom) and knoten.module \
                     and not knoten.level:
-                ziele = [knoten.module]
+                # from nebenkostenfix import backup: auch das Untermodul
+                ziele = [knoten.module,
+                         *(f'{knoten.module}.{a.name}' for a in knoten.names)]
             for ziel in ziele:
                 kandidat = ziel.replace('.', '/') + '.py'
                 if (basis / kandidat).is_file():

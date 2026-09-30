@@ -35,7 +35,7 @@ from pathlib import Path
 
 import pytest
 
-import betrkv
+from nebenkostenfix import betrkv
 
 APP_JS = Path(__file__).resolve().parents[1] / "static" / "app.js"
 

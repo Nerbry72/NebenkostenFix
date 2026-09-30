@@ -96,7 +96,7 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          $v = python -c "from abrechnung_version import SOFTWARE_VERSION as v; print(v)"
+          $v = python -c "from nebenkostenfix.abrechnung_version import SOFTWARE_VERSION as v; print(v)"
           "wert=$v" >> $env:GITHUB_OUTPUT
           "## Windows-Paket $v" >> $env:GITHUB_STEP_SUMMARY
       - name: Selbsttest aus den Quellen

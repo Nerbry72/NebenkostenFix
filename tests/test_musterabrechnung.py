@@ -171,7 +171,7 @@ def betrag(x):
 @pytest.fixture
 def kategorien(app_ctx):
     """Der Gesetzeskatalog des Seeds, per Name greifbar."""
-    from models import CostCategory
+    from nebenkostenfix.models import CostCategory
     return {k.name: k for k in CostCategory.query.all()}
 
 

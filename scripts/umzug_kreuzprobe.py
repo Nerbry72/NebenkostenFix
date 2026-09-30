@@ -76,9 +76,9 @@ def _stufe_ausfuehren(argumente) -> dict:
 
 
 def _anlegen(anwendung, daten: Path, paket: Path) -> dict:
-    import beispielimmobilie
-    import umzug
-    from models import InvoiceDocument, Property, User, db
+    from nebenkostenfix import beispielimmobilie
+    from nebenkostenfix import umzug
+    from nebenkostenfix.models import InvoiceDocument, Property, User, db
 
     with anwendung.app.app_context():
         konto = User(username=KONTO)
@@ -95,7 +95,7 @@ def _anlegen(anwendung, daten: Path, paket: Path) -> dict:
         db.session.commit()
         db.session.remove()
     (daten / 'vermieter-logo.png').write_bytes(PNG)
-    import einstellungen
+    from nebenkostenfix import einstellungen
     einstellungen.schreiben(daten, updates_automatisch=False,
                             haftung={'version': 1, 'bestaetigt_am': '2026-01-01T00:00:00+00:00'})
     umzug.paket_erstellen(anwendung.app, paket)
@@ -103,8 +103,8 @@ def _anlegen(anwendung, daten: Path, paket: Path) -> dict:
 
 
 def _uebernehmen(anwendung, daten: Path, paket: Path) -> dict:
-    import umzug
-    from models import User
+    from nebenkostenfix import umzug
+    from nebenkostenfix.models import User
 
     bericht = umzug.uebernehmen(anwendung.app, paket)
     ergebnis = umzug.bestandsbericht(anwendung.app)

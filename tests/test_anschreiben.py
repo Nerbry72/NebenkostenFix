@@ -26,8 +26,8 @@ from pathlib import Path
 import pytest
 import reportlab.rl_config
 
-from anschreiben import VORGABE, PLATZHALTER, fuelle, text_fuer, absaetze
-from pdf_cover_page import build_cover_page_elements
+from nebenkostenfix.anschreiben import VORGABE, PLATZHALTER, fuelle, text_fuer, absaetze
+from nebenkostenfix.pdf_cover_page import build_cover_page_elements
 
 ZEITRAUM = {'start_date': '2025-01-01', 'end_date': '2025-12-31'}
 
@@ -157,7 +157,7 @@ def test_ohne_eigenen_text_antwortet_die_vorgabe(auth_client, app_ctx):
     from billing_factories import house
 
     objekt = house()
-    from models import db
+    from nebenkostenfix.models import db
     db.session.commit()
 
     antwort = auth_client.get(f'/api/properties/{objekt.id}/anschreiben')
@@ -173,7 +173,7 @@ def test_der_vermieter_hinterlegt_und_ändert_seinen_text(auth_client, app_ctx):
     from billing_factories import house
 
     objekt = house()
-    from models import db
+    from nebenkostenfix.models import db
     db.session.commit()
 
     antwort = auth_client.put(
@@ -190,7 +190,7 @@ def test_der_vermieter_hinterlegt_und_ändert_seinen_text(auth_client, app_ctx):
     # Ein zweites PUT ändert, statt zu verdoppeln: die Paarung ist einzigartig.
     auth_client.put(f'/api/properties/{objekt.id}/anschreiben',
                     json={'text': 'Und noch einmal.'})
-    from models import AnschreibenVorlage
+    from nebenkostenfix.models import AnschreibenVorlage
     zeilen = AnschreibenVorlage.query.filter_by(property_id=objekt.id).all()
     assert len(zeilen) == 1
     assert zeilen[0].text == 'Und noch einmal.'
@@ -201,7 +201,7 @@ def test_die_leere_vorlage_wird_abgelehnt(auth_client, app_ctx):
     from billing_factories import house
 
     objekt = house()
-    from models import db
+    from nebenkostenfix.models import db
     db.session.commit()
 
     for text in ('', '   '):
@@ -215,7 +215,7 @@ def test_loeschen_fuehrt_zurueck_zur_vorgabe(auth_client, app_ctx):
     from billing_factories import house
 
     objekt = house()
-    from models import db
+    from nebenkostenfix.models import db
     db.session.commit()
 
     auth_client.put(f'/api/properties/{objekt.id}/anschreiben',
@@ -286,7 +286,7 @@ def _welt(app_ctx):
     ergibt 1200,00 € bei 300,00 € Vorauszahlung -- eine Nachzahlung von
     900,00 €, genau der Fall, in dem das Anschreiben fordert.
     """
-    from models import db
+    from nebenkostenfix.models import db
     from billing_factories import (
         apt, category, house, meter, payment, profile, reading, tenant,
     )
@@ -314,7 +314,7 @@ def _welt(app_ctx):
 
 def _finalisiere(auth_client, mieter_id):
     """Finalisiert Annas Abrechnung und liefert den Bericht."""
-    from models import TenantBillingReport
+    from nebenkostenfix.models import TenantBillingReport
 
     antwort = auth_client.post('/api/billing/finalize', json={
         'tenant_id': mieter_id, **ZEITRAUM})
@@ -372,7 +372,7 @@ def test_die_korrektur_wickelt_dieselbe_vorlage(auth_client, app_ctx, unkomprimi
 
     # Ohne geaenderte Eingaben waere die Korrektur nur eine Kopie (D-59);
     # ein geaenderter Zaehlerstand aendert das Ergebnis und macht den Lauf echt.
-    from models import db, MeterReading, TenantBillingReport
+    from nebenkostenfix.models import db, MeterReading, TenantBillingReport
     lese_ende = db.session.get(MeterReading, lese_id)
     lese_ende.value = 800.0
     db.session.commit()

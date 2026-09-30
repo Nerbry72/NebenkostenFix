@@ -10,7 +10,7 @@ import os
 
 import pytest
 
-import uploads
+from nebenkostenfix import uploads
 
 PDF = b'%PDF-1.7\n%\xe2\xe3\xcf\xd3\n1 0 obj\n<<>>\nendobj\n%%EOF\n'
 PNG = b'\x89PNG\r\n\x1a\n' + b'\x00' * 24
@@ -32,7 +32,7 @@ def test_erkennung_am_inhalt(inhalt, endung):
 
 
 def _haus(app_ctx):
-    from models import Property, db
+    from nebenkostenfix.models import Property, db
     prop = Property(name='Musterhaus Lindenstraße')
     db.session.add(prop)
     db.session.commit()
@@ -50,7 +50,7 @@ def _hochladen(client, prop_id, inhalt, name):
     (POLYGLOTT, 'poly.pdf'), (b'MZ\x90\x00' + b'\x00' * 40, 'setup.exe'),
 ])
 def test_html_svg_und_getarntes_werden_abgelehnt(app_ctx, auth_client, inhalt, name):
-    from models import InvoiceDocument
+    from nebenkostenfix.models import InvoiceDocument
     prop = _haus(app_ctx)
     antwort = _hochladen(auth_client, prop.id, inhalt, name)
     assert antwort.status_code == 400
@@ -60,7 +60,7 @@ def test_html_svg_und_getarntes_werden_abgelehnt(app_ctx, auth_client, inhalt, n
 
 def test_die_endung_kommt_aus_dem_inhalt(app_ctx, auth_client):
     """Ein PNG namens beleg.pdf wird als .png abgelegt."""
-    from models import InvoiceDocument
+    from nebenkostenfix.models import InvoiceDocument
     prop = _haus(app_ctx)
     assert _hochladen(auth_client, prop.id, PNG, 'beleg.pdf').status_code == 201
     assert InvoiceDocument.query.one().document_path.endswith('.png')
@@ -76,7 +76,7 @@ def test_abgelehnter_upload_legt_keinen_ordner_an(app_ctx, auth_client):
 
 def test_ablesefoto_als_html_wird_abgelehnt(app_ctx, auth_client):
     from billing_factories import category, house, meter
-    from models import MeterReading
+    from nebenkostenfix.models import MeterReading
     prop = house('Fotohaus')
     zaehler = meter(prop, category('Wasserversorgung'), 'Z-1', is_main=True)
     antwort = auth_client.post('/api/readings', content_type='multipart/form-data', data={
@@ -89,7 +89,7 @@ def test_ablesefoto_als_html_wird_abgelehnt(app_ctx, auth_client):
 # --- Auslieferung --------------------------------------------------------------
 
 def test_pdf_wird_per_kennung_mit_festem_typ_ausgeliefert(app_ctx, auth_client):
-    from models import InvoiceDocument
+    from nebenkostenfix.models import InvoiceDocument
     prop = _haus(app_ctx)
     _hochladen(auth_client, prop.id, PDF, 'beleg.pdf')
     dok = InvoiceDocument.query.one()
@@ -103,7 +103,7 @@ def test_pdf_wird_per_kennung_mit_festem_typ_ausgeliefert(app_ctx, auth_client):
 
 
 def test_bild_laeuft_in_der_sandbox(app_ctx, auth_client):
-    from models import InvoiceDocument
+    from nebenkostenfix.models import InvoiceDocument
     prop = _haus(app_ctx)
     _hochladen(auth_client, prop.id, PNG, 'foto.png')
     antwort = auth_client.get(f'/api/dateien/dokument/{InvoiceDocument.query.one().id}')
@@ -115,7 +115,7 @@ def test_heic_und_altbestand_nur_als_download(app_ctx, auth_client):
     """Eine Altdatei (vor NK-129 hochgeladen) mit HTML-Inhalt kommt nur als
     Download, als octet-stream, in der Sandbox -- nie als Seite."""
     from app import nas_handler
-    from models import InvoiceDocument, db
+    from nebenkostenfix.models import InvoiceDocument, db
     prop = _haus(app_ctx)
     for inhalt, name, mime in ((HEIC, 'bild.heic', 'image/heic'),
                                (HTML, 'alt.html', 'application/octet-stream')):
@@ -138,7 +138,7 @@ def test_heic_und_altbestand_nur_als_download(app_ctx, auth_client):
 def test_pfad_aus_der_datenbank_bleibt_im_belegordner(app_ctx, auth_client, tmp_path):
     """Ein manipulierter Datenbankeintrag (../ oder absolut ausserhalb)
     liefert nichts aus."""
-    from models import InvoiceDocument, db
+    from nebenkostenfix.models import InvoiceDocument, db
     geheim = tmp_path / 'geheim.pdf'
     geheim.write_bytes(PDF)
     prop = _haus(app_ctx)
@@ -151,7 +151,7 @@ def test_pfad_aus_der_datenbank_bleibt_im_belegordner(app_ctx, auth_client, tmp_
 
 def test_verknuepfung_aus_dem_belegordner_heraus_zaehlt_nicht(app_ctx, auth_client, tmp_path):
     from app import nas_handler
-    from models import InvoiceDocument, db
+    from nebenkostenfix.models import InvoiceDocument, db
     draussen = tmp_path / 'draussen.pdf'
     draussen.write_bytes(PDF)
     link = os.path.join(nas_handler.nas_mount_path, 'link.pdf')

@@ -13,7 +13,7 @@ from decimal import Decimal
 
 import pytest
 
-from models import (Apartment, CostCategory, CostInvoice, Property, db)
+from nebenkostenfix.models import (Apartment, CostCategory, CostInvoice, Property, db)
 
 KATEGORIE = 'Strom (Zeitleiste)'
 

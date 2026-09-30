@@ -17,9 +17,9 @@ from __future__ import annotations
 
 import pytest
 
-import betrkv
-import rechenkern
-from rechenkern import Kategorie, Zaehler, einheit_fuer, ist_warmwasserzaehler
+from nebenkostenfix import betrkv
+from nebenkostenfix import rechenkern
+from nebenkostenfix.rechenkern import Kategorie, Zaehler, einheit_fuer, ist_warmwasserzaehler
 
 
 def test_ueber_all_18_eintraege_ist_die_einheit_katalogsache(eintrag):
@@ -139,7 +139,7 @@ def test_der_lader_traegt_die_katalognummer_in_den_zaehler():
     """``_zaehler`` in abrechnungsdaten liest die Nummer der Kostenart."""
     from types import SimpleNamespace
 
-    from abrechnungsdaten import _zaehler
+    from nebenkostenfix.abrechnungsdaten import _zaehler
 
     meter = SimpleNamespace(
         id=7, meter_number='W-07', category_id=3,

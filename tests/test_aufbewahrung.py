@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-import mieter_daten
+from nebenkostenfix import mieter_daten
 
 PDF = b'%PDF-1.4\n%%EOF\n'
 
@@ -27,7 +27,7 @@ def _datei(relativ):
 @pytest.fixture
 def mieter(app_ctx):
     from billing_factories import apt, category, house, profile, tenant
-    from models import Haushaltsgroesse, Payment, TenantBillingReport, db
+    from nebenkostenfix.models import Haushaltsgroesse, Payment, TenantBillingReport, db
     haus = house('Aufbewahrungshaus')
     wohnung = apt(haus, 'EG', 50.0)
     m = tenant(wohnung, 'Anna Mieterin', move_in=date(2022, 1, 1))
@@ -59,7 +59,7 @@ def test_ohne_abrechnung_und_zahlung_keine_frist(app_ctx):
 
 def test_loeschung_sperrt_statt_zu_loeschen(mieter, auth_client):
     from app import nas_handler
-    from models import (Haushaltsgroesse, Payment, Tenant, TenantBillingReport,
+    from nebenkostenfix.models import (Haushaltsgroesse, Payment, Tenant, TenantBillingReport,
                         TenantCostProfile, db)
     vertrag = mieter.contract_path
     antwort = auth_client.delete(f'/api/tenants/{mieter.id}')
@@ -102,7 +102,7 @@ def test_auskunft_bleibt_moeglich(mieter, auth_client):
 
 def test_nach_fristablauf_loescht_der_start_alles(mieter, auth_client):
     from app import nas_handler
-    from models import Payment, Tenant, TenantBillingReport, db
+    from nebenkostenfix.models import Payment, Tenant, TenantBillingReport, db
     auth_client.delete(f'/api/tenants/{mieter.id}')
     pdf = TenantBillingReport.query.one().document_path
     assert mieter_daten.abgelaufene_loeschen(date(2035, 12, 31)) == 0

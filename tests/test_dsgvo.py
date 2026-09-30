@@ -54,7 +54,7 @@ def mietverhaeltnis(app_ctx):
     Die Dateien liegen bewusst unter NAS_MOUNT_PATH, wie ein echter Upload
     sie hinterliesse; die Pfade in der Datenbank sind relativ.
     """
-    from models import (Apartment, Haushaltsgroesse, Meter, MeterReading,
+    from nebenkostenfix.models import (Apartment, Haushaltsgroesse, Meter, MeterReading,
                         Payment, Property, Tenant, TenantBillingReport,
                         TenantCostProfile, db)
 
@@ -150,7 +150,7 @@ def test_auskunft_schneidet_lesungen_auf_die_mietzeit(app_ctx, auth_client,
     Die Auskunft an den Mieter enthaelt nur Ablesungen aus seiner Mietzeit,
     die Raender (Einzug, Auszug) eingeschlossen -- keine Verbrauchsdaten und
     keine Ablesefotos der anderen beiden."""
-    from models import MeterReading, Tenant, db
+    from nebenkostenfix.models import MeterReading, Tenant, db
 
     mieter = mietverhaeltnis
     zaehler_id = mieter.apartment.meters[0].id
@@ -217,7 +217,7 @@ def _frist_abgelaufen(mieter):
     """NK-153: Abrechnung und Zahlung aus 2014 -- die zehnjaehrige
     Aufbewahrung endete 2024, die Loeschung nimmt dann alles (wie NK-078).
     Den Fall mit laufender Frist prueft tests/test_aufbewahrung.py."""
-    from models import db
+    from nebenkostenfix.models import db
     for bericht in mieter.billing_reports:
         bericht.created_at = date(2014, 1, 15)
     for zahlung in mieter.payments:
@@ -226,7 +226,7 @@ def _frist_abgelaufen(mieter):
 
 
 def test_loeschung_nimmt_zeilen_und_dateien_mit(app_ctx, auth_client, mietverhaeltnis):
-    from models import (Haushaltsgroesse, Payment, Tenant, TenantBillingReport,
+    from nebenkostenfix.models import (Haushaltsgroesse, Payment, Tenant, TenantBillingReport,
                         TenantCostProfile, db)
 
     _frist_abgelaufen(mietverhaeltnis)
@@ -250,7 +250,7 @@ def test_loeschung_nimmt_zeilen_und_dateien_mit(app_ctx, auth_client, mietverhae
 
 def test_loeschung_laesst_lesungen_stehen(app_ctx, auth_client, mietverhaeltnis):
     """D-82: die Messhistorie gehoert zur Wohnung, nicht zur Person."""
-    from models import MeterReading, db
+    from nebenkostenfix.models import MeterReading, db
 
     res = auth_client.delete(f"/api/tenants/{mietverhaeltnis.id}")
     assert res.status_code == 200

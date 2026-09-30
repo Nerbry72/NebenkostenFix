@@ -54,10 +54,10 @@ def app_ctx():
     schneller. Zulaessig ist es nur, weil tests/test_migrations.py misst, dass
     Wanderung und models.py dasselbe Schema ergeben.
     """
-    import anmeldeschutz
+    from nebenkostenfix import anmeldeschutz
     import app as app_module
-    import auth
-    from models import db
+    from nebenkostenfix import auth
+    from nebenkostenfix.models import db
 
     # NK-128: der Zaehler der Fehlversuche liegt im Datenordner und
     # ueberlebte sonst den Test -- nach 20 Fehlversuchen im ganzen Lauf
@@ -84,7 +84,7 @@ def auth_client(app_ctx):
     Tests, die eine Fachroute aufrufen, brauchen eine Sitzung. Das Konto wird
     innerhalb von app_ctx angelegt, weil app_ctx vorher drop_all() faehrt.
     """
-    from models import User, db
+    from nebenkostenfix.models import User, db
 
     user = User(username=TEST_USER)
     user.set_password(TEST_PASSWORD)
@@ -114,7 +114,7 @@ def kein_update_netz(monkeypatch):
     wirklich ins Netz. Wer ein Manifest braucht, gibt ``laden`` mit oder
     setzt ``_laden`` selbst. Die Fixture liefert das echte ``_laden``.
     """
-    import aktualisierung
+    from nebenkostenfix import aktualisierung
 
     echt = aktualisierung._laden
 

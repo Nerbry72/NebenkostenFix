@@ -12,7 +12,7 @@ denen ein Rueckfall niemandem auffaellt und jedem schadet.
 Die Regeln stehen in ``pyproject.toml``:
 
     [tool.nk.einzelschwelle]
-    "auth.py" = 90
+    "nebenkostenfix/auth.py" = 90
 
 Aufruf nach ``pytest`` (``make check`` tut das), gelesen wird die Datendatei,
 die pytest-cov hinterlassen hat:

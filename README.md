@@ -425,13 +425,13 @@ Tests laufen nie gegen einen Datenordner mit echten Daten.
 3. Einen Pull Request nach `main` öffnen. Dann laufen die CI (`ci.yml`), der Windows-Bau
    mit Installer-, Update- und Umzugsprobe (`windows.yml`) und der Browser-Rundgang
    (`rundgang.yml`), jeweils einmal pro Stand.
-4. `SOFTWARE_VERSION` in `abrechnung_version.py` anheben. Die CI lehnt einen Pull Request ab,
+4. `SOFTWARE_VERSION` in `nebenkostenfix/abrechnung_version.py` anheben. Die CI lehnt einen Pull Request ab,
    dessen Version schon veröffentlicht ist.
 5. Nach dem Merge baut `release.yml` alles und veröffentlicht es.
 
 ### Versionen und Releases
 
-Die Versionsnummer steht an genau einer Stelle: `SOFTWARE_VERSION` in `abrechnung_version.py`
+Die Versionsnummer steht an genau einer Stelle: `SOFTWARE_VERSION` in `nebenkostenfix/abrechnung_version.py`
 (Schema `x.y.z`). Jeder Merge nach `main` löst `release.yml` aus:
 
 1. Die Tests laufen nicht noch einmal: `main` nimmt nur aktuelle Pull Requests mit grünen
@@ -449,10 +449,11 @@ Die Versionsnummer steht an genau einer Stelle: `SOFTWARE_VERSION` in `abrechnun
 | Pfad | Inhalt |
 | --- | --- |
 | `app.py` | Flask-Anwendung und API |
-| `rechenkern.py`, `betrkv.py`, `heizung.py`, `co2.py` | Abrechnungsregeln |
-| `models.py`, `migrations/` | Datenmodell (SQLAlchemy) und Schema-Wanderungen (Alembic) |
-| `pdf_generator.py`, `pdf_cover_page.py` | PDF-Abrechnung (reportlab) |
-| `backup.py`, `umzug.py` | Sicherung, Einspielen, Umzugspaket |
+| `nebenkostenfix/` | Anwendungscode, den `app.py` und `desktop.py` einbinden |
+| `nebenkostenfix/rechenkern.py`, `betrkv.py`, `heizung.py`, `co2.py` | Abrechnungsregeln |
+| `nebenkostenfix/models.py`, `migrations/` | Datenmodell (SQLAlchemy) und Schema-Wanderungen (Alembic) |
+| `nebenkostenfix/pdf_generator.py`, `pdf_cover_page.py` | PDF-Abrechnung (reportlab) |
+| `nebenkostenfix/backup.py`, `umzug.py` | Sicherung, Einspielen, Umzugspaket |
 | `desktop.py`, `packaging/windows/` | Windows-App und Installer |
 | `static/` | Oberfläche (HTML, CSS, JavaScript ohne Framework) |
 | `docs/glossar.md` | verbindliche Begriffe der Oberfläche, gegen die `make ui` prüft |

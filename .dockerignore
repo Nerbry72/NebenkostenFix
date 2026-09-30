@@ -39,14 +39,14 @@ htmlcov/
 .venv/
 venv/
 
-# Entwicklerrouten (NK-040). debug_routen.py traegt
+# Entwicklerrouten (NK-040). nebenkostenfix/debug_routen.py traegt
 # POST /api/debug/reset_db: die Route leert die Datenbank und raeumt das
 # Belegverzeichnis leer. R-DSGVO-01 verlangt, dass ein solcher Endpunkt im
 # Auslieferungsbuild nicht existiert -- nicht, dass er per Flag ausgeschaltet
 # ist. Eine Zeile in der falschen .env genuegt sonst, um ihn scharf zu machen.
 # app.py versucht den Import und faehrt ohne das Modul weiter. Im Dev-Stapel
 # liegt die Datei ueber das Volume trotzdem im Container.
-debug_routen.py
+nebenkostenfix/debug_routen.py
 
 # Entwicklungswerkzeuge in scripts/ (F-26, NK-040). e2e.py baut und faehrt
 # Docker-Stapel und misst die Zeit bis zur laufenden Instanz;

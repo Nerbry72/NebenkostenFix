@@ -22,7 +22,7 @@ Die Daten sind synthetisch; jede Zahl ist von Hand nachgerechnet.
 from datetime import date
 from decimal import Decimal
 
-from rechenkern import (
+from nebenkostenfix.rechenkern import (
     Kategorie,
     Mieter,
     Rechnung,

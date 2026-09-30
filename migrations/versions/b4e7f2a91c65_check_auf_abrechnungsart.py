@@ -66,7 +66,7 @@ def _altbestand_geradeziehen(verbindung):
     # Der Import steht hier und nicht oben: eine Wanderung laeuft auch aus
     # scripts/ heraus, und ein Importfehler auf Modulebene machte dort das
     # ganze Verzeichnis unbrauchbar (Vorbild: 9c1f4a2b7d33).
-    from abrechnungsart import ERSATZ, ist_gueltig, normiere
+    from nebenkostenfix.abrechnungsart import ERSATZ, ist_gueltig, normiere
 
     zeilen = verbindung.execute(sa.text(
         'SELECT id, tenant_id, category_id, billing_type FROM tenant_cost_profiles'
@@ -90,7 +90,7 @@ def _altbestand_geradeziehen(verbindung):
 
 
 def upgrade():
-    from abrechnungsart import GUELTIG
+    from nebenkostenfix.abrechnungsart import GUELTIG
 
     verbindung = op.get_bind()
 

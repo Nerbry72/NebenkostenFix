@@ -21,7 +21,7 @@ import re
 
 import pytest
 
-from auth import PUBLIC_ENDPOINTS
+from nebenkostenfix.auth import PUBLIC_ENDPOINTS
 
 
 # Stand vom 30.09.2026, 115 Routen (NK-174/175: Haftung, Update-Einstellung, Suche beim Start; NK-176: Lizenzrouten entfernt; NK-145: CSV-Export; NK-129: /api/files -> /api/dateien; NK-131: Belege-Export). Aendert sich diese Menge, ist das kein

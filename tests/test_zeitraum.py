@@ -18,7 +18,7 @@ from datetime import date, timedelta
 
 import pytest
 
-from zeitraum import ein_jahr_nach, grenze, letzter_tag, mietende, tage, ueberschneidung
+from nebenkostenfix.zeitraum import ein_jahr_nach, grenze, letzter_tag, mietende, tage, ueberschneidung
 
 
 # --- Umrechnung an der Grenze ----------------------------------------------

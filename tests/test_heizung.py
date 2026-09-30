@@ -15,15 +15,16 @@ mit NK-049 -- in dieser Karte wird noch nicht gerechnet.
 from __future__ import annotations
 
 import ast
+from tests.importwaechter import importierte_module
 import doctest
 import pathlib
 from decimal import Decimal
 
 import pytest
 
-import betrkv
-import heizung
-from heizung import (
+from nebenkostenfix import betrkv
+from nebenkostenfix import heizung
+from nebenkostenfix.heizung import (
     ANTEIL_MAX,
     ANTEIL_MIN,
     ANTEIL_VORGABE,
@@ -85,14 +86,9 @@ def test_modul_haengt_an_nichts_als_geld():
     Datenbank. ``geld`` ist erlaubt -- es bringt ``sqlalchemy.Numeric`` mit,
     eine Typangabe fuer das Schema, und holt keine Daten.
     """
-    baum = ast.parse((WURZEL / 'heizung.py').read_text(encoding='utf-8'))
+    baum = ast.parse((WURZEL / 'nebenkostenfix' / 'heizung.py').read_text(encoding='utf-8'))
 
-    importiert = set()
-    for knoten in ast.walk(baum):
-        if isinstance(knoten, ast.Import):
-            importiert.update(a.name.split('.')[0] for a in knoten.names)
-        elif isinstance(knoten, ast.ImportFrom) and knoten.module:
-            importiert.add(knoten.module.split('.')[0])
+    importiert = importierte_module(baum)
 
     assert importiert <= {
         '__future__', 'decimal', 'typing', 'geld',

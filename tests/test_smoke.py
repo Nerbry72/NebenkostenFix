@@ -2,7 +2,7 @@
 
 
 def test_import_billing_engine():
-    import billing_engine
+    from nebenkostenfix import billing_engine
 
     assert hasattr(billing_engine, "BillingEngine")
     assert callable(billing_engine.BillingEngine.calculate_bill)

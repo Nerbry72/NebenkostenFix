@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from datetime import date
 
-from betrkv import zuordnung
-from nutzung import VORGABE as NUTZUNG_VORGABE
+from nebenkostenfix.betrkv import zuordnung
+from nebenkostenfix.nutzung import VORGABE as NUTZUNG_VORGABE
 
-from models import (
+from nebenkostenfix.models import (
     Apartment,
     CostCategory,
     CostInvoice,

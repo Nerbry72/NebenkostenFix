@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-import marke
+from nebenkostenfix import marke
 
 WURZEL = Path(__file__).resolve().parents[1]
 
@@ -36,7 +36,7 @@ def test_das_windows_icon_hat_alle_groessen():
 
 def test_kein_alter_produktname_in_oberflaeche_und_paket():
     for relativ in ('static/index.html', 'static/app.js', 'static/style.css',
-                    'static/anmeldung.css', 'auth.py', 'desktop.py'):
+                    'static/anmeldung.css', 'nebenkostenfix/auth.py', 'desktop.py'):
         assert 'ImmoCalc' not in _text(relativ), relativ
 
 
@@ -51,7 +51,7 @@ def test_die_oberflaeche_traegt_name_zeichen_und_favicon():
 @pytest.mark.parametrize('pfad', ['/login', '/einrichtung'])
 def test_anmeldeseiten_im_design_der_anwendung(anon_client, pfad):
     if pfad == '/login':
-        from models import User, db
+        from nebenkostenfix.models import User, db
         konto = User(username='anna')
         konto.set_password('anna-passwort-1')
         db.session.add(konto)
@@ -78,7 +78,7 @@ def test_anmeldestil_und_zeichen_sind_ohne_anmeldung_erreichbar(anon_client):
     ('marke\\..\\app.js', False), ('', False), (None, False), ('vendor/phosphor/x.css', False),
 ])
 def test_oeffentliche_dateien(name, frei):
-    import auth
+    from nebenkostenfix import auth
     assert auth.oeffentliche_datei(name) is frei
 
 
@@ -112,7 +112,7 @@ def _png(breite=120, hoehe=40) -> bytes:
 
 @pytest.fixture
 def logo_ordner(tmp_path, monkeypatch):
-    import datenordner
+    from nebenkostenfix import datenordner
     monkeypatch.setattr(datenordner, 'datenordner', lambda: tmp_path)
     return tmp_path
 
@@ -148,8 +148,8 @@ def test_logo_nur_echte_png_und_jpeg(auth_client, logo_ordner, inhalt, meldung):
 
 
 def test_logo_auf_dem_deckblatt(logo_ordner):
-    import vermieter_logo
-    from pdf_cover_page import build_cover_page_elements
+    from nebenkostenfix import vermieter_logo
+    from nebenkostenfix.pdf_cover_page import build_cover_page_elements
     assert vermieter_logo.deckblatt_bild() is None
     (logo_ordner / 'vermieter-logo.png').write_bytes(_png(600, 100))
     bild = vermieter_logo.deckblatt_bild()

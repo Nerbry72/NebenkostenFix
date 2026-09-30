@@ -114,7 +114,7 @@ def test_ohne_entwicklerroute_ist_kein_entwicklermodus():
     ab, nichts weiter. Genau so sieht die laufende Anwendung im
     Auslieferungsbuild aus -- die Datei fehlt, die Route existiert nicht.
     """
-    from auth import entwicklung_angemeldet
+    from nebenkostenfix.auth import entwicklung_angemeldet
     from flask import Flask
 
     nacktes_app = Flask(__name__)
@@ -123,7 +123,7 @@ def test_ohne_entwicklerroute_ist_kein_entwicklermodus():
 
 def test_mit_entwicklerroute_ist_entwicklermodus_angemeldet():
     """Im Entwicklungsstapel ist die Route da, der Helfer meldet das."""
-    from auth import entwicklung_angemeldet
+    from nebenkostenfix.auth import entwicklung_angemeldet
     from flask import Flask
 
     entwickler_app = Flask(__name__)

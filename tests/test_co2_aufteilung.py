@@ -18,15 +18,16 @@ Rechnung ueber 10.000 Euro, CO2-Kosten 2.000 Euro, Emission 2.200 kg.
 """
 
 import ast
+from tests.importwaechter import importierte_module
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
-import co2
-from geld import NULL, runde
-from rechenkern import (
+from nebenkostenfix import co2
+from nebenkostenfix.geld import NULL, runde
+from nebenkostenfix.rechenkern import (
     Heizungsanlage,
     Kategorie,
     Mieter,
@@ -215,14 +216,9 @@ def test_modul_haengt_an_nichts_als_geld():
     ``co2`` ist ein Baustein des Rechenkerns. Zoege es ein Modell herein,
     waere der Kern ueber einen Umweg wieder an der Datenbank.
     """
-    baum = ast.parse((WURZEL / 'co2.py').read_text(encoding='utf-8'))
+    baum = ast.parse((WURZEL / 'nebenkostenfix' / 'co2.py').read_text(encoding='utf-8'))
 
-    importiert = set()
-    for knoten in ast.walk(baum):
-        if isinstance(knoten, ast.Import):
-            importiert.update(a.name.split('.')[0] for a in knoten.names)
-        elif isinstance(knoten, ast.ImportFrom) and knoten.module:
-            importiert.add(knoten.module.split('.')[0])
+    importiert = importierte_module(baum)
 
     assert importiert <= {
         '__future__', 'decimal', 'typing', 'geld',

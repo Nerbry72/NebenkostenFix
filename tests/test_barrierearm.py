@@ -104,7 +104,7 @@ def test_entwurf_ueberlebt_die_abmeldung():
 
 
 def test_leerlauf_hinweis_fuenf_minuten_vorher(auth_client):
-    import auth
+    from nebenkostenfix import auth
     antwort = auth_client.get('/api/auth/me').get_json()
     assert antwort['leerlauf_s'] == auth._leerlauf_s()
     assert 'const LEERLAUF_WARNUNG_MS = 5 * 60 * 1000;' in SKRIPT

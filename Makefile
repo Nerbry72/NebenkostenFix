@@ -8,7 +8,7 @@ PY := python
 install-dev:
 	$(PY) -m pip install -q -r requirements-dev.txt
 
-KERN := rechenkern.py abrechnungsdaten.py billing_engine.py
+KERN := nebenkostenfix/rechenkern.py nebenkostenfix/abrechnungsdaten.py nebenkostenfix/billing_engine.py
 
 lint:
 	env PYTHONDONTWRITEBYTECODE=1 $(PY) -m compileall -q $(KERN)
@@ -48,7 +48,7 @@ kern:
 	  tests/test_zwischenablesung.py tests/test_co2_aufteilung.py \
 	  tests/test_ht_nt.py tests/test_golden_fixtures.py \
 	  -q --no-header \
-	  --cov=rechenkern --cov-branch --cov-report=term-missing --cov-fail-under=95
+	  --cov=nebenkostenfix.rechenkern --cov-branch --cov-report=term-missing --cov-fail-under=95
 
 # NK-146: statische Sicherheitspruefung des Quellcodes. Laeuft offline und
 # ist deshalb Teil von check. Ausnahmen stehen im Code (# nosec Bxxx mit

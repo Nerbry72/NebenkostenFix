@@ -23,7 +23,7 @@ from pathlib import Path
 WURZEL = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(WURZEL))
 
-import marke  # noqa: E402
+from nebenkostenfix import marke  # noqa: E402
 
 ICON_GROESSEN = [16, 24, 32, 48, 64, 128, 256]
 

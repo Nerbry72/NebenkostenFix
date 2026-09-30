@@ -17,7 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from rechenkern import (  # noqa: E402
+from nebenkostenfix.rechenkern import (  # noqa: E402
     Kategorie,
     Mieter,
     Rechnung,

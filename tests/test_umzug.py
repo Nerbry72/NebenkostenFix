@@ -20,8 +20,8 @@ from pathlib import Path
 
 import pytest
 
-import backup
-import umzug
+from nebenkostenfix import backup
+from nebenkostenfix import umzug
 
 ALT_USER = 'alt-vermieter'
 HAFTUNG = {'version': 1, 'bestaetigt_am': '2026-01-01T00:00:00+00:00'}
@@ -32,9 +32,9 @@ PNG = (b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08
 
 
 def _aufraeumen(app):
-    import datenordner
-    import einstellungen
-    import vermieter_logo
+    from nebenkostenfix import datenordner
+    from nebenkostenfix import einstellungen
+    from nebenkostenfix import vermieter_logo
 
     ordner = datenordner.datenordner()
     while vermieter_logo.loeschen(ordner):
@@ -54,9 +54,9 @@ def bestand(app_ctx, monkeypatch):
     Umgebungswerten."""
     from flask_migrate import stamp
 
-    import datenordner
-    import einstellungen
-    from models import InvoiceDocument, Property, User, db
+    from nebenkostenfix import datenordner
+    from nebenkostenfix import einstellungen
+    from nebenkostenfix.models import InvoiceDocument, Property, User, db
 
     stamp(revision='head')
     _aufraeumen(app_ctx.app)
@@ -97,7 +97,7 @@ def _paket(bestand, tmp_path, **kwargs) -> Path:
 def _hausnamen(app):
     from sqlalchemy import text
 
-    from models import db
+    from nebenkostenfix.models import db
     with app.app_context():
         with db.engine.connect() as verbindung:
             return sorted(z[0] for z in verbindung.execute(text('SELECT name FROM properties')))
@@ -166,7 +166,7 @@ def test_export_ueber_die_oberflaeche_liefert_download_und_raeumt_auf(bestand):
 
 
 def test_export_verschluesselt(bestand):
-    import verschluesselung
+    from nebenkostenfix import verschluesselung
     client = bestand.app.test_client()
     _anmelden(client)
     kurz = client.post('/api/umzug/export', json={'passphrase': 'kurz'})
@@ -186,9 +186,9 @@ def test_export_ohne_anmeldung_gesperrt(bestand):
 # --- Rundlauf --------------------------------------------------------------------
 
 def test_rundlauf_ueber_die_api_ersetzt_alles(bestand, tmp_path, monkeypatch):
-    import datenordner
-    import einstellungen
-    from models import Property, User, Vermieterdaten, db
+    from nebenkostenfix import datenordner
+    from nebenkostenfix import einstellungen
+    from nebenkostenfix.models import Property, User, Vermieterdaten, db
 
     paket = _paket(bestand, tmp_path)
     # Der neue Rechner: anderer Bestand, anderes Konto, kein Logo, keine Umgebung.
@@ -245,7 +245,7 @@ def test_rundlauf_ueber_die_api_ersetzt_alles(bestand, tmp_path, monkeypatch):
 
 
 def test_vorhandene_vermieterwerte_bleiben(bestand, tmp_path, monkeypatch):
-    from models import Vermieterdaten, db
+    from nebenkostenfix.models import Vermieterdaten, db
     db.session.add(Vermieterdaten(name='Schon eingetragen'))
     db.session.commit()
     paket = _paket(bestand, tmp_path)
@@ -261,8 +261,8 @@ def test_altes_paket_mit_lizenz_bleibt_einlesbar(bestand, tmp_path):
     beides schadet nicht (NK-176)."""
     import hashlib
 
-    import datenordner
-    import einstellungen
+    from nebenkostenfix import datenordner
+    from nebenkostenfix import einstellungen
 
     lizenz = b'{"format": "nk-lizenz-1", "daten": {}, "signatur": ""}'
 
@@ -288,7 +288,7 @@ def test_altes_paket_mit_lizenz_bleibt_einlesbar(bestand, tmp_path):
 
 
 def test_paket_ohne_logo_entfernt_das_logo(bestand, tmp_path):
-    import datenordner
+    from nebenkostenfix import datenordner
     ordner = datenordner.datenordner()
     (ordner / 'vermieter-logo.png').unlink()
     paket = _paket(bestand, tmp_path)
@@ -317,7 +317,7 @@ def test_verschluesseltes_paket_braucht_die_passphrase(bestand, tmp_path):
 
 def _frisch(bestand):
     """Alle Konten weg: die Instanz steht vor der Einrichtung."""
-    from models import User, db
+    from nebenkostenfix.models import User, db
     User.query.delete()
     db.session.commit()
 
@@ -341,7 +341,7 @@ def test_einrichtung_in_der_app_ohne_code(bestand, monkeypatch):
 
 
 def test_uebernahme_bei_der_einrichtung_mit_stuecken_und_code(bestand, tmp_path, monkeypatch):
-    import auth
+    from nebenkostenfix import auth
     paket = _paket(bestand, tmp_path)
     _frisch(bestand)
     client = bestand.app.test_client()

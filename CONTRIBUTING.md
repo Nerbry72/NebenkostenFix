@@ -40,7 +40,7 @@ flask --app app run --port 6070
 
 Die CI prüft jeden Pull Request unter Linux und Windows. Dazu gehören der Bau des Installers
 mit Update- und Umzugsprobe und ein Browser-Rundgang in drei Breiten. Ein Release entsteht
-erst, wenn `SOFTWARE_VERSION` in `abrechnung_version.py` angehoben und nach `main` gemergt ist.
+erst, wenn `SOFTWARE_VERSION` in `nebenkostenfix/abrechnung_version.py` angehoben und nach `main` gemergt ist.
 
 ## Lizenz
 

@@ -14,8 +14,8 @@ from decimal import Decimal
 
 import pytest
 
-import heizung
-from rechenkern import (
+from nebenkostenfix import heizung
+from nebenkostenfix.rechenkern import (
     BillingDataError,
     Heizungsanlage,
     Kategorie,

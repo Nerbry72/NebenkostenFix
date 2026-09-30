@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-import backup
+from nebenkostenfix import backup
 
 # Eine der beiden Belegdateien traegt Umlaute, Leerzeichen und Klammern. Das
 # ist der Normalfall bei einem Vermieter, nicht der Sonderfall.
@@ -94,7 +94,7 @@ def stand(app_ctx, tmp_path, monkeypatch):
     """
     from flask_migrate import stamp
 
-    from models import InvoiceDocument, Property, db
+    from nebenkostenfix.models import InvoiceDocument, Property, db
 
     belege = tmp_path / 'belege'
     belege.mkdir()
@@ -128,7 +128,7 @@ def stand(app_ctx, tmp_path, monkeypatch):
 def _hausnamen(app):
     from sqlalchemy import text
 
-    from models import db
+    from nebenkostenfix.models import db
 
     with app.app_context():
         with db.engine.connect() as verbindung:
@@ -231,7 +231,7 @@ def test_pruefsummen_im_manifest_gehoeren_zu_den_dateien(stand):
 
 
 def test_einspielen_sichert_vorher_den_ist_zustand(stand):
-    from models import Property, db
+    from nebenkostenfix.models import Property, db
 
     archiv = backup.sicherung_erstellen(stand.app, stand.archivordner)
 
@@ -420,7 +420,7 @@ def test_geprueft_werden_alle_pfadspalten_die_es_gibt(stand):
     """
     from sqlalchemy import inspect
 
-    from models import db
+    from nebenkostenfix.models import db
 
     with stand.app.app_context():
         pruefer = inspect(db.engine)

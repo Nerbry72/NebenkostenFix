@@ -41,7 +41,7 @@ def test_bandit_ohne_befund():
 
 def test_jede_bandit_ausnahme_ist_begruendet():
     fehlend = []
-    for pfad in WURZEL.glob('*.py'):
+    for pfad in [*WURZEL.glob('*.py'), *(WURZEL / 'nebenkostenfix').rglob('*.py')]:
         zeilen = pfad.read_text(encoding='utf-8').splitlines()
         for nummer, zeile in enumerate(zeilen):
             if '# nosec' not in zeile:

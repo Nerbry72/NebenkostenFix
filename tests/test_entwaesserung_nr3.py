@@ -25,7 +25,7 @@ from decimal import Decimal
 
 import pytest
 
-from rechenkern import (
+from nebenkostenfix.rechenkern import (
     Kategorie,
     Mieter,
     Rechnung,
@@ -174,8 +174,8 @@ from billing_factories import (  # noqa: E402
 
 def test_lader_und_rechenweg_mit_dem_katalog(app_ctx):
     """Der ganze Weg über die Datenbank, mit den Kostenarten des Katalogs."""
-    from abrechnungsdaten import lade_vorgang
-    from models import CostCategory
+    from nebenkostenfix.abrechnungsdaten import lade_vorgang
+    from nebenkostenfix.models import CostCategory
 
     wasser = CostCategory.query.filter_by(betrkv_nr=2).first()
     entwaesserung = CostCategory.query.filter_by(betrkv_nr=3).first()

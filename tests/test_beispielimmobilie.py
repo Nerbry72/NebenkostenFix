@@ -30,7 +30,7 @@ def test_anlegen_legt_ein_komplett_unvollstaendiges_haus_an(app_ctx, auth_client
     assert bericht['zaehler'] == 4
     assert 'Beispielhaus' in demo.NAME
 
-    from models import (Apartment, Meter, MeterReading, Property, Tenant,
+    from nebenkostenfix.models import (Apartment, Meter, MeterReading, Property, Tenant,
                         TenantCostProfile)
     haus = Property.query.filter_by(name=demo.NAME).one()
     wohnungen = Apartment.query.filter_by(property_id=haus.id).all()
@@ -68,7 +68,7 @@ def test_zweiter_aufruf_wird_gemeldet_nicht_doppelt_angelegt(app_ctx, auth_clien
     assert zweite.status_code == 409
     assert zweite.get_json()['property_id'] == property_id
 
-    from models import Property
+    from nebenkostenfix.models import Property
     assert Property.query.filter_by(name=demo.NAME).count() == 1
 
 
@@ -80,8 +80,8 @@ def test_anlegen_braucht_anmeldung(app_ctx, anon_client):
 # --- NK-159: vollständiges Beispiel ---------------------------------------------
 
 def test_beispiel_bringt_rechnungen_zahlungen_und_eine_fertige_abrechnung(app_ctx, auth_client):
-    from models import CostInvoice, Payment, Property, TenantBillingReport
-    import datenordner
+    from nebenkostenfix.models import CostInvoice, Payment, Property, TenantBillingReport
+    from nebenkostenfix import datenordner
     res = auth_client.post('/api/analytics/beispiel-immobilie')
     bericht = res.get_json()
     assert bericht['abrechnung'] is True and bericht['rechnungen'] == len(demo.RECHNUNGEN)
@@ -104,13 +104,13 @@ def test_beispiel_zaehlt_in_keiner_kennzahl(app_ctx, auth_client):
 
 
 def test_beispiel_loeschen_nimmt_alles_mit(app_ctx, auth_client):
-    from models import (Apartment, CostInvoice, Meter, MeterReading, Payment, Property,
+    from nebenkostenfix.models import (Apartment, CostInvoice, Meter, MeterReading, Payment, Property,
                         Tenant, TenantBillingReport)
-    import datenordner
+    from nebenkostenfix import datenordner
     auth_client.post('/api/analytics/beispiel-immobilie')
     pdf = datenordner.belegordner() / TenantBillingReport.query.one().document_path_detailed
     # Eine echte Immobilie daneben bleibt unberührt.
-    from models import db
+    from nebenkostenfix.models import db
     db.session.add(Property(name='Musterhaus Lindenstraße'))
     db.session.commit()
 

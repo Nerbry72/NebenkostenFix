@@ -1,7 +1,7 @@
 # Jeder Merge nach main wird ein Release: der Windows-Installer (Bau samt
 # Installations- und Update-Probe), das Docker-Abbild (Rauchtest, dann amd64
 # + arm64 nach GHCR), zuletzt das GitHub-Release vX.Y.Z mit der Setup-Exe und
-# ihrer Pruefsumme. Die Nummer steht nur in abrechnung_version.py.
+# ihrer Pruefsumme. Die Nummer steht nur in nebenkostenfix/abrechnung_version.py.
 # Am Release haengt ausserdem das signierte update.json; daraus liest die App,
 # ob es etwas Neues gibt (NK-175). Ohne Secret UPDATE_SCHLUESSEL kein Release.
 # Die Tests laufen nicht noch einmal: main nimmt nur Pull Requests an, die
@@ -49,12 +49,12 @@ jobs:
           fi
       - id: v
         run: |
-          v=$(python3 -c "from abrechnung_version import SOFTWARE_VERSION as v; print(v)")
+          v=$(python3 -c "from nebenkostenfix.abrechnung_version import SOFTWARE_VERSION as v; print(v)")
           if ! echo "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "::error::SOFTWARE_VERSION '$v' ist keine Nummer x.y.z"; exit 1
           fi
           if git rev-parse -q --verify "refs/tags/v$v" >/dev/null; then
-            echo "::error file=abrechnung_version.py::v$v ist schon veroeffentlicht. SOFTWARE_VERSION anheben."
+            echo "::error file=nebenkostenfix/abrechnung_version.py::v$v ist schon veroeffentlicht. SOFTWARE_VERSION anheben."
             exit 1
           fi
           echo "wert=$v" >> "$GITHUB_OUTPUT"

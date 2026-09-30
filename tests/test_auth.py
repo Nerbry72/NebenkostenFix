@@ -10,9 +10,9 @@ import os
 
 import pytest
 
-import auth
-from auth import AuthConfigError, PUBLIC_ENDPOINTS, _loese_secret_key
-from models import User, db
+from nebenkostenfix import auth
+from nebenkostenfix.auth import AuthConfigError, PUBLIC_ENDPOINTS, _loese_secret_key
+from nebenkostenfix.models import User, db
 
 from tests.conftest import TEST_PASSWORD, TEST_USER
 
@@ -38,7 +38,7 @@ def test_unbekannter_pfad_verraet_nichts(anon_client):
 def test_schreibende_route_ohne_anmeldung_legt_nichts_an(anon_client):
     res = anon_client.post("/api/properties", json={"name": "Einbruchhaus"})
     assert res.status_code == 401
-    from models import Property
+    from nebenkostenfix.models import Property
     assert Property.query.filter_by(name="Einbruchhaus").first() is None
 
 
@@ -103,7 +103,7 @@ def test_anmeldeseite_bleibt_ohne_anmeldung_erreichbar(anon_client, app_ctx):
     """Ohne Konto (erster Start) leitet die Anmeldung zur Einrichtung, mit
     Konto zeigt sie das Anmeldefeld. Beides ist ohne Sitzung erreichbar
     (NK-127, E-1); gesperrt sein darf keines von beiden."""
-    from models import User, db
+    from nebenkostenfix.models import User, db
     assert User.query.count() == 0
     erster = anon_client.get("/login")
     assert erster.status_code in (301, 302, 303, 307, 308)
@@ -503,7 +503,7 @@ def test_angemeldeter_besucher_sieht_die_anmeldeseite_nicht_mehr(auth_client):
 
 def test_login_required_dekorator_sperrt_auch_ausserhalb(app_ctx):
     """Fuer Routen, die spaeter am before_request vorbeilaufen."""
-    from auth import login_required
+    from nebenkostenfix.auth import login_required
 
     aufgerufen = []
 
@@ -537,7 +537,7 @@ def test_next_fuehrt_niemals_aus_dem_programm_heraus(app_ctx, boeses_ziel):
     Anmeldung auf einer fremden Seite und merkt den Wechsel nicht, weil er
     gerade sein Passwort auf der richtigen Seite eingegeben hat.
     """
-    from models import User, db
+    from nebenkostenfix.models import User, db
 
     user = User(username="umleitungstest")
     user.set_password("passwort-fuer-test")
@@ -556,7 +556,7 @@ def test_next_fuehrt_niemals_aus_dem_programm_heraus(app_ctx, boeses_ziel):
 
 def test_next_behaelt_ein_ziel_innerhalb_des_programms(app_ctx):
     """Die Umleitung soll ja etwas nuetzen: zurueck, wo man hinwollte."""
-    from models import User, db
+    from nebenkostenfix.models import User, db
 
     user = User(username="umleitungstest2")
     user.set_password("passwort-fuer-test")
@@ -573,7 +573,7 @@ def test_next_behaelt_ein_ziel_innerhalb_des_programms(app_ctx):
 
 def test_next_auf_die_anmeldung_selbst_landet_auf_der_startseite(app_ctx):
     """Sonst steht man nach dem Anmelden wieder vor dem Anmeldefeld."""
-    from models import User, db
+    from nebenkostenfix.models import User, db
 
     user = User(username="umleitungstest3")
     user.set_password("passwort-fuer-test")

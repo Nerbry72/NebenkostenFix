@@ -19,8 +19,8 @@ from decimal import Decimal
 import pytest
 import reportlab.rl_config
 
-from pdf_generator import PDFGenerator
-from zeitraum import HINWEIS_TAGESKONVENTION
+from nebenkostenfix.pdf_generator import PDFGenerator
+from nebenkostenfix.zeitraum import HINWEIS_TAGESKONVENTION
 
 
 @pytest.fixture
@@ -97,6 +97,6 @@ def test_der_hinweis_nennt_beide_raender():
 
 def test_die_eine_klasse_traegt_den_gemeinsamen_satz():
     """Zwei Formulierungen fuer dieselbe Regel waeren eine Ungereimtheit."""
-    import pdf_generator
+    from nebenkostenfix import pdf_generator
 
     assert pdf_generator.HINWEIS_TAGESKONVENTION is HINWEIS_TAGESKONVENTION

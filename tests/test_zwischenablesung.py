@@ -26,9 +26,9 @@ Jede Zahl ist von Hand nachgerechnet und steht im Test.
 from datetime import date
 from decimal import Decimal
 
-import heizung
-from heizung import ABLESUNG, ZWISCHENABLESUNG
-from rechenkern import (
+from nebenkostenfix import heizung
+from nebenkostenfix.heizung import ABLESUNG, ZWISCHENABLESUNG
+from nebenkostenfix.rechenkern import (
     Heizungsanlage,
     Kategorie,
     Mieter,

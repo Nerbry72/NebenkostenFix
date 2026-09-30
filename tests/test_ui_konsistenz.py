@@ -207,7 +207,8 @@ def test_backend_pruefer_findet_du_form_in_f_string(tmp_path):
     Probe legt eine der geprueften Dateien in ein eigenes Verzeichnis,
     denn der Wächter liest nur die bekannten Module.
     """
-    modul = tmp_path / "nutzung.py"
+    modul = tmp_path / "nebenkostenfix" / "nutzung.py"
+    modul.parent.mkdir()
     modul.write_text(
         'def blocker(name):\n'
         '    return f"Objekt {name} ist nicht aktiv. Trage die Wohnung nach."\n',
@@ -230,7 +231,9 @@ def test_der_waechter_kennt_alle_module_mit_meldungen():
     module = backend_module()
     for name in ('backup.py', 'mieter_daten.py', 'girocode_generator.py',
                  'frist.py', 'beispielimmobilie.py', 'zeitleiste.py',
-                 'app.py', 'auth.py', 'rechenkern.py'):
+                 'auth.py', 'rechenkern.py'):
+        assert 'nebenkostenfix/' + name in module, name
+    for name in ('app.py',):
         assert name in module, name
 
 

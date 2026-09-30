@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-import backup
+from nebenkostenfix import backup
 from tests.dateinamen import (
     BOESE_NAMEN,
     BOESE_ORDNER,
@@ -193,7 +193,7 @@ def test_lange_und_mehrbytige_namen_ueberleben_das_archiv(app_ctx, belegordner, 
 @pytest.fixture
 def nas(tmp_path, monkeypatch):
     monkeypatch.setenv('NAS_MOUNT_PATH', str(tmp_path / 'nas'))
-    from handlers.nas_handler import NASHandler
+    from nebenkostenfix.handlers.nas_handler import NASHandler
 
     return NASHandler()
 

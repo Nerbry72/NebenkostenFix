@@ -78,7 +78,7 @@ CODE_START = """
 import json
 from sqlalchemy import inspect, text
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 with anwendung.app.app_context():
     tabellen = sorted(inspect(db.engine).get_table_names())
@@ -108,7 +108,7 @@ import json
 from sqlalchemy import text
 from flask_migrate import downgrade
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 with anwendung.app.app_context():
     downgrade(revision="63738d5329b4")
@@ -128,7 +128,7 @@ import json
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 with anwendung.app.app_context():
     with db.engine.connect() as verbindung:
@@ -190,7 +190,7 @@ def test_vor_der_wanderung_wird_gesichert(tmp_path):
     archive = sorted(sicherungen.glob("sicherung-vor-update-*.nkfix"))
     assert len(archive) == 1
 
-    import backup
+    from nebenkostenfix import backup
     manifest = backup.manifest_lesen(archive[0])
     assert manifest["alembic_revision"] == "63738d5329b4"
 
@@ -204,8 +204,8 @@ from pathlib import Path
 from sqlalchemy import text
 from flask_migrate import downgrade, upgrade
 import app as anwendung
-import backup
-from models import Tenant, db
+from nebenkostenfix import backup
+from nebenkostenfix.models import Tenant, db
 
 ordner = Path(os.environ['DATA_DIR']) / 'probe-sicherungen'
 with anwendung.app.app_context():
@@ -413,7 +413,7 @@ import json
 from sqlalchemy import text
 from flask_migrate import downgrade, upgrade
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 # Betraege, wie sie nach Jahren Fliesskommarechnung in der Datei stehen. Die
 # ersten drei sind keine erfundenen Krummheiten: so sieht 89,29 bzw. 1234,57
@@ -555,7 +555,7 @@ import json
 from sqlalchemy import text
 from flask_migrate import downgrade
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 with anwendung.app.app_context():
     downgrade(revision="9c1f4a2b7d33")
@@ -586,7 +586,7 @@ import json
 from sqlalchemy import text
 from flask_migrate import downgrade, upgrade
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 # Was nach Jahren ohne Eingabepruefung in der Spalte stehen kann. Die ersten
 # beiden sind offensichtlich gemeint und nur falsch geschrieben, die uebrigen
@@ -679,7 +679,7 @@ def test_die_artwanderung_setzt_den_check(tmp_path):
     datei = tmp_path / "artcheck.db"
     stand = _lauf(CODE_ART_WANDERUNG, datei, tmp_path)
 
-    from abrechnungsart import GUELTIG
+    from nebenkostenfix.abrechnungsart import GUELTIG
 
     for art in GUELTIG:
         assert f"'{art}'" in stand["schema"], f"{art} fehlt im CHECK"
@@ -721,7 +721,7 @@ import json
 from sqlalchemy import text
 from flask_migrate import downgrade
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 with anwendung.app.app_context():
     downgrade(revision="a7c3e91d4b28")
@@ -752,7 +752,7 @@ import json
 from sqlalchemy import text
 from flask_migrate import downgrade, upgrade
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 # Die acht des alten Seeds, dazu vier, wie sie ein Vermieter selbst benennt,
 # und eine, die sich beim besten Willen nicht zuordnen laesst.
@@ -919,7 +919,7 @@ import json
 from sqlalchemy import text
 from flask_migrate import downgrade
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 with anwendung.app.app_context():
     downgrade(revision="b4e7f2a91c65")
@@ -964,7 +964,7 @@ def test_der_seed_legt_alle_siebzehn_nummern_an(tmp_path):
 import json
 from sqlalchemy import text
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 with anwendung.app.app_context():
     zeilen = [(z[0], z[1], z[2], z[3]) for z in db.session.execute(text(
@@ -975,7 +975,7 @@ print(json.dumps({"zeilen": zeilen}))
 """
     stand = _lauf(code, datei, tmp_path)
 
-    from betrkv import KATALOG
+    from nebenkostenfix.betrkv import KATALOG
 
     assert [z[0] for z in stand["zeilen"]] == [e["nr"] for e in KATALOG]
     assert sorted({z[0] for z in stand["zeilen"]}) == list(range(1, 18))
@@ -1000,7 +1000,7 @@ def test_der_seed_macht_aus_altbestand_keine_dubletten(tmp_path):
 import json
 from sqlalchemy import text
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 with anwendung.app.app_context():
     anwendung.seed_database()
@@ -1052,7 +1052,7 @@ def test_der_seed_ergaenzt_das_niederschlagswasser_neben_dem_abwasser(tmp_path):
 import json
 from sqlalchemy import text
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 with anwendung.app.app_context():
     db.session.execute(text(
@@ -1081,7 +1081,7 @@ import json
 from sqlalchemy import text
 from flask_migrate import downgrade, upgrade
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 with anwendung.app.app_context():
     downgrade(revision="c9a5d3f81e47")
@@ -1278,7 +1278,7 @@ import json
 from sqlalchemy import text
 from flask_migrate import downgrade
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 with anwendung.app.app_context():
     downgrade(revision="c9a5d3f81e47")
@@ -1316,7 +1316,7 @@ import json
 from sqlalchemy import text
 from flask_migrate import downgrade, upgrade
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 with anwendung.app.app_context():
     downgrade(revision="d2f8b16c05a9")
@@ -1478,7 +1478,7 @@ import json
 from sqlalchemy import text
 from flask_migrate import downgrade
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 with anwendung.app.app_context():
     db.session.execute(text(
@@ -1528,7 +1528,7 @@ import json
 from sqlalchemy import text
 from flask_migrate import downgrade, upgrade
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 with anwendung.app.app_context():
     downgrade(revision="2514fdc3f655")
@@ -1642,7 +1642,7 @@ import json
 from sqlalchemy import text
 from flask_migrate import downgrade
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 with anwendung.app.app_context():
     downgrade(revision="2514fdc3f655")
@@ -1679,7 +1679,7 @@ import json
 from sqlalchemy import text
 from flask_migrate import downgrade, upgrade
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 with anwendung.app.app_context():
     downgrade(revision="e5b2c74f9a16")
@@ -1758,7 +1758,7 @@ import json
 from sqlalchemy import text
 from flask_migrate import downgrade
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 with anwendung.app.app_context():
     db.session.execute(text(
@@ -1803,7 +1803,7 @@ import json
 from sqlalchemy import text
 from flask_migrate import downgrade, upgrade
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 with anwendung.app.app_context():
     downgrade(revision="f3a9c05e8d72")
@@ -1971,7 +1971,7 @@ import json
 from sqlalchemy import text
 from flask_migrate import downgrade
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 with anwendung.app.app_context():
     db.session.execute(text(
@@ -2016,7 +2016,7 @@ import json
 from sqlalchemy import text
 from flask_migrate import downgrade, upgrade
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 with anwendung.app.app_context():
     downgrade(revision="c1d47e93a806")
@@ -2122,7 +2122,7 @@ import json
 from sqlalchemy import text
 from flask_migrate import downgrade
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 with anwendung.app.app_context():
     downgrade(revision="c1d47e93a806")
@@ -2151,7 +2151,7 @@ import json
 from sqlalchemy import text
 from flask_migrate import downgrade, upgrade
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 with anwendung.app.app_context():
     downgrade(revision="b8e2f41a90c3")
@@ -2242,7 +2242,7 @@ import json
 from sqlalchemy import text
 from flask_migrate import downgrade
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 with anwendung.app.app_context():
     downgrade(revision="b8e2f41a90c3")
@@ -2269,7 +2269,7 @@ import json
 from sqlalchemy import text
 from flask_migrate import downgrade, upgrade
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 with anwendung.app.app_context():
     downgrade(revision="c7e1a9f30d42")
@@ -2338,7 +2338,7 @@ def test_die_dualtarifwanderung_haelt_die_beiden_regeln_ein(tmp_path):
 import json
 from sqlalchemy import text
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 fehler = []
 with anwendung.app.app_context():
@@ -2371,7 +2371,7 @@ import json
 from sqlalchemy import text
 from flask_migrate import downgrade
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 with anwendung.app.app_context():
     downgrade(revision="c7e1a9f30d42")
@@ -2396,7 +2396,7 @@ import json
 from sqlalchemy import text
 from flask_migrate import downgrade, upgrade
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 with anwendung.app.app_context():
     downgrade(revision="d4e6f8a90b12")
@@ -2462,7 +2462,7 @@ import json
 from sqlalchemy import text
 from flask_migrate import downgrade
 import app as anwendung
-from models import db
+from nebenkostenfix.models import db
 
 with anwendung.app.app_context():
     downgrade(revision="d4e6f8a90b12")

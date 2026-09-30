@@ -40,8 +40,8 @@ einzelschwelle = _laden()
 
 def test_beide_dateien_haben_eine_eigene_schwelle():
     regeln = einzelschwelle.regeln_lesen()
-    assert regeln['auth.py'] == 90
-    assert regeln['backup.py'] == 90
+    assert regeln['nebenkostenfix/auth.py'] == 90
+    assert regeln['nebenkostenfix/backup.py'] == 90
 
 
 def test_die_projektschwelle_bleibt_daneben_bestehen():
@@ -152,7 +152,7 @@ def test_das_schwellenziel_startet_das_skript():
     assert 'scripts/einzelschwelle.py' in makefile
 
 
-@pytest.mark.parametrize('name', ['auth.py', 'backup.py'])
+@pytest.mark.parametrize('name', ['nebenkostenfix/auth.py', 'nebenkostenfix/backup.py'])
 def test_die_genannten_dateien_gibt_es_wirklich(name):
     """Ein Tippfehler im Dateinamen waere eine Schwelle, die nie greift."""
     assert (WURZEL / name).exists()

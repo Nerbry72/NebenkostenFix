@@ -25,8 +25,8 @@ from decimal import Decimal
 import pytest
 import reportlab.rl_config
 
-from pdf_generator import PDFGenerator
-from rechenkern import (
+from nebenkostenfix.pdf_generator import PDFGenerator
+from nebenkostenfix.rechenkern import (
     Heizungsanlage,
     Kategorie,
     Mieter,

@@ -32,7 +32,7 @@ from decimal import Decimal
 
 import pytest
 
-from rechenkern import (
+from nebenkostenfix.rechenkern import (
     Kategorie,
     Mieter,
     Rechnung,
@@ -302,7 +302,7 @@ def _tarifhaus(app_ctx, name='Tarifhaus'):
 def test_route_nimmt_beide_tarifpreile_an(auth_client, app_ctx):
     """POST /api/invoices speichert HT- und NT-Preis auf vier Stellen."""
     prop, _ = _tarifhaus(app_ctx)
-    from models import CostCategory
+    from nebenkostenfix.models import CostCategory
     kat = CostCategory.query.filter_by(name='Wasserversorgung').first()
 
     antwort = auth_client.post('/api/invoices', json={
@@ -316,7 +316,7 @@ def test_route_nimmt_beide_tarifpreile_an(auth_client, app_ctx):
     })
     assert antwort.status_code == 201, antwort.get_data(as_text=True)
 
-    from models import CostInvoice
+    from nebenkostenfix.models import CostInvoice
     rechnung = CostInvoice.query.get(antwort.get_json()['id'])
     assert rechnung.preis_ht == Decimal('0.3582')
     assert rechnung.preis_nt == Decimal('0.2147')
@@ -325,7 +325,7 @@ def test_route_nimmt_beide_tarifpreile_an(auth_client, app_ctx):
 def test_route_lehnt_einen_preis_allein_ab(auth_client, app_ctx):
     """Ein Tarifpreis ohne seinen Partner behauptet eine Aufteilung ohne Beleg."""
     prop, _ = _tarifhaus(app_ctx)
-    from models import CostCategory
+    from nebenkostenfix.models import CostCategory
     kat = CostCategory.query.filter_by(name='Wasserversorgung').first()
 
     antwort = auth_client.post('/api/invoices', json={
@@ -343,7 +343,7 @@ def test_route_lehnt_einen_preis_allein_ab(auth_client, app_ctx):
 def test_route_lehnt_negativen_tarifpreis_ab(auth_client, app_ctx):
     """Ein Preis ist ein Mengenpreis, keine Saldo -- das Vorzeichen dreht nichts."""
     prop, _ = _tarifhaus(app_ctx)
-    from models import CostCategory
+    from nebenkostenfix.models import CostCategory
     kat = CostCategory.query.filter_by(name='Wasserversorgung').first()
 
     antwort = auth_client.post('/api/invoices', json={
@@ -361,9 +361,9 @@ def test_route_lehnt_negativen_tarifpreis_ab(auth_client, app_ctx):
 
 def test_der_lader_durchreicht_die_tarifpreile(app_ctx):
     """lade_vorgang traegt die Preise in den Vorgang (NK-037-Schnittstelle)."""
-    from abrechnungsdaten import lade_vorgang
+    from nebenkostenfix.abrechnungsdaten import lade_vorgang
     prop, mieter = _tarifhaus(app_ctx, name='Ladehaus')
-    from models import CostCategory, CostInvoice, db
+    from nebenkostenfix.models import CostCategory, CostInvoice, db
     kat = CostCategory.query.filter_by(name='Wasserversorgung').first()
     db.session.add(CostInvoice(
         category_id=kat.id, property_id=prop.id,
