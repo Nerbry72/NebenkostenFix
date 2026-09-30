@@ -1894,9 +1894,10 @@
                         <input type="date" id="billing-period-end" required>
                     </div>
                 </div>
+                <div id="billing-zeitraumvorschlag" class="zeitraumvorschlag" hidden></div>
                 <p class="karten-text">
-                    Vorbelegt mit dem Zeitraum der ausgewählten Kategorien. Frei änderbar, etwa vom
-                    Einzug bis zum Stichtag.
+                    Vorbelegt mit dem Vorschlag der App, sonst mit dem Zeitraum der ausgewählten
+                    Kategorien. Frei änderbar, etwa vom Einzug bis zum Stichtag.
                 </p>
                 <div id="billing-selection-body"></div>
             </div>
@@ -1965,10 +1966,11 @@
                         <input type="date" id="frei-period-end" required>
                     </div>
                 </div>
+                <div id="frei-zeitraumvorschlag" class="zeitraumvorschlag" hidden></div>
                 <p style="margin-bottom: 0; color: var(--text-muted); font-size: 14px;">
                     In die Abrechnung fließen alle Kostenarten ein, für die im gewählten
-                    Zeitraum Rechnungen vorliegen. Vorbelegt ist das vergangene Kalenderjahr;
-                    Sie können beide Daten frei ändern.
+                    Zeitraum Rechnungen vorliegen. Vorbelegt ist der Vorschlag der App, ohne
+                    Vorschlag das vergangene Kalenderjahr. Sie können beide Daten frei ändern.
                 </p>
             </div>
             <div class="modal-footer">

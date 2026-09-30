@@ -62,6 +62,8 @@ AUSNAHMEN = {
     'positionen': 'Listenpunkte, Kostenart, Betrag und Rechenweg einzeln maskiert',
     'warnListe': 'Warnungen, einzeln maskiert',
     'warnungenHtml(hinweise)': 'Listenpunkte aus warnungenHtml, jeder Text maskiert (F-116)',
+    'gruende': 'Listenpunkte des Zeitraumvorschlags, jeder Grund maskiert (NK-186)',
+    'kopf': 'Kopf des Zeitraumvorschlags, Daten maskiert (NK-186)',
     'pdfLinks': 'Adressen aus dateiAdresse (Zahl), Texte fest',
     'zustellung': 'Datum maskiert oder Knopf mit Zahl',
     's.aktion': 'Funktionsaufruf aus der Schrittdefinition im Code',

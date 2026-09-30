@@ -127,6 +127,7 @@ ROUTEN_INVENTAR = frozenset({
     'get_tenant_profiles',
     'get_tenants',
     'get_vermieterdaten',
+    'get_zeitraumvorschlag',
     'health_check',
     'index',
     'login',

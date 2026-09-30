@@ -5427,6 +5427,40 @@ function vorgeschlagenerZeitraum(categories, ids) {
     return [beginn, ende];
 }
 
+// NK-186: Welcher Zeitraum passt -- und warum. Die Gruende kommen vom
+// Server; "Übernehmen" setzt beide Felder wie eine Eingabe von Hand.
+function zeitraumVorschlagHtml(v) {
+    const gruende = v.gruende.map(g => `<li>${escapeHtml(g)}</li>`).join('');
+    const kopf = v.beginn
+        ? `<strong>Vorschlag: ${escapeHtml(datumText(v.beginn))} – ${escapeHtml(datumText(v.ende))}</strong>`
+        : '<strong>Zurzeit kein Vorschlag</strong>';
+    const knopf = v.beginn ? '<button type="button" class="btn btn-secondary">Übernehmen</button>' : '';
+    return `${kopf}<ul>${gruende}</ul>${knopf}`;
+}
+
+async function zeitraumVorschlagen(tenantId, boxId, beginnFeld, endeFeld, sofort) {
+    const box = document.getElementById(boxId);
+    box.hidden = true;
+    if (!tenantId) return;
+    try {
+        const res = await fetch(`/api/tenants/${tenantId}/zeitraumvorschlag`);
+        if (!res.ok) return;
+        const v = await res.json();
+        box.innerHTML = zeitraumVorschlagHtml(v);
+        box.hidden = false;
+        if (!v.beginn) return;
+        const uebernehmen = () => {
+            beginnFeld.value = v.beginn;
+            endeFeld.value = v.ende;
+            beginnFeld.dispatchEvent(new Event('input'));
+        };
+        box.querySelector('button').onclick = uebernehmen;
+        if (sofort()) uebernehmen();
+    } catch (e) {
+        // Ohne Vorschlag bleibt die Vorbelegung stehen.
+    }
+}
+
 // Prüfung vor dem Senden (NK-119). Überschneidungen mit festgesetzten
 // Abrechnungen prüft der Server (D-55) und meldet sie in der Vorschau.
 /* NK-142: Der freie Weg zur Abrechnung, falls die Vorschlagskarte fehlt
@@ -5452,10 +5486,18 @@ function openFreieAbrechnung() {
             '<option value="">Kein Mietverhältnis vorhanden</option>');
     }
 
-    // Vorbelegt: das vergangene Kalenderjahr, der haeufigste Fall.
+    // Vorbelegt: der Vorschlag der App (NK-186), ohne ihn das vergangene
+    // Kalenderjahr, der haeufigste Fall.
     const jahr = new Date().getFullYear() - 1;
-    document.getElementById('frei-period-start').value = `${jahr}-01-01`;
-    document.getElementById('frei-period-end').value = `${jahr}-12-31`;
+    const beginnFeld = document.getElementById('frei-period-start');
+    const endeFeld = document.getElementById('frei-period-end');
+    const vorschlagen = () => {
+        beginnFeld.value = `${jahr}-01-01`;
+        endeFeld.value = `${jahr}-12-31`;
+        zeitraumVorschlagen(auswahl.value, 'frei-zeitraumvorschlag', beginnFeld, endeFeld, () => true);
+    };
+    auswahl.onchange = vorschlagen;
+    vorschlagen();
 
     document.getElementById('billing-frei-modal').classList.add('active');
 }
@@ -5527,6 +5569,8 @@ function openBillingSelectionModal(suggestion) {
     endeFeld.oninput = () => { vonHand = true; };
     body.querySelectorAll('.category-select-cb').forEach(cb => { cb.onchange = vorbelegen; });
     vorbelegen();
+    zeitraumVorschlagen(suggestion.tenant_id, 'billing-zeitraumvorschlag',
+        beginnFeld, endeFeld, () => !vonHand);
 
     document.getElementById('btn-proceed-preview').onclick = () => {
         const selectedCategoryIds = ausgewaehlteIds();

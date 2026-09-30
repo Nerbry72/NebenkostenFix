@@ -145,6 +145,7 @@ Stammdaten -- Immobilie, Wohnung, Mieter, Anbieter, Kostenart
   POST        /api/tenants/<int:tenant_id>/profiles        -> save_tenant_profiles
   GET         /api/tenants/<int:tenant_id>/haushaltsgroessen -> get_haushaltsgroessen
   POST        /api/tenants/<int:tenant_id>/haushaltsgroessen -> save_haushaltsgroesse
+  GET         /api/tenants/<int:tenant_id>/zeitraumvorschlag -> get_zeitraumvorschlag
   DELETE      /api/haushaltsgroessen/<int:id>              -> delete_haushaltsgroesse
   GET         /api/providers                               -> get_providers
   POST        /api/providers                               -> create_provider
@@ -1663,6 +1664,17 @@ def datei_ausliefern(art, kennung):
     if not gespeichert:
         return jsonify({'error': 'Zu diesem Eintrag ist keine Datei hinterlegt.'}), 404
     return datei_antwort(gespeichert, anzeigename)
+
+@app.route('/api/tenants/<int:tenant_id>/zeitraumvorschlag', methods=['GET'])
+def get_zeitraumvorschlag(tenant_id):
+    """Welcher Abrechnungszeitraum passt -- und warum (NK-186)."""
+    from nebenkostenfix.rechenkern import BillingDataError as KernFehler
+    from nebenkostenfix.zeitraumvorschlag import vorschlag
+    db.get_or_404(Tenant, tenant_id)
+    try:
+        return jsonify(vorschlag(tenant_id, date.today())), 200
+    except KernFehler as e:
+        return jsonify({'beginn': None, 'ende': None, 'gruende': [str(e)]}), 200
 
 # --- Tenant Cost Profiles ---
 @app.route('/api/tenants/<int:tenant_id>/profiles', methods=['GET'])

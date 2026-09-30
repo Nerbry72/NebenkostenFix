@@ -1161,6 +1161,20 @@ input[type="number"] {
     color: var(--primary);
 }
 
+/* NK-186: Zeitraumvorschlag mit Begruendung in den Abrechnungsdialogen. */
+.zeitraumvorschlag {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-hover);
+    padding: 12px;
+    margin: 8px 0 12px;
+}
+
+.zeitraumvorschlag ul {
+    margin: 6px 0 10px;
+    padding-left: 20px;
+}
+
 /* Erste Schritte (K5, NK-103): neu gesetzt, nicht ausgebessert. Das Panel
    steht über den Kennzahlen und verschwindet, sobald alle Pflichtschritte
    erledigt sind; gezeichnet wird es von zeigeErsteSchritte() in app.js. */
