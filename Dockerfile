@@ -27,6 +27,10 @@ RUN --mount=type=secret,id=ca,required=false \
 # bleiben draussen (NK-040, NK-133 folgt).
 COPY . .
 
+# Lizenztexte der mitgelieferten Software (NK-148), aus genau dieser
+# Installation. Die App zeigt sie im Über-Dialog.
+RUN python -m nebenkostenfix.drittlizenzen --ausgabe THIRD_PARTY_LICENSES.txt requirements.txt
+
 # Eigener Nutzer ohne Anmeldung (NK-076): die Anwendung laeuft nie als root.
 # Der Einstieg startet als root nur, um den Datenordner einem Bind-Mount vom
 # Wirt passend zu machen, und wechselt dann per setpriv auf PUID/PGID.

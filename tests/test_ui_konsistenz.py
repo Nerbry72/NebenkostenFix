@@ -221,6 +221,35 @@ def test_backend_pruefer_findet_du_form_in_f_string(tmp_path):
     assert "Imperativ-Anrede" in verstoesse[0]
 
 
+def test_backend_pruefer_findet_rechne_in_der_ablehnung(tmp_path):
+    """NK-184: 'Rechne den Wohnteil … ab' stand in nutzung.ablehnung und kam
+    als Blocker in der Oberflaeche an. 'Rechne' fehlte in der Verbliste."""
+    modul = tmp_path / "nebenkostenfix" / "nutzung.py"
+    modul.parent.mkdir()
+    modul.write_text(
+        'def ablehnung(name):\n'
+        '    return (f"Die Immobilie {name} ist gemischt genutzt. "\n'
+        '            f"Rechne den Wohnteil in einer eigenen Immobilie ab.")\n',
+        encoding="utf-8")
+    from scripts.ui_beschriftungen import pruefe_backend_meldungen
+
+    verstoesse = pruefe_backend_meldungen(tmp_path)
+    assert len(verstoesse) == 1, verstoesse
+    assert "'Rechne'" in verstoesse[0]
+
+
+def test_ablehnung_gemischt_genutzter_gebaeude_ist_gesiezt():
+    """NK-184: die sichtbare Absage selbst, nicht nur der Wächter."""
+    from nebenkostenfix.nutzung import ablehnung
+    from scripts.ui_beschriftungen import ANREDE_IMPERATIV, DU_FORM
+
+    for art in ('gemischt', 'gewerbe', 'leer'):
+        text = ablehnung('Hauptstr. 5', art)
+        assert not ANREDE_IMPERATIV.search(text), text
+        assert not DU_FORM.search(text), text
+        assert 'Rechnen Sie den Wohnteil' in text
+
+
 # --- NK-149 (F-79): Modulliste aus den Importen, Umschrift als Regel ---
 
 def test_der_waechter_kennt_alle_module_mit_meldungen():

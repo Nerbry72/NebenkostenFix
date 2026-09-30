@@ -116,10 +116,13 @@ DU_FORM = re.compile(
 # Die Imperativ-Anrede (Par. 7, NK-139): 'Trage … nach' fordert den Leser
 # genauso direkt auf wie 'dein' -- in der Sie-Form heisst es 'Tragen Sie',
 # und dieses Wortpaar faellt durch die Wortgrenze nicht unter. Ohne diese
-# Liste waere 'Lege fest, wie …' am Wächter vorbeigerutscht.
+# Liste waere 'Lege fest, wie …' am Wächter vorbeigerutscht. NK-184: 'Rechne
+# … ab' fehlte; seitdem stehen auch die uebrigen Verben der Bedienung hier.
 ANREDE_IMPERATIV = re.compile(
     r"\b(Trage|Setze|Lasse|Gib|Lege|Ersetze|Nenne|Prüfe|Pruefe|Wechsle"
-    r"|Ergänze|Ergaenze|Hänge|Haenge)\b",
+    r"|Ergänze|Ergaenze|Hänge|Haenge"
+    r"|Rechne|Wähle|Waehle|Klicke|Öffne|Oeffne|Speichere|Erstelle|Lösche"
+    r"|Loesche|Wende|Melde|Starte|Füge|Fuege|Beachte|Warte|Nimm|Sieh)\b",
 )
 
 # Ausnahmen, die die Sperrliste absichtlich nicht trifft, mit Begruendung:

@@ -42,6 +42,7 @@ Oberflaeche und Betrieb
   GET         /api/haftung                                 -> haftung_anzeigen
   POST        /api/haftung                                 -> haftung_bestaetigen
   GET         /api/ueber                                   -> ueber_anzeigen
+  GET         /api/drittlizenzen                           -> drittlizenzen_anzeigen
   GET         /api/aktualisierung/einstellung              -> update_einstellung_anzeigen
   PUT         /api/aktualisierung/einstellung              -> update_einstellung_setzen
   GET         /api/aktualisierung/automatisch              -> aktualisierung_automatisch
@@ -347,6 +348,7 @@ from nebenkostenfix import aktualisierung
 from nebenkostenfix import einstellungen
 from nebenkostenfix import haftung
 from nebenkostenfix import marke
+from nebenkostenfix import drittlizenzen
 import platform
 from nebenkostenfix.aktualisierung import AktualisierungsFehler
 if not (os.environ.get('DATABASE_URL') or '').strip() or \
@@ -2535,6 +2537,14 @@ def ueber_anzeigen():
         'fehler_melden': marke.fehler_melden_url(SOFTWARE_VERSION, weg, system),
         'unterstuetzen': marke.KOFI_URL, 'lizenz': marke.LIZENZ_URL,
         'haftung': list(haftung.TEXT)})
+
+
+@app.route('/api/drittlizenzen', methods=['GET'])
+def drittlizenzen_anzeigen():
+    """Lizenzen der mitgelieferten Drittsoftware im Über-Dialog (NK-148)."""
+    antwort = make_response(drittlizenzen.lesen())
+    antwort.mimetype = 'text/plain'
+    return antwort
 
 
 def _update_einstellung():

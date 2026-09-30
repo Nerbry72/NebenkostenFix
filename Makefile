@@ -80,8 +80,9 @@ e2e:
 	$(HOST_PY) scripts/e2e.py $(E2E_ARGS)
 
 # DOM-Rauchtest des Design-Systems (NK-067). Wirtswerkzeug wie e2e:
-# im Container gibt es kein Node. Die statischen Zusicherungen laufen
-# zusaetzlich als pytest in `make check` (tests/test_ui_konsistenz.py).
+# im Container gibt es kein Node. Die CI faehrt ihn in rundgang.yml (F-108);
+# die statischen Zusicherungen laufen zusaetzlich als pytest in `make check`
+# (tests/test_ui_konsistenz.py).
 rauchtest:
 	@if [ -n "$(wildcard /.dockerenv)" ]; then \
 	  echo "make rauchtest gehoert auf den Wirt, nicht in den Container:"; \

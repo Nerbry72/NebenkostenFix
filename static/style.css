@@ -1739,6 +1739,12 @@ input[type="number"] {
 .ueber-zeichen { vertical-align: -5px; margin-right: 4px; }
 .ueber-links li { margin-bottom: 6px; }
 .ueber-links .feld-hilfe { display: block; }
+.ueber-links summary { cursor: pointer; color: var(--primary); }
+.ueber-drittlizenzen {
+    max-height: 320px; overflow: auto; margin-top: 8px; padding: 12px;
+    font-size: 0.8125rem; white-space: pre-wrap; overflow-wrap: anywhere;
+    background: var(--bg-color); border-radius: 8px;
+}
 /* NK-175: Schalter mit Beschriftung in einer Zeile. */
 .schalter-zeile {
     display: flex;

@@ -144,6 +144,14 @@ jobs:
           exe="NebenkostenFix-${VERSION}-Setup.exe"
           cp "$(find windows -name "$exe" | head -n1)" "$exe"
           sha256sum "$exe" > SHA256SUMS.txt
+          # NK-148: die Lizenztexte der mitgelieferten Software, erzeugt beim
+          # Windows-Bau aus genau dieser Installation (Obermenge des Abbilds).
+          lizenzen="$(find windows -name THIRD_PARTY_LICENSES.txt | head -n1)"
+          if [ -z "$lizenzen" ]; then
+            echo "::error::THIRD_PARTY_LICENSES.txt fehlt im Windows-Artefakt."
+            exit 1
+          fi
+          cp "$lizenzen" THIRD_PARTY_LICENSES.txt
       # Ohne update.json saehe keine installierte App dieses Release, deshalb
       # bricht der Lauf ohne Secret ab. Der private Schluessel liegt nur dort.
       - name: Update-Manifest signieren
@@ -170,7 +178,7 @@ jobs:
       - name: Release anlegen
         run: |
           exe="NebenkostenFix-${VERSION}-Setup.exe"
-          dateien=("$exe" SHA256SUMS.txt)
+          dateien=("$exe" SHA256SUMS.txt THIRD_PARTY_LICENSES.txt)
           if [ -f update.json ]; then dateien+=(update.json); fi
           cat > notizen.md <<NOTIZ
           ## NebenkostenFix ${VERSION}
