@@ -1,11 +1,15 @@
 # Qualitaetstor fuer jeden Pull Request: Lint, Glossar, Sicherheit, Tests,
 # Abdeckung des Rechenkerns, bekannte Luecken in Abhaengigkeiten und
-# Secret-Scan. Einmal pro Stand: kein zusaetzlicher Lauf beim Push, und das
+# Secret-Scan. Kein zusaetzlicher Lauf beim Push auf einen Branch, und das
 # Release wiederholt ihn nicht (main nimmt nur aktuelle, gepruefte PRs an).
+# Einzige Ausnahme ist der Merge nach main: Das CI-Badge im README zeigt den
+# letzten Lauf auf main und stuende sonst beim letzten Lauf von Hand (F-110).
 name: ci
 
 on:
   pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:

@@ -202,6 +202,58 @@ jobs:
           # 4. Deinstallation laesst die Daten stehen
           python packaging/windows/paketprobe.py deinstallieren $programm $daten
           if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: MSIX fuer den Store packen (NK-173)
+        id: msix
+        shell: pwsh
+        run: |
+          $v = "${{ steps.version.outputs.wert }}"
+          python packaging/windows/msix.py vorbereiten dist\NebenkostenFix "$env:RUNNER_TEMP\msix-inhalt" $v
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          # Neuestes Windows SDK auf dem Runner (makeappx, signtool)
+          $makeappx = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\makeappx.exe" |
+            Sort-Object { [version]$_.Directory.Parent.Name } -Descending | Select-Object -First 1
+          if (-not $makeappx) { "makeappx.exe nicht gefunden"; exit 1 }
+          $datei = "dist\NebenkostenFix-$v.msix"
+          & $makeappx.FullName pack /d "$env:RUNNER_TEMP\msix-inhalt" /p $datei /o
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          "sdk=$($makeappx.DirectoryName)" >> $env:GITHUB_OUTPUT
+          "datei=$datei" >> $env:GITHUB_OUTPUT
+          "- MSIX: $(Split-Path $datei -Leaf), $([math]::Round((Get-Item $datei).Length / 1MB, 1)) MB, unsigniert (signiert der Store)" >> $env:GITHUB_STEP_SUMMARY
+      - name: MSIX testsigniert installieren, starten, entfernen (F-102)
+        # Nur die Probe: das hochgeladene Paket bleibt unsigniert.
+        timeout-minutes: 10
+        shell: pwsh
+        run: |
+          # Testzertifikat mit dem Publisher aus dem Partner Center, so bleibt
+          # die Paketfamilie dieselbe wie im Store.
+          $zert = New-SelfSignedCertificate -Type Custom -Subject "CN=5A9DC20D-397B-41AF-807A-57E2A97CF70C" `
+            -KeyUsage DigitalSignature -FriendlyName "NebenkostenFix CI-Test" -CertStoreLocation Cert:\CurrentUser\My `
+            -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
+          Export-Certificate -Cert $zert -FilePath "$env:RUNNER_TEMP\msix-test.cer" | Out-Null
+          Import-Certificate -FilePath "$env:RUNNER_TEMP\msix-test.cer" -CertStoreLocation Cert:\LocalMachine\TrustedPeople | Out-Null
+          $test = "$env:RUNNER_TEMP\NebenkostenFix-test.msix"
+          Copy-Item "${{ steps.msix.outputs.datei }}" $test
+          & "${{ steps.msix.outputs.sdk }}\signtool.exe" sign /fd SHA256 /sha1 $zert.Thumbprint /s My $test
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          # Reste der Installer-Proben wuerden die Umleitung verdecken
+          Remove-Item "$env:LOCALAPPDATA\NebenkostenFix" -Recurse -Force -ErrorAction SilentlyContinue
+          Add-AppxPackage -Path $test
+          $paket = Get-AppxPackage -Name NerbrY72.NebenkostenFix
+          if (-not $paket) { "MSIX nicht installiert"; exit 1 }
+          "- MSIX installiert: $($paket.PackageFullName)" >> $env:GITHUB_STEP_SUMMARY
+          $daten = "$env:RUNNER_TEMP\nk-msix"
+          # Start ueber den Alias, also mit Paketidentitaet
+          python packaging/windows/paketprobe.py msix "$env:LOCALAPPDATA\Microsoft\WindowsApps\NebenkostenFix.exe" $paket.PackageFamilyName $daten $env:RUNNER_TEMP
+          $ok = $LASTEXITCODE
+          Remove-AppxPackage -Package $paket.PackageFullName
+          python packaging/windows/paketprobe.py msix-entfernt $paket.PackageFamilyName $daten
+          if ($ok -ne 0 -or $LASTEXITCODE -ne 0) { exit 1 }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nebenkostenfix-msix
+          path: dist/NebenkostenFix-*.msix
+          retention-days: 14
+          if-no-files-found: error
       - uses: actions/upload-artifact@v7
         if: always()
         with:

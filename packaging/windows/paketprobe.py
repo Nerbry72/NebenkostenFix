@@ -8,6 +8,8 @@
     python packaging/windows/paketprobe.py datenordner <exe> <erwarteter-ordner> <bericht.json>
     python packaging/windows/paketprobe.py deinstallieren <programmordner> <datenordner>
     python packaging/windows/paketprobe.py umzug <exe> <paket.nkfix> <erwartet.json> <datenordner> <bericht.json>
+    python packaging/windows/paketprobe.py msix <alias-exe> <paketfamilie> <datenordner> <berichtordner>
+    python packaging/windows/paketprobe.py msix-entfernt <paketfamilie> <datenordner>
 
 Jede Probe schreibt eine Zeile in die Zusammenfassung des Laufs
 (``GITHUB_STEP_SUMMARY``) und endet mit Exit 1, wenn sie nicht besteht.
@@ -195,6 +197,81 @@ def probe_umzug(exe: Path, paket: Path, erwartet: Path, datenordner: Path,
     return not fehler
 
 
+# NK-173: Name und Publisher aus dem Partner Center ergeben diese Familie. Ein
+# Testzertifikat mit demselben Publisher ergibt dieselbe.
+PAKETFAMILIE = 'NerbrY72.NebenkostenFix_r6jjzcw4f5yym'
+
+
+def _json(datei: Path) -> dict:
+    try:
+        return json.loads(datei.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return {}
+
+
+def _umgeleitet(lokal: Path, familie: str) -> Path:
+    """Wohin Windows (ab 10 1903) neue Dateien einer MSIX-App unter
+    %LOCALAPPDATA% schreibt."""
+    return lokal / 'Packages' / familie / 'LocalCache' / 'Local' / 'NebenkostenFix'
+
+
+def msix_auswerten(selbst: dict, ordner: dict, familie: str, lokal: Path) -> tuple[bool, list[str]]:
+    """Die Berichte der App mit Paketidentität lesen (Spike F-102).
+
+    Muss: Selbsttest bestanden, Paketmodus (Updater aus) in beiden Läufen,
+    richtige Paketfamilie, OneDrive-Ausweich außerhalb von %LOCALAPPDATA%
+    (F-111). Nur festgehalten: ob Windows die Einstellungen umleitet.
+    """
+    ausweich = ordner.get('ausweich') or ''
+    ausweich_ok = bool(ausweich) and not _normiert_in(Path(ausweich), lokal)
+    pruefungen = {
+        'Selbsttest': selbst.get('ergebnis') == 'bestanden',
+        'Paketmodus (Updater aus)': selbst.get('paketmodus') is True and ordner.get('paketmodus') is True,
+        f'Paketfamilie {PAKETFAMILIE}': familie == PAKETFAMILIE,
+        'OneDrive-Ausweich außerhalb von %LOCALAPPDATA%': ausweich_ok,
+    }
+    zeilen = [f'- MSIX {name}: {"ok" if gut else "FEHLGESCHLAGEN"}' for name, gut in pruefungen.items()]
+    umgeleitet = _umgeleitet(lokal, familie)
+    virtuell = umgeleitet.is_dir() and not (lokal / 'NebenkostenFix').exists()
+    zeilen.append(f'- MSIX Datenordner `{ordner.get("datenordner")}`, Ausweich `{ausweich}`')
+    zeilen.append('- MSIX %LOCALAPPDATA%\\NebenkostenFix: '
+                  + (f'umgeleitet nach `{umgeleitet}` (paketprivat)' if virtuell
+                     else 'NICHT umgeleitet'))
+    return all(pruefungen.values()), zeilen
+
+
+def _normiert_in(pfad: Path, basis: Path) -> bool:
+    ziel = os.path.normcase(os.path.abspath(str(pfad)))
+    wurzel = os.path.normcase(os.path.abspath(str(basis))).rstrip('\\/')
+    return ziel == wurzel or ziel.startswith(wurzel + os.sep)
+
+
+def probe_msix(alias: Path, familie: str, datenordner: Path, berichte: Path) -> bool:
+    """NK-173: die installierte MSIX-App, gestartet über ihren Alias, also
+    mit Paketidentität."""
+    lokal = Path(os.environ['LOCALAPPDATA'])
+    selbst, ordner = berichte / 'bericht-msix.json', berichte / 'bericht-msix-ordner.json'
+    probe_selbsttest(alias, datenordner, selbst)
+    subprocess.run(  # noqa: S603 -- feste Argumente aus der CI
+        [str(alias), '--datenordner-zeigen', '--bericht', str(ordner)], timeout=120)
+    ok, zeilen = msix_auswerten(_json(selbst), _json(ordner), familie, lokal)
+    for zeile in zeilen:
+        _zusammenfassung(zeile)
+    return ok
+
+
+def probe_msix_entfernt(familie: str, datenordner: Path) -> bool:
+    """Nach Remove-AppxPackage: der Paketordner ist weg, die Daten in einem
+    echten Ordner bleiben. Beides muss stimmen: Bleibt der Paketordner, ist
+    die Deinstallation gescheitert, und die Daten zeigen nichts."""
+    paketordner = Path(os.environ['LOCALAPPDATA']) / 'Packages' / familie
+    daten = (datenordner / 'nebenkosten.db').is_file()
+    weg = not paketordner.exists()
+    _zusammenfassung(f'- MSIX entfernt: Paketordner {"weg" if weg else "NOCH DA"}, '
+                     f'Daten {"erhalten" if daten else "WEG"}')
+    return weg and daten
+
+
 def main(argv: list[str]) -> int:
     if not argv:
         print(__doc__)
@@ -209,6 +286,8 @@ def main(argv: list[str]) -> int:
         'datenordner': lambda: probe_datenordner(Path(rest[0]), Path(rest[1]), Path(rest[2])),
         'deinstallieren': lambda: probe_deinstallieren(Path(rest[0]), Path(rest[1])),
         'umzug': lambda: probe_umzug(*(Path(r) for r in rest[:5])),
+        'msix': lambda: probe_msix(Path(rest[0]), rest[1], Path(rest[2]), Path(rest[3])),
+        'msix-entfernt': lambda: probe_msix_entfernt(rest[0], Path(rest[1])),
     }
     if befehl not in proben:
         print(__doc__)
