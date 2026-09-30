@@ -18,6 +18,10 @@
 </p>
 
 <p align="center">
+  <a href="https://ko-fi.com/nerbry72"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Auf Ko-fi unterstützen"></a>
+</p>
+
+<p align="center">
   <a href="https://github.com/Nerbry72/NebenkostenFix/releases/latest"><strong>Herunterladen</strong></a> ·
   <a href="#docker">Docker</a> ·
   <a href="docs/handbuch/handbuch.md">Handbuch</a> ·
