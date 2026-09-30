@@ -198,6 +198,8 @@ NUR_ENTWICKLUNG = frozenset({
     # NK-187: Praxisprobe, liest eine Kopie der echten Datenbank und
     # schreibt einen Fallkatalog; Werkzeug der Entwicklung.
     'scripts/praxisprobe.py',
+    # NK-187: Datenwaechter, liest ebenfalls eine Kopie der echten Datenbank.
+    'scripts/datenwaechter.py',
 })
 GEHOERT_INS_ABBILD = frozenset({
     'scripts/kostenarten.py',

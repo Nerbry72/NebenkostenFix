@@ -77,6 +77,8 @@ scripts/umzug_kreuzprobe.py
 scripts/hilfe_begriffe.py
 # NK-187: Praxisprobe gegen eine Kopie der echten Datenbank.
 scripts/praxisprobe.py
+# NK-187: Datenwaechter, sucht echte Werte in einem Diff.
+scripts/datenwaechter.py
 
 # Entwicklung. Im Abbild laeuft weder pytest noch der Dev-Stapel.
 tests/

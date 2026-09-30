@@ -188,7 +188,12 @@ def _probe(client, t, beginn: date, ende: date, marken: list) -> dict:
         kacheln = vor.get_json()['checks']
         erg['vorpruefung'] = [
             {'art': 'Sperre' if k.get('blocking') else k['status'],
-             'kategorie': k.get('category'), 'text': k.get('message')} for k in kacheln]
+             'kategorie': k.get('category'),
+             # Zaehlerkacheln haben keinen Text; die Oberflaeche zeigt sie zugeklappt so.
+             'text': k.get('message') or (
+                 f"{k.get('meter_type')}: Keine ausreichenden Daten" if k['status'] == 'no_data'
+                 else f"{k.get('meter_type')}: Abweichung Start {k.get('start_offset_days')}T, "
+                      f"Ende {k.get('end_offset_days')}T")} for k in kacheln]
         erg['schaetzungen'] = [
             {'kategorie': k.get('category'), 'zaehler': k.get('meter_type'),
              'stuetzen': [k.get('r_start'), k.get('r_end')],
