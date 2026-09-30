@@ -19,6 +19,9 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    groups:
+      docker:
+        patterns: ["*"]
     # Nur neue Digests von python:3.11-slim (Sicherheitsupdates). Eine neue
     # Python-Version betrifft CI, Windows-Build und Dockerfile zugleich und
     # ist eine eigene Aufgabe (tests/test_haertung_abbild.py prüft 3.11).
