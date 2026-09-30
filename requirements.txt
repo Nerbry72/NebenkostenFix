@@ -1,7 +1,7 @@
 # NK-146: 3.0.3 -> 3.1.3 (PYSEC-2026-2151); Werkzeug mitgepinnt.
 Flask==3.1.3
 Werkzeug==3.1.8
-SQLAlchemy==2.0.30
+SQLAlchemy==2.1.1
 Flask-SQLAlchemy==3.1.1
 # NK-024: Schemawanderungen. alembic ist mitgepinnt, obwohl Flask-Migrate es
 # ohnehin zieht: sonst holt ein Bau von morgen eine andere Version als die,
