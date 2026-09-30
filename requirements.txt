@@ -10,7 +10,7 @@ Flask-Migrate==4.0.7
 alembic==1.19.1
 python-dotenv==1.2.3  # NK-146: PYSEC-2026-2270
 gunicorn==22.0.0
-reportlab==4.2.0
+reportlab==5.0.1
 segno==1.6.1
 # NK-130: AES-256-GCM und scrypt fuer verschluesselte Sicherungen/Exporte.
 cryptography==50.0.1  # NK-146: PYSEC-2026-3552/3553/3554, GHSA-537c-gmf6-5ccf
