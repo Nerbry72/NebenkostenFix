@@ -1081,15 +1081,18 @@ def get_tenants():
         tenants = Tenant.query.filter(Tenant.gesperrt_bis.isnot(None)).all()
     else:
         tenants = Tenant.query.filter(Tenant.gesperrt_bis.is_(None)).all()
+    from nebenkostenfix.zeitraumvorschlag import abgerechnet_bis
     result = []
     for t in tenants:
+        # F-127: dasselbe "abgerechnet bis" wie im Zeitraumvorschlag.
+        bis = abgerechnet_bis(t)
         result.append({
             'id': t.id,
             'apartment_id': t.apartment_id,
             'name': t.name,
             'move_in_date': t.move_in_date.isoformat(),
             'move_out_date': t.move_out_date.isoformat() if t.move_out_date else None,
-            'last_billed_until': t.last_billed_until.isoformat() if t.last_billed_until else None,
+            'last_billed_until': bis.isoformat() if bis else None,
             'contract_path': t.contract_path,
             'apartment_name': t.apartment.name if t.apartment else 'Unknown',
             'property_name': t.apartment.property.name if t.apartment and t.apartment.property else 'Unknown',
@@ -2044,6 +2047,7 @@ def delete_invoice(id):
 # --- Billing Logic ---
 @app.route('/api/billing/suggestions', methods=['GET'])
 def billing_suggestions():
+    from nebenkostenfix.zeitraumvorschlag import abgerechnet_bis
     tenants = Tenant.query.filter(
         db.or_(Tenant.move_out_date == None, Tenant.move_out_date > datetime(2000, 1, 1).date()),
         Tenant.gesperrt_bis.is_(None)).all()
@@ -2068,11 +2072,7 @@ def billing_suggestions():
             
             billed_until = last_cat_report.end_date if last_cat_report else None
             
-            latest_report = TenantBillingReport.query.filter_by(tenant_id=t.id).order_by(TenantBillingReport.end_date.desc()).first()
-            global_billed = t.last_billed_until
-            if latest_report and (not global_billed or latest_report.end_date > global_billed):
-                global_billed = latest_report.end_date
-                
+            global_billed = abgerechnet_bis(t)
             if global_billed:
                 if not billed_until or global_billed > billed_until:
                     billed_until = global_billed
@@ -2175,6 +2175,30 @@ def _ueberlaenge_warnung(vorgang):
             'Tage und ist damit länger als ein Jahr. Nach § 556 Abs. 3 BGB '
             'wird jährlich abgerechnet; ein längerer Zeitraum kann angefochten '
             'werden. Die Abrechnung wird trotzdem erstellt.')
+
+
+def _zahlungen_nach_auszug_warnung(tenant, e_date):
+    """H9: Vorauszahlungen nach dem Auszug -- oder None.
+
+    Die Schlussabrechnung zaehlt nur Zahlungen bis zum Auszug; was danach
+    gebucht ist, zaehlt in keiner Abrechnung und fiel niemandem auf.
+    """
+    from nebenkostenfix.models import Payment
+    from nebenkostenfix.rechenkern import euro_text
+
+    auszug = tenant.move_out_date
+    if not auszug or e_date < auszug:
+        return None
+    spaete = Payment.query.filter(
+        Payment.tenant_id == tenant.id,
+        Payment.type == 'Nebenkostenvorauszahlung',
+        Payment.payment_date > auszug).all()
+    if not spaete:
+        return None
+    summe = sum(Decimal(str(z.amount)) for z in spaete)
+    return (f'Nach dem Auszug am {auszug.strftime("%d.%m.%Y")} sind {len(spaete)} '
+            f'Vorauszahlungen über {euro_text(summe)} gebucht. Sie zählen in keiner '
+            'Abrechnung. Prüfen Sie, ob sie zurückzuzahlen oder falsch gebucht sind.')
 
 
 def _ueberlappung(tenant_id, s_date, e_date, category_ids):
@@ -2351,7 +2375,10 @@ def generate_bill():
     ueberlaenge = _ueberlaenge_warnung(engine.vorgang)
     if ueberlaenge:
         bill_data['warnings'].append(ueberlaenge)
-    
+    spaete = _zahlungen_nach_auszug_warnung(db.session.get(Tenant, tenant_id), e_date)
+    if spaete:
+        bill_data['warnings'].append(spaete)
+
     return jsonify(bill_data), 200
 
 from nebenkostenfix.pdf_generator import PDFGenerator
@@ -3428,6 +3455,7 @@ def analytics_building(property_id):
     from nebenkostenfix.models import CostInvoice, Payment, CostCategory, Meter, Tenant, Apartment, db
     import datetime
     from nebenkostenfix.billing_engine import BillingEngine
+    from nebenkostenfix.zeitraumvorschlag import abgerechnet_bis
     
     def _zufluss_datum(inv):
         """Tag, an dem die Rechnung im Cashflow zählt (NK-120).
@@ -3620,7 +3648,9 @@ def analytics_building(property_id):
     open_tasks = 0
     one_year_ago = today - datetime.timedelta(days=365)
     for t in active_tenants:
-        if not t.last_billed_until or t.last_billed_until < one_year_ago:
+        # F-127: auch wer in der App abgerechnet wurde, ist erledigt.
+        bis = abgerechnet_bis(t)
+        if not bis or bis < one_year_ago:
             open_tasks += 1
             
     kpis = {

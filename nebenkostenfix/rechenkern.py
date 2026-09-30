@@ -2426,6 +2426,14 @@ def rechne(vorgang: Vorgang) -> dict:
     # Vor der Heizkostentrennung, damit auch Heizrechnungen mitzaehlen:
     # Luecken im Zeitraum (F-115) und doppelt gezaehlte Tage (F-117).
     luecken = abdeckungsluecken(vorgang, invoices)
+    if not _fuer_die_wohnung(vorgang, invoices):
+        # H8: ohne Rechnung kostet der Zeitraum 0 und jede Vorauszahlung
+        # geht zurueck -- ohne jeden Hinweis sah das wie ein Ergebnis aus.
+        folge = (', die Abrechnung erstattet deshalb alle Vorauszahlungen.'
+                 if vorgang.zahlungen else '.')
+        warnings.append(
+            f'Für {_d(vorgang.beginn)}–{_d(vorgang.ende)} ist keine Rechnung erfasst{folge}'
+            ' Erfassen Sie zuerst die Rechnungen des Zeitraums.')
     if luecken:
         warnings.append(abdeckungs_warnung(vorgang, luecken))
     warnings.extend(ueberschneidende_rechnungen(vorgang, invoices))

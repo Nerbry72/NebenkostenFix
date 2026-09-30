@@ -110,6 +110,20 @@ def _jahresende(beginn: date, monat: int, tag: int) -> date:
     return date(start.year + 1, monat, tag) - EIN_TAG
 
 
+def abgerechnet_bis(t) -> date | None:
+    """Bis wann dieser Mieter abgerechnet ist (F-127).
+
+    Das Spaetere aus dem Ende seiner letzten Abrechnung und dem Feld
+    ``last_billed_until``, das von Hand gepflegt wird, etwa fuer Jahre vor der
+    App. Liste, Uebersicht, Vorschlaege und Zeitraumvorschlag fragen alle hier.
+    """
+    from nebenkostenfix.models import TenantBillingReport
+
+    letzte = (TenantBillingReport.query.filter_by(tenant_id=t.id)
+              .order_by(TenantBillingReport.end_date.desc()).first())
+    return max(filter(None, (letzte and letzte.end_date, t.last_billed_until)), default=None)
+
+
 def vorschlag(tenant_id: int, heute: date) -> dict:
     """``{'beginn', 'ende', 'gruende'}``; ohne Vorschlag sind beide ``None``."""
     from nebenkostenfix.models import CostInvoice, Tenant, TenantBillingReport, db
@@ -117,10 +131,7 @@ def vorschlag(tenant_id: int, heute: date) -> dict:
     t = db.session.get(Tenant, tenant_id)
     gruende = []
 
-    letzte = (TenantBillingReport.query.filter_by(tenant_id=t.id)
-              .order_by(TenantBillingReport.end_date.desc()).first())
-    abgerechnet = max(filter(None, (letzte and letzte.end_date, t.last_billed_until)),
-                      default=None)
+    abgerechnet = abgerechnet_bis(t)
     if abgerechnet and abgerechnet >= t.move_in_date:
         beginn = abgerechnet + EIN_TAG
         gruende.append(f'Abgerechnet ist bis {_d(abgerechnet)}, '
