@@ -2361,6 +2361,17 @@ function renderInvoiceZeitleiste(daten, ziel) {
     ziel.innerHTML = teile.join('');
 }
 
+// Zaehler zeigen ihre Kostenart unter einem Alltagsnamen (F-113). Haupt- und
+// Wohnungszaehler fuer Strom haengen an BetrKV Nr. 11 „Beleuchtung
+// (Allgemeinstrom)“, weil der Allgemeinstrom daraus gerechnet wird (Haupt-
+// zaehler minus Wohnungszaehler). Am Zaehler selbst ist das schlicht Strom.
+// Kostenart, Rechnungen und PDF behalten den Namen aus der BetrKV.
+const ZAEHLER_ANZEIGENAMEN = { 'Beleuchtung (Allgemeinstrom)': 'Strom' };
+
+function zaehlerArtName(name) {
+    return ZAEHLER_ANZEIGENAMEN[name] || name;
+}
+
 function getReadingHtml(r, categoryName) {
     let unit = '';
     if (categoryName) {
@@ -2457,7 +2468,7 @@ function renderMeters() {
             
             const tdCat = document.createElement('td');
             tdCat.style.padding = "12px 8px";
-            tdCat.textContent = m.category_name;
+            tdCat.textContent = zaehlerArtName(m.category_name);
             
             const tdNum = document.createElement('td');
             tdNum.style.padding = "12px 8px";
@@ -2940,13 +2951,13 @@ function openAddMeterModal() {
     if (ueblich.length) {
         const gruppe = document.createElement('optgroup');
         gruppe.label = 'Üblich mit Zähler';
-        gruppe.innerHTML = ueblich.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+        gruppe.innerHTML = ueblich.map(c => `<option value="${c.id}">${escapeHtml(zaehlerArtName(c.name))}</option>`).join('');
         catSelect.appendChild(gruppe);
     }
     if (weitere.length) {
         const gruppe = document.createElement('optgroup');
         gruppe.label = 'Weitere Kostenarten';
-        gruppe.innerHTML = weitere.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+        gruppe.innerHTML = weitere.map(c => `<option value="${c.id}">${escapeHtml(zaehlerArtName(c.name))}</option>`).join('');
         catSelect.appendChild(gruppe);
     }
     
@@ -3046,7 +3057,7 @@ function openHistoryModal(meterId) {
     const meter = meters.find(m => m.id === meterId);
     if(!meter) return;
     
-    document.getElementById('history-modal-title').textContent = `Historie: ${meter.meter_number} (${meter.category_name})`;
+    document.getElementById('history-modal-title').textContent = `Historie: ${meter.meter_number} (${zaehlerArtName(meter.category_name)})`;
     
     const table = document.getElementById('history-table');
     table.replaceChildren();
@@ -3133,7 +3144,7 @@ function openAddReadingModal(meterId = null, editReadingId = null) {
     const meterSelect = document.getElementById('reading-meter');
     meterSelect.replaceChildren();
     meters.forEach(m => {
-        const label = `${m.property_name} - ${m.is_main_meter ? 'Allgemein' : m.apartment_name} - ${m.category_name} (${m.meter_number})`;
+        const label = `${m.property_name} - ${m.is_main_meter ? 'Allgemein' : m.apartment_name} - ${zaehlerArtName(m.category_name)} (${m.meter_number})`;
         meterSelect.insertAdjacentHTML('beforeend', `<option value="${m.id}">${escapeHtml(label)}</option>`);
     });
     
@@ -6343,7 +6354,7 @@ function renderDataQuality(data) {
             
             const meta = document.createElement('div');
             meta.className = 'dq-warning-meta';
-            meta.textContent = `${w.tenant_name} · ${w.apartment_name} · ${w.category_name}`;
+            meta.textContent = `${w.tenant_name} · ${w.apartment_name} · ${zaehlerArtName(w.category_name)}`;
             textWrap.appendChild(meta);
             
             card.appendChild(textWrap);
@@ -6402,12 +6413,13 @@ function renderDataQuality(data) {
         
         const title = document.createElement('div');
         title.className = 'dq-meter-title';
-        const iconClass = categoryIcons[m.category_name] || 'ph-gauge';
+        const artName = zaehlerArtName(m.category_name);
+        const iconClass = categoryIcons[artName] || 'ph-gauge';
         const titleIcon = document.createElement('i');
         titleIcon.className = `ph ${iconClass}`;
         titleIcon.style.marginRight = '6px';
         title.appendChild(titleIcon);
-        const titleText = document.createTextNode(m.category_name);
+        const titleText = document.createTextNode(artName);
         title.appendChild(titleText);
         if (m.is_main_meter) {
             const mainBadge = document.createElement('span');

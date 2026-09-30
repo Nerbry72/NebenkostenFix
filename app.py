@@ -262,7 +262,7 @@ from nebenkostenfix import betrkv
 from nebenkostenfix import mieter_daten
 from nebenkostenfix import beispielimmobilie
 from nebenkostenfix import zeitleiste
-from nebenkostenfix.zeitraum import ein_jahr_nach, grenze, letzter_tag
+from nebenkostenfix.zeitraum import ein_jahr_nach, grenze, letzter_tag, tage
 from nebenkostenfix.frist import frist_status, einwendungsfrist, zustellwarnung
 from nebenkostenfix.heizung import (
     ABLESUNG, ABLESUNGSARTEN, HEIZUNG, VERBUNDEN, WARMWASSER,
@@ -2126,18 +2126,32 @@ def _gekuerztes_ende(s_date, e_date):
     eine Stelle und legt es der Vorpruefung in den Arm: die Kacheln zum
     Zeitraum und zur Frist muessen denselben Zeitraum sehen, den spaeter
     abgerechnet wird, sonst warnen sie ueber etwas anderes als gerechnet
-    wird. Nicht nach vorne (heute) und nicht ueber die Jahresgrenze
-    (R-NUM-03, ein Jahr in Tagen waere im Schaltjahr ein Tag zu viel).
+    wird. Nicht nach vorne (heute).
+
+    Ueber die Jahresgrenze wird nicht mehr gekuerzt (F-112): das Kuerzen
+    geschah stillschweigend, der Vermieter gab den 30.09. ein und bekam den
+    31.08. abgerechnet, ohne es zu sehen. Ein laengerer Zeitraum ist nach
+    § 556 Abs. 3 BGB angreifbar, aber seine Entscheidung --
+    ``_ueberlaenge_warnung`` sagt es ihm, die Erzeugung laeuft weiter.
     """
     if e_date > datetime.today().date():
         e_date = datetime.today().date()
-
-    # Hoechstens ein Jahr (R-NUM-03). Ein festes Tagesmass kuerzt dem
-    # Schaltjahr stillschweigend einen Tag ab.
-    jahresgrenze = ein_jahr_nach(s_date)
-    if grenze(e_date) > jahresgrenze:
-        e_date = letzter_tag(jahresgrenze)
     return e_date
+
+
+def _ueberlaenge_warnung(vorgang):
+    """Der Hinweis, wenn der Zeitraum laenger als ein Jahr ist -- oder None.
+
+    Gemessen am gestutzten Vorgang (Einzug, Auszug), nicht am Auftrag: ein
+    Auftrag ueber 19 Monate fuer einen Mieter, der erst seit 12 Monaten
+    wohnt, rechnet ein Jahr und braucht keinen Hinweis.
+    """
+    if vorgang.ende_grenze <= ein_jahr_nach(vorgang.beginn):
+        return None
+    return (f'Der Abrechnungszeitraum umfasst {tage(vorgang.beginn, vorgang.ende_grenze)} '
+            'Tage und ist damit länger als ein Jahr. Nach § 556 Abs. 3 BGB '
+            'wird jährlich abgerechnet; ein längerer Zeitraum kann angefochten '
+            'werden. Die Abrechnung wird trotzdem erstellt.')
 
 
 def _ueberlappung(tenant_id, s_date, e_date, category_ids):
@@ -2256,8 +2270,11 @@ def billing_preflight():
     s_date = datetime.strptime(start_date, '%Y-%m-%d').date()
     e_date = _gekuerztes_ende(s_date, datetime.strptime(end_date, '%Y-%m-%d').date())
 
-    engine = BillingEngine(tenant_id, start_date, end_date)
+    # Dasselbe Ende wie die Erzeugung, sonst prueft die Vorpruefung einen
+    # anderen Zeitraum, als spaeter gerechnet wird.
+    engine = BillingEngine(tenant_id, start_date, e_date.isoformat())
     result = engine.preflight_check()
+    ueberlaenge = _ueberlaenge_warnung(engine.vorgang)
 
     # Pruefklassen Zeitraum und Frist (R-FRIST-01/02, NK-054). Sie haengen
     # nicht am Rechenkern: der kennt keinen Datenbestand und kein Datum von
@@ -2265,6 +2282,9 @@ def billing_preflight():
     result['checks'] = (result['checks']
                         + _zeitraum_tiles(tenant_id, s_date, e_date, category_ids)
                         + _frist_tiles(e_date))
+    if ueberlaenge:
+        result['checks'].append(_pruefkachel(
+            'Zeitraum', '§ 556 Abs. 3 BGB', 'warning', False, ueberlaenge))
     statuses = [c['status'] for c in result['checks']]
     if 'warning' in statuses or 'no_data' in statuses:
         result['overall'] = 'warning'
@@ -2305,6 +2325,9 @@ def generate_bill():
     bill_data['frist_ueberschritten'] = stand['ueberschritten']
     if stand['warnung']:
         bill_data['warnings'].append(stand['warnung'])
+    ueberlaenge = _ueberlaenge_warnung(engine.vorgang)
+    if ueberlaenge:
+        bill_data['warnings'].append(ueberlaenge)
     
     return jsonify(bill_data), 200
 
