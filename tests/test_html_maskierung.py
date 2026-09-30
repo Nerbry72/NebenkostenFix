@@ -61,6 +61,7 @@ AUSNAHMEN = {
     'mieterKopf': 'Name, Wohnung und Zeitraum, einzeln maskiert',
     'positionen': 'Listenpunkte, Kostenart, Betrag und Rechenweg einzeln maskiert',
     'warnListe': 'Warnungen, einzeln maskiert',
+    'warnungenHtml(hinweise)': 'Listenpunkte aus warnungenHtml, jeder Text maskiert (F-116)',
     'pdfLinks': 'Adressen aus dateiAdresse (Zahl), Texte fest',
     'zustellung': 'Datum maskiert oder Knopf mit Zahl',
     's.aktion': 'Funktionsaufruf aus der Schrittdefinition im Code',

@@ -4659,7 +4659,38 @@ let jahrAktuell = 1;
 let jahrVorschau = {};
 
 const euroText = betrag => Number(betrag || 0).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
-const datumText = iso => iso ? new Date(`${iso}T00:00:00`).toLocaleDateString('de-DE') : '—';
+const datumText = iso => iso ? new Date(`${iso}T00:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
+
+// Warnungen kompakt (F-116): ohne Kennung vorn, gleiche Meldungen für
+// mehrere Kostenarten zu einer zusammengefasst, Einzelheiten zum Aufklappen.
+function warnungenBuendeln(warnungen) {
+    const gruppen = new Map();
+    (warnungen || []).forEach(w => {
+        const roh = typeof w === 'string' ? w : (w.text || w.message || '');
+        const kennung = roh.match(/^([A-Z]+(?:-[A-Z0-9]+)+) · /);
+        const text = kennung ? roh.slice(kennung[0].length) : roh;
+        const kat = text.match(/„[^“]*“/);
+        const schluessel = kat ? text.replace(kat[0], '„…“') : text;
+        const gruppe = gruppen.get(schluessel);
+        if (!gruppe) gruppen.set(schluessel, { text, kats: kat ? [kat[0]] : [], kennung: kennung ? kennung[1] : '' });
+        else if (kat && !gruppe.kats.includes(kat[0])) gruppe.kats.push(kat[0]);
+    });
+    return [...gruppen.values()].map(g => {
+        const text = g.kats.length > 1
+            ? g.text.replace(g.kats[0], () => g.kats.slice(0, -1).join(', ') + ' und ' + g.kats[g.kats.length - 1])
+            : g.text;
+        const satzende = text.match(/(\S{2})\.\s+(?=[A-ZÄÖÜ„])/);
+        const schnitt = satzende ? satzende.index + satzende[1].length + 1 : text.length;
+        return { kurz: text.slice(0, schnitt), rest: text.slice(schnitt).trim(), kennung: g.kennung };
+    });
+}
+
+function warnungenHtml(warnungen) {
+    return warnungenBuendeln(warnungen).map(w =>
+        `<li title="${escapeHtml(w.kennung)}">${escapeHtml(w.kurz)}`
+        + (w.rest ? ` <details><summary>Mehr</summary>${escapeHtml(w.rest)}</details>` : '')
+        + '</li>').join('');
+}
 
 async function oeffneJahrAssistent() {
     await fetchProperties();
@@ -4818,7 +4849,7 @@ async function jahrVorschauLaden() {
                 const rechenwegHtml = weg ? '<br><span class="text-muted">' + escapeHtml(weg) + '</span>' : '';
                 return `<li><strong>${escapeHtml(zeile.category)}</strong>: ${escapeHtml(euroText(zeile.tenant_cost))}${rechenwegHtml}</li>`;
             }).join('');
-            const warnungen = (daten.warnings || []).map(w => `<li>${escapeHtml(typeof w === 'string' ? w : (w.text || w.message || ''))}</li>`).join('');
+            const warnungen = warnungenHtml(daten.warnings);
             const warnListe = warnungen ? '<ul class="jahr-warnungen">' + warnungen + '</ul>' : '';
             const erklaerungHtml = mieterErklaerungHtml(daten);
             karten.push(`<div class="jahr-mieter">
@@ -5556,25 +5587,31 @@ async function generateBillPreview(tenantId, startDate, endDate, categoryIds = n
             <div style="margin-bottom: 24px;">
                 <h3 style="margin:0;">Abrechnung für ${escapeHtml(data.tenant_name)}</h3>
                 <p style="color: var(--text-muted); margin: 4px 0;">${escapeHtml(data.property)} - ${escapeHtml(data.apartment)}</p>
-                <p style="color: var(--text-muted); margin: 4px 0;">Zeitraum: ${new Date(data.start_date).toLocaleDateString('de-DE')} bis ${new Date(data.end_date).toLocaleDateString('de-DE')}</p>
+                <p style="color: var(--text-muted); margin: 4px 0;">Zeitraum: ${escapeHtml(datumText(data.start_date))} bis ${escapeHtml(datumText(data.end_date))}</p>
             </div>
         `;
         
-        // Preflight Panel
-        if (pfData.overall !== 'no_meters' && pfData.checks && pfData.checks.length > 0) {
+        // Preflight Panel: nur echte Zaehler. Kacheln ohne Zaehler (Zeitraum,
+        // Rechnungen) sind Hinweise und stehen weiter unten im Klartext (F-116).
+        const pruefungen = pfData.checks || [];
+        const zaehlerChecks = pruefungen.filter(c => c.meter_id != null);
+        const hinweisTexte = pruefungen.filter(c => c.meter_id == null && c.message).map(c => c.message);
+        const zaehlerStatus = zaehlerChecks.some(c => c.status === 'warning' || c.status === 'no_data') ? 'warning'
+            : (zaehlerChecks.some(c => c.status === 'acceptable') ? 'acceptable' : 'excellent');
+        if (zaehlerChecks.length > 0) {
             let pfColor = 'var(--success-color)';
             let pfIcon = 'ph-check-circle';
             let pfTitle = 'Zählerstände: Ausgezeichnet (Alle Ablesungen innerhalb von 7 Tagen zum Stichtag)';
             let pfBg = 'rgba(16, 185, 129, 0.1)';
             let pfBorder = 'rgba(16, 185, 129, 0.3)';
             
-            if (pfData.overall === 'warning') {
+            if (zaehlerStatus === 'warning') {
                 pfColor = 'var(--danger-color)';
                 pfIcon = 'ph-warning-circle';
                 pfTitle = 'Zählerstände: Warnung (Große Lücken oder fehlende Daten)';
                 pfBg = 'var(--danger-bg)';
                 pfBorder = 'rgba(220, 38, 38, 0.3)';
-            } else if (pfData.overall === 'acceptable') {
+            } else if (zaehlerStatus === 'acceptable') {
                 pfColor = 'var(--warning-color)';
                 pfIcon = 'ph-info';
                 pfTitle = 'Zählerstände: Akzeptabel (Einige Ablesungen bis zu 14 Tage Toleranz)';
@@ -5592,7 +5629,7 @@ async function generateBillPreview(tenantId, startDate, endDate, categoryIds = n
                     <div style="margin-top: 12px; display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));">
             `;
             
-            pfData.checks.forEach(c => {
+            zaehlerChecks.forEach(c => {
                 let statusIcon = '<i class="ph ph-check-circle" style="color: var(--success-color);"></i>';
                 if (c.status === 'warning' || c.status === 'no_data') statusIcon = '<i class="ph ph-warning-circle" style="color: var(--danger-color);"></i>';
                 else if (c.status === 'acceptable') statusIcon = '<i class="ph ph-info" style="color: var(--warning-color);"></i>';
@@ -5615,7 +5652,7 @@ async function generateBillPreview(tenantId, startDate, endDate, categoryIds = n
                 html += `
                         <div style="background: white; border: 1px solid var(--border-color); padding: 8px; border-radius: 4px;">
                             <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <div style="font-weight: 500; font-size: 0.9rem;">${escapeHtml(c.category)} (${escapeHtml(c.meter_type)})</div>
+                                <div style="font-weight: 500; font-size: 0.9rem;">${escapeHtml(zaehlerArtName(c.category))} (${escapeHtml(c.meter_type)})</div>
                                 ${statusIcon}
                             </div>
                             <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">Zähler: ${escapeHtml(c.meter_number || 'N/A')}</div>
@@ -5631,16 +5668,14 @@ async function generateBillPreview(tenantId, startDate, endDate, categoryIds = n
             `;
         }
         
-        // Old warnings logic fallback for non-meter stuff
-        if (data.warnings && data.warnings.length > 0) {
-            const otherWarnings = data.warnings.filter(w => !w.includes('interpoliert'));
-            if (otherWarnings.length > 0) {
-                html += `<div style="background: var(--danger-bg); border: 1px solid rgba(220, 38, 38, 0.3); border-radius: 8px; padding: 12px; margin-bottom: 24px;">`;
-                otherWarnings.forEach(w => {
-                    html += `<div style="color: var(--danger-color); font-size: 0.95rem; margin-bottom: 4px;">${escapeHtml(w)}</div>`;
-                });
-                html += `</div>`;
-            }
+        // Hinweise: Kacheln ohne Zaehler und Warnungen der Rechnung, jede nur einmal.
+        const hinweise = hinweisTexte.concat((data.warnings || []).filter(w =>
+            typeof w !== 'string' || (!w.includes('interpoliert') && !hinweisTexte.includes(w))));
+        if (hinweise.length > 0) {
+            html += `<div style="background: var(--warning-bg); border: 1px solid rgba(217, 119, 6, 0.3); border-radius: 8px; padding: 12px; margin-bottom: 24px;">
+                <div style="font-weight: bold; color: var(--warning-color); margin-bottom: 6px;">Hinweise zur Abrechnung</div>
+                <ul class="jahr-warnungen" style="margin: 0;">${warnungenHtml(hinweise)}</ul>
+            </div>`;
         }
         
         html += `
@@ -5692,7 +5727,7 @@ async function generateBillPreview(tenantId, startDate, endDate, categoryIds = n
                     <td style="font-weight: 500; padding: 12px 8px; vertical-align: top;">${escapeHtml(item.category)}</td>
                     <td style="color: var(--text-muted); font-size: 0.9rem; white-space: nowrap; padding: 12px 8px; vertical-align: top;">${escapeHtml(item.period)}</td>
                     <td style="color: var(--text-muted); font-size: 0.875rem; padding: 12px 8px; vertical-align: top;">${detailsHtml}</td>
-                    <td style="text-align: right; font-weight: 500; padding: 12px 8px; vertical-align: top;">€${item.tenant_cost.toFixed(2).replace('.', ',')}</td>
+                    <td style="text-align: right; font-weight: 500; padding: 12px 8px; vertical-align: top;">${escapeHtml(euroText(item.tenant_cost))}</td>
                 </tr>
             `;
         });
@@ -5702,17 +5737,17 @@ async function generateBillPreview(tenantId, startDate, endDate, categoryIds = n
                 <tfoot>
                     <tr style="border-top: 2px solid var(--border-color);">
                         <td colspan="3" style="text-align: right; padding: 12px 8px;">Gesamtkosten der Periode:</td>
-                        <td style="text-align: right; font-weight: bold; padding: 12px 8px;">€${data.total_amount.toFixed(2).replace('.', ',')}</td>
+                        <td style="text-align: right; font-weight: bold; padding: 12px 8px;">${escapeHtml(euroText(data.total_amount))}</td>
                     </tr>
                     <tr>
                         <td colspan="3" style="text-align: right; padding: 12px 8px;">Abzüglich geleistete Vorauszahlungen:</td>
-                        <td style="text-align: right; color: var(--danger-color); padding: 12px 8px;">- €${data.prepaid_amount.toFixed(2).replace('.', ',')}</td>
+                        <td style="text-align: right; color: var(--danger-color); padding: 12px 8px;">- ${escapeHtml(euroText(data.prepaid_amount))}</td>
                     </tr>
                     <tr style="background: var(--bg-hover);">
                         <td colspan="3" style="text-align: right; font-size: 1.1rem; font-weight: bold; padding: 16px 8px;">
                             ${data.balance > 0 ? 'Nachzahlung des Mieters' : (data.balance < 0 ? 'Guthaben des Mieters' : 'Saldobetrag')}
                         </td>
-                        <td style="text-align: right; font-size: 1.1rem; font-weight: bold; color: var(--primary-color); padding: 16px 8px;">€${data.balance.toFixed(2).replace('.', ',')}</td>
+                        <td style="text-align: right; font-size: 1.1rem; font-weight: bold; color: var(--primary-color); padding: 16px 8px;">${escapeHtml(euroText(data.balance))}</td>
                     </tr>
                 </tfoot>
             </table>
