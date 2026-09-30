@@ -92,6 +92,9 @@ Name: "desktopicon"; Description: "Symbol auf dem Desktop anlegen"; GroupDescrip
 Source: "{#Quelle}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; GPL-3.0: der Lizenztext reist mit dem Programm.
 Source: "..\..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
+; NK-148: die Lizenztexte der mitgelieferten Software auch sichtbar im
+; Programmordner, nicht nur unter _internal.
+Source: "{#Quelle}\_internal\THIRD_PARTY_LICENSES.txt"; DestDir: "{app}"; Flags: ignoreversion
 #ifdef WebView2Bootstrapper
 Source: "{#WebView2Bootstrapper}"; DestDir: "{tmp}"; DestName: "MicrosoftEdgeWebview2Setup.exe"; Flags: deleteafterinstall; Check: WebView2Fehlt
 #endif

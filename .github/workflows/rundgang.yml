@@ -25,6 +25,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+      # DOM-Rauchtest des Design-Systems (NK-067, F-108): ohne Browser, nur
+      # Node, das der Runner mitbringt. Vorn, weil er in Sekunden fertig ist.
+      - name: DOM-Rauchtest
+        run: node scripts/rauchtest_design.js
       - uses: actions/setup-python@v7
         with:
           python-version: '3.11'

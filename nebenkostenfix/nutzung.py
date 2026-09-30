@@ -220,8 +220,8 @@ def ablehnung(objekt_name: str, art: str) -> str:
         Die Immobilie „Hauptstr. 5“ ist ein gemischt genutztes Gebäude: sie \
 enthält Wohn- und Gewerbeeinheiten. Für gemischt genutzte und gewerbliche \
 Objekte gelten eigene Regeln (§ 8 CO2KostAufG), die dieses Programm nicht \
-rechnet. Rechne den Wohnteil in einer eigenen Immobilie ab oder wenden Sie \
-sich an einen Verwalter.
+rechnet. Rechnen Sie den Wohnteil in einer eigenen Immobilie ab oder \
+wenden Sie sich an einen Verwalter.
     """
     if art == GEMISCHT:
         befund = (f'ist ein {objektart_beschriftung(art)}: sie enthält '
@@ -234,6 +234,6 @@ sich an einen Verwalter.
     return (
         f'Die Immobilie „{objekt_name}“ {befund}. Für gemischt genutzte und '
         f'gewerbliche Objekte gelten eigene Regeln (§ 8 CO2KostAufG), die '
-        f'dieses Programm nicht rechnet. Rechne den Wohnteil in einer eigenen '
-        f'Immobilie ab oder wenden Sie sich an einen Verwalter.'
+        f'dieses Programm nicht rechnet. Rechnen Sie den Wohnteil in einer '
+        f'eigenen Immobilie ab oder wenden Sie sich an einen Verwalter.'
     )

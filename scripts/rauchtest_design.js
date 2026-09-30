@@ -64,10 +64,16 @@ function erzeugeElement() {
 }
 
 global.window = { fetch: () => Promise.resolve({ ok: true }), addEventListener() {}, querySelectorAll: () => [], querySelector: () => null };
+// Wie im Browser: app.js steht am Ende von <body>, beim Ausführen ist das
+// Dokument noch 'loading', initApp läuft erst nach DOMContentLoaded, also
+// nachdem die ganze Datei ausgewertet ist (sonst greift initApp auf
+// Konstanten weiter unten zu, die noch nicht initialisiert sind).
+const domBereit = [];
 global.document = {
+    readyState: 'loading',
     getElementById: () => erzeugeElement(),
     createElement: () => erzeugeElement(),
-    addEventListener() {},
+    addEventListener(typ, fn) { if (typ === 'DOMContentLoaded') domBereit.push(fn); },
     querySelectorAll: () => [],
     querySelector: () => null,
     body: erzeugeElement(),
@@ -83,10 +89,17 @@ global.escapeHtml = s => String(s);
 // echte fetch von Node; so bleiben sie still hängen.
 global.fetch = () => new Promise(() => {});
 global.alert = () => {};
+// app.js beobachtet Dialoge und Listen mit MutationObserver (Fokusfalle,
+// Hilfe-Knöpfe). Ohne Browser reicht ein Beobachter, der nichts meldet.
+global.MutationObserver = class {
+    observe() {}
+    disconnect() {}
+};
 
 try {
     new Function(appQuelle).call(global.window);
-    pruefe('app.js laesst sich ohne Browser ausfuehren', true);
+    domBereit.forEach(fn => fn());
+    pruefe('app.js laesst sich ohne Browser ausfuehren', domBereit.length === 1);
 } catch (e) {
     pruefe('app.js laesst sich ohne Browser ausfuehren — ' + e.message, false);
 }
@@ -313,8 +326,11 @@ pruefe('Gefahrenzone traegt die Klasse statt Inline-Farben',
     html.includes('dashboard-card glass-panel gefahrenzone'));
 pruefe('Datenbank-Knopf ist .btn-gefahr', html.includes('class="btn-gefahr"'));
 pruefe('Detailliertes PDF ist .btn-tint', html.includes('btn-secondary btn-tint'));
-pruefe('Fuenf Auswahlpillen ohne Inline-Farben',
-    (html.match(/class="filter-pill/g) || []).length === 5);
+// Zwölf Pillen: Rechnungen (Liste/Zeitleiste), Einstellungen (fünf Gruppen),
+// Statistik (fünf Filter); dieselbe Zahl sichert test_ui_konsistenz.py.
+pruefe('Zwölf Auswahlpillen, keine mit Inline-Stil',
+    (html.match(/class="filter-pill/g) || []).length === 12
+    && !/class="filter-pill[^"]*"[^>]*style=/.test(html));
 pruefe('Cache-Buster erhoeht (style.css)', /style\.css\?v=\d+/.test(html));
 pruefe('Cache-Buster erhoeht (app.js)', /app\.js\?v=\d+/.test(html));
 
@@ -348,11 +364,11 @@ pruefe('K2: „Immobilie anlegen“ genau einmal in der Seite',
     (ui.match(/Immobilie anlegen/g) || []).length === 1);
 pruefe('K1: Immobilien-Seitenkopf trägt den Primärknopf',
     ui.indexOf('Immobilie anlegen') > ui.indexOf('id="tab-properties"'));
-pruefe('K1: .kopf-aktionen in allen fünf Köpfen (global + vier Bereiche)',
-    (ui.match(/class="kopf-aktionen"/g) || []).length === 5
+pruefe('K1: .kopf-aktionen in allen acht Köpfen mit Knöpfen (global + sieben Bereiche)',
+    (ui.match(/class="kopf-aktionen"/g) || []).length === 8
     && css.includes('.kopf-aktionen {'));
-pruefe('K1: .section-untertitel statt Inline-Stil (vier Köpfe)',
-    (ui.match(/class="section-untertitel"/g) || []).length === 4
+pruefe('K1: .section-untertitel statt Inline-Stil (fünf Köpfe)',
+    (ui.match(/class="section-untertitel"/g) || []).length === 5
     && !ui.includes('color: var(--text-muted); margin-top: 4px;"')
     && css.includes('.section-untertitel {'));
 pruefe('K1: auch die Übersicht beginnt mit einem Seitenkopf',
@@ -383,8 +399,9 @@ pruefe('K4: leere Rechnungsliste blendet die Filterleiste aus',
 // --- NK-103: Erste Schritte neu gesetzt (K5) ---
 pruefe('B7: die Liste trägt ihre Klasse — die Regeln greifen',
     html.includes('id="erste-schritte-liste" class="erste-schritte-liste"'));
-pruefe('B8: der Kopf nennt fünf Pflicht- und einen optionalen Schritt',
-    html.includes('Fünf Schritte bis zur ersten Abrechnung, dazu ein optionaler.'));
+// NK-159 hat „vorher ausprobieren“ als zweiten optionalen Schritt ergänzt.
+pruefe('B8: der Kopf nennt fünf Pflicht- und zwei optionale Schritte',
+    html.includes('Fünf Schritte bis zur ersten Abrechnung, dazu zwei optionale:'));
 pruefe('K5: Fortschritt „x von 5 erledigt“ mit Balken',
     html.includes('id="erste-schritte-stand"')
     && html.includes('id="erste-schritte-balken"')

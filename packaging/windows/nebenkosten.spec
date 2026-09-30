@@ -32,6 +32,9 @@ daten += collect_data_files('reportlab')
 daten += collect_data_files('webview')
 daten += collect_data_files('tzdata')
 daten += collect_data_files('alembic')
+# Lizenztexte der mitgelieferten Software (NK-148). windows.yml erzeugt die
+# Datei vor dem Bau; fehlt sie, bricht PyInstaller ab, statt ohne zu bauen.
+daten.append((str(WURZEL / 'THIRD_PARTY_LICENSES.txt'), '.'))
 
 # migrations/ laeuft zur Laufzeit als Datei (alembic laedt env.py und die
 # Versionen per Pfad) -- deren Importe sieht die Analyse nicht von selbst.

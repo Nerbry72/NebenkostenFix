@@ -544,8 +544,24 @@ async function ladeBegriffe() {
 // „Über NebenkostenFix“ (NK-179): Adressen aus marke.py, einmal je Sitzung.
 let ueberGeladen = false;
 
+// Drittlizenzen (NK-148): erst beim Aufklappen, der Text ist lang.
+async function ladeDrittlizenzen(ereignis) {
+    const feld = document.getElementById('ueber-drittlizenzen-text');
+    if (!ereignis.target.open || feld.dataset.geladen) return;
+    try {
+        const res = await fetch('/api/drittlizenzen');
+        if (!res.ok) throw await serverFehler(res);
+        feld.textContent = await res.text();
+        feld.dataset.geladen = '1';
+    } catch (e) {
+        feld.textContent = 'Die Lizenzen konnten nicht geladen werden.';
+        console.error('Drittlizenzen nicht geladen', e);
+    }
+}
+
 async function ladeUeber() {
     if (ueberGeladen) return;
+    document.getElementById('ueber-drittlizenzen').ontoggle = ladeDrittlizenzen;
     try {
         const res = await fetch('/api/ueber');
         if (!res.ok) return;
@@ -7335,7 +7351,7 @@ async function deleteSelectedPayments() {
     try {
         const btn = document.getElementById('btn-delete-selected-payments');
         btn.disabled = true;
-        btn.textContent = 'Lösche...';
+        btn.textContent = 'Wird gelöscht …';
         
         const res = await fetch('/api/payments/bulk', {
             method: 'DELETE',

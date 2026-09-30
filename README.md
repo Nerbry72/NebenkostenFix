@@ -471,3 +471,7 @@ NebenkostenFix steht unter der [GNU General Public License v3.0](LICENSE) oder, 
 Wahl, einer späteren Fassung (GPL-3.0-or-later). Sie dürfen es nutzen, weitergeben und
 verändern. Veränderte Fassungen müssen unter derselben Lizenz stehen und ihren Quellcode
 offenlegen.
+
+NebenkostenFix bringt Software anderer Urheber mit, etwa Python, Flask und reportlab. Deren
+Lizenztexte liegen jedem Release als `THIRD_PARTY_LICENSES.txt` bei, stehen im Programmordner
+der Windows-App und in der App unter „Über NebenkostenFix“.

@@ -99,3 +99,12 @@ def test_abrechnung_ansehen_rechnet_nicht_mit_schnappschuss_text():
     for name in ('openReportDetails', 'openAddPaymentModal'):
         roh = re.findall(r'(?:item|sub|data|details)\.\w+\.toFixed\(', _funktion(name))
         assert not roh, (name, roh)
+
+
+def test_ci_faehrt_den_dom_rauchtest():
+    """F-108: Der DOM-Rauchtest lief nur von Hand und war unbemerkt rot.
+
+    Seitdem fährt ihn der Rundgang-Workflow vor dem Browser-Rundgang.
+    """
+    workflow = (WURZEL / '.github' / 'workflows' / 'rundgang.yml').read_text(encoding='utf-8')
+    assert 'run: node scripts/rauchtest_design.js' in workflow
