@@ -262,13 +262,14 @@ def probe_msix(alias: Path, familie: str, datenordner: Path, berichte: Path) -> 
 
 def probe_msix_entfernt(familie: str, datenordner: Path) -> bool:
     """Nach Remove-AppxPackage: der Paketordner ist weg, die Daten in einem
-    echten Ordner bleiben."""
+    echten Ordner bleiben. Beides muss stimmen: Bleibt der Paketordner, ist
+    die Deinstallation gescheitert, und die Daten zeigen nichts."""
     paketordner = Path(os.environ['LOCALAPPDATA']) / 'Packages' / familie
     daten = (datenordner / 'nebenkosten.db').is_file()
     weg = not paketordner.exists()
     _zusammenfassung(f'- MSIX entfernt: Paketordner {"weg" if weg else "NOCH DA"}, '
                      f'Daten {"erhalten" if daten else "WEG"}')
-    return daten
+    return weg and daten
 
 
 def main(argv: list[str]) -> int:

@@ -7,7 +7,7 @@ Englisch, weil die Prüfer ihn lesen. Alles unterhalb der Linie einfügen.
 
 NebenkostenFix is a free, open-source (GPL-3.0) desktop app for private landlords in Germany. It creates utility cost statements (Nebenkostenabrechnung) as PDF. The UI is German only.
 
-No test account needed. Everything runs locally: there is no server and no account with the publisher.
+No test account needed. Everything runs locally on this PC: there is no remote or publisher-operated server and no account with the publisher.
 1. On first launch, the setup wizard asks for a user name and password. Any values work; they create a local login stored only on this PC.
 2. A disclaimer dialog follows. Click "Verstanden" (Understood).
 3. On the overview, click "Beispielimmobilie anlegen" (create sample property). It comes with a finished statement: open "Abrechnungen" in the left menu and click "PDF ansehen (detailliert)" to see the PDF.

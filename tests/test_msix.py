@@ -207,6 +207,18 @@ def test_msix_entfernt(tmp_path, monkeypatch):
     assert paketprobe.probe_msix_entfernt(paketprobe.PAKETFAMILIE, daten) is True
 
 
+def test_msix_entfernt_scheitert_wenn_der_paketordner_bleibt(tmp_path, monkeypatch):
+    """Copilot zu #23: Schlug Remove-AppxPackage fehl, blieb die Probe grün,
+    solange die Daten da waren."""
+    monkeypatch.setenv('LOCALAPPDATA', str(tmp_path / 'lokal'))
+    monkeypatch.delenv('GITHUB_STEP_SUMMARY', raising=False)
+    daten = tmp_path / 'daten'
+    daten.mkdir()
+    (daten / 'nebenkosten.db').write_bytes(b'bestand')
+    (tmp_path / 'lokal' / 'Packages' / paketprobe.PAKETFAMILIE).mkdir(parents=True)
+    assert paketprobe.probe_msix_entfernt(paketprobe.PAKETFAMILIE, daten) is False
+
+
 def test_windows_lauf_packt_und_probt_das_msix():
     windows = (WURZEL / '.github/workflows/windows.yml').read_text(encoding='utf-8')
     assert 'python packaging/windows/msix.py vorbereiten dist\\NebenkostenFix' in windows

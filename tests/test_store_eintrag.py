@@ -11,6 +11,7 @@ import pytest
 from nebenkostenfix import haftung
 
 EINTRAG = Path(__file__).resolve().parents[1] / 'packaging/windows/store/eintrag-de.md'
+ZERTIFIZIERUNG = EINTRAG.with_name('zertifizierung-en.md')
 
 # Grenzen laut Partner Center (Store listings), in Zeichen
 GRENZEN = {
@@ -57,3 +58,11 @@ def test_haftungshinweis_im_wortlaut_der_app():
 def test_gesiezt():
     text = ' '.join(_felder().values())
     assert not re.search(r'\b(du|dein|deine|dir|dich)\b', text, flags=re.I)
+
+
+def test_pruefer_hinweise_widersprechen_sich_nicht():
+    """Copilot zu #23: „there is no server“ neben dem lokalen Webserver auf
+    127.0.0.1. Gemeint ist: kein entfernter Server, keiner des Herausgebers."""
+    notiz = ZERTIFIZIERUNG.read_text(encoding='utf-8').split('\n---\n', 1)[1]
+    assert '127.0.0.1' in notiz
+    assert not re.search(r'\bno server\b', notiz, flags=re.I)
