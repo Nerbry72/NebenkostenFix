@@ -1,4 +1,6 @@
 from io import BytesIO
+# Bandit-Ausnahme: maskiert Text fuer reportlab, parst kein XML
+from xml.sax.saxutils import escape  # nosec B406
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -401,7 +403,8 @@ class PDFGenerator:
         return elemente
 
     def generate(self, line_items, total_amount, prepaid_amount=NULL,
-                 co2_ausweis=None, landlord_share=None, anschreiben=None):
+                 co2_ausweis=None, landlord_share=None, anschreiben=None,
+                 vorbehalt=None):
         buffer = BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4,
                                 rightMargin=56.7, leftMargin=56.7,
@@ -677,6 +680,12 @@ class PDFGenerator:
         if anteilig_ausgewiesen:
             elements.append(Spacer(1, 10))
             elements.append(Paragraph(HINWEIS_TAGESKONVENTION, self.styles['Fussnote']))
+
+        # F-115: fehlen Rechnungen fuer einen Teil des Zeitraums, sagt das
+        # Blatt es dem Mieter, statt ein Guthaben als endgueltig zu zeigen.
+        if vorbehalt:
+            elements.append(Spacer(1, 10))
+            elements.append(Paragraph(escape(vorbehalt), self.styles['Fussnote']))
 
         # NK-060: der Heizkosten- und CO2-Abschnitt -- Verteilung, Stufe,
         # Vermieteranteil -- gehoert auf beide Wege des Dokuments, denn der

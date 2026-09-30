@@ -2165,6 +2165,120 @@ def rechnungen_im_umfang(vorgang: Vorgang) -> list:
     return [r for r in vorgang.rechnungen if r.kategorie.id in erlaubt]
 
 
+def _fuer_die_wohnung(vorgang: Vorgang, rechnungen: Sequence[Rechnung]) -> list:
+    return [r for r in rechnungen
+            if not r.wohnung_id or r.wohnung_id == vorgang.wohnung.id]
+
+
+def _d(tag: date) -> str:
+    return tag.strftime('%d.%m.%Y')
+
+
+def abdeckungsluecken(vorgang: Vorgang, rechnungen: Sequence[Rechnung]) -> list:
+    """Je Kostenart die Tage des Zeitraums, fuer die keine Rechnung da ist (F-115).
+
+    Eine Rechnung, die vor dem Zeitraumende aufhoert, rechnet nur ihre Tage
+    ab; die Vorauszahlungen zaehlen trotzdem voll. Das ergab ein Guthaben,
+    das nur aus fehlenden Rechnungen entstand, ohne jeden Hinweis. Gemeldet
+    werden nur Kostenarten, die im Zeitraum ueberhaupt eine Rechnung haben.
+    Luecken sind ``(erster, letzter)`` Tag, beide einschliesslich.
+    """
+    von, bis = vorgang.beginn, vorgang.ende_grenze
+    je_art: dict = {}
+    for r in _fuer_die_wohnung(vorgang, rechnungen):
+        a, b = max(r.beginn, von), min(r.ende_grenze, bis)
+        if a < b:
+            je_art.setdefault(r.kategorie.name, []).append((a, b))
+    ergebnis = []
+    for name in sorted(je_art):
+        luecken, stand = [], von
+        for a, b in sorted(je_art[name]):
+            if a > stand:
+                luecken.append((stand, a))
+            stand = max(stand, b)
+        if stand < bis:
+            luecken.append((stand, bis))
+        if luecken:
+            ergebnis.append({
+                'kategorie': name,
+                'tage': tage(von, bis) - sum(tage(a, b) for a, b in luecken),
+                'von_tagen': tage(von, bis),
+                'luecken': [(a, letzter_tag(b)) for a, b in luecken],
+            })
+    return ergebnis
+
+
+def _lueckentext(eintrag: dict) -> str:
+    return ', '.join(f'{_d(a)}–{_d(b)}' for a, b in eintrag['luecken'])
+
+
+def abdeckungs_warnung(vorgang: Vorgang, luecken: list) -> Optional[str]:
+    """Der Hinweis an den Vermieter samt Vorschlag, den Zeitraum zu teilen."""
+    if not luecken:
+        return None
+    arten = '; '.join(
+        f"„{e['kategorie']}“ {e['tage']} von {e['von_tagen']} Tagen "
+        f"(fehlt {_lueckentext(e)})" for e in luecken)
+    text = (f'Die Rechnungen decken den Zeitraum nicht ganz ab: {arten}. '
+            'Die fehlenden Tage werden nicht abgerechnet, die Vorauszahlungen '
+            'zählen aber voll.')
+    # Bis wohin ist jede Kostenart lueckenlos da? Dahin laesst sich jetzt
+    # abrechnen, der Rest spaeter in einem eigenen Zeitraum.
+    teilbar_bis = min(e['luecken'][0][0] for e in luecken)
+    if teilbar_bis > vorgang.beginn:
+        text += (f' Vorschlag: Zeitraum aufteilen – jetzt bis '
+                 f'{_d(letzter_tag(teilbar_bis))} abrechnen, den Rest, sobald '
+                 'die Rechnungen vorliegen.')
+    return text
+
+
+def abdeckungs_vorbehalt(luecken: list) -> Optional[str]:
+    """Der Satz fuer den Mieter im PDF: was noch nicht abgerechnet ist."""
+    if not luecken:
+        return None
+    arten = '; '.join(f"{e['kategorie']} ({_lueckentext(e)})" for e in luecken)
+    return ('Vorbehalt: Für folgende Kostenarten lagen bei Erstellung noch '
+            f'nicht alle Rechnungen vor: {arten}. Diese Zeiträume sind hier '
+            'nicht abgerechnet und werden nachberechnet, sobald die '
+            'Rechnungen vorliegen.')
+
+
+# ponytail: kurze Ueberschneidung = Tippfehler an der Grenze. Laengere
+# Ueberschneidungen sind oft echt (zwei Policen einer Versicherung, Brennstoff
+# und Wartung einer Anlage) und bleiben still; bei Bedarf je Versorger pruefen.
+UEBERSCHNEIDUNG_MAX_TAGE = 7
+
+
+def ueberschneidende_rechnungen(vorgang: Vorgang, rechnungen: Sequence[Rechnung]) -> list:
+    """Rechnungen derselben Kostenart, die sich am Rand ueberlappen (F-117).
+
+    Rechnung 1 bis 01.01., Rechnung 2 ab 01.01.: der 01.01. zaehlt doppelt.
+    Gemeldet wird nur, was im Abrechnungszeitraum liegt.
+    """
+    meldungen = []
+    gruppen: dict = {}
+    for r in _fuer_die_wohnung(vorgang, rechnungen):
+        schluessel = (r.kategorie.id, r.wohnung_id, r.heizungsanlage_id, r.heizkostenart)
+        gruppen.setdefault(schluessel, []).append(r)
+    for gruppe in gruppen.values():
+        gruppe.sort(key=lambda r: (r.beginn, r.ende))
+        for i, r1 in enumerate(gruppe):
+            for r2 in gruppe[i + 1:]:
+                a = max(r2.beginn, vorgang.beginn)
+                b = min(r1.ende_grenze, r2.ende_grenze, vorgang.ende_grenze)
+                doppelt = tage(a, b)
+                if 0 < doppelt <= UEBERSCHNEIDUNG_MAX_TAGE:
+                    tage_text = (f'am {_d(a)}' if doppelt == 1
+                                 else f'vom {_d(a)} bis {_d(letzter_tag(b))}')
+                    meldungen.append(
+                        f'Zwei Rechnungen für „{r1.kategorie.name}“ überschneiden '
+                        f'sich {tage_text} ({_d(r1.beginn)}–{_d(r1.ende)} und '
+                        f'{_d(r2.beginn)}–{_d(r2.ende)}). Diese Tage werden '
+                        'doppelt umgelegt. Meist endet die erste Rechnung einen '
+                        'Tag früher; prüfen Sie die Daten.')
+    return meldungen
+
+
 def rechne(vorgang: Vorgang) -> dict:
     """Die Abrechnung fuer einen Mieter. Rein: gleiche Eingabe, gleiches Bild.
 
@@ -2192,6 +2306,13 @@ def rechne(vorgang: Vorgang) -> dict:
 
     profiles = vorgang.profile
     invoices = rechnungen_im_umfang(vorgang)
+
+    # Vor der Heizkostentrennung, damit auch Heizrechnungen mitzaehlen:
+    # Luecken im Zeitraum (F-115) und doppelt gezaehlte Tage (F-117).
+    luecken = abdeckungsluecken(vorgang, invoices)
+    if luecken:
+        warnings.append(abdeckungs_warnung(vorgang, luecken))
+    warnings.extend(ueberschneidende_rechnungen(vorgang, invoices))
 
     # Die Heizkosten gehen ihren eigenen Weg (R-HK-01, D-46/D-47): sie
     # laufen nicht durch die Fallunterscheidung darunter, sondern werden je
@@ -2288,8 +2409,22 @@ def rechne(vorgang: Vorgang) -> dict:
 
                 tenant_meter = wohnungszaehler(vorgang, cat.id)
                 if tenant_meter:
-                    tenant_detail = verbrauch_detail(tenant_meter, inv.beginn, inv.ende)
+                    # Nur der Verbrauch im Abrechnungszeitraum (F-114). Ragt
+                    # die Rechnung hinaus, teilt der Zaehler den Betrag, nicht
+                    # die Tage: Gas im Winter ist nicht Gas im Sommer.
+                    tenant_detail = verbrauch_in(tenant_meter, overlap_von, overlap_bis)
                     tenant_consumption = tenant_detail['consumption']
+                    gesamt = verbrauch_in(tenant_meter, inv.beginn, inv.ende_grenze)['consumption']
+                    if overlap_days < invoice_days and gesamt > 0:
+                        anteil = min(max(dec(tenant_consumption) / dec(gesamt), NULL), dec(1))
+                        tenant_cost = inv.betrag * anteil
+                        description = (f"Direkt zugewiesen, nach Verbrauch: "
+                                       f"{zahl_text(round(tenant_consumption, 1))} von "
+                                       f"{zahl_text(round(gesamt, 1))} {unit} der Rechnung")
+                        rechenweg.append(
+                            f"{euro_text(inv.betrag)} Rechnungsbetrag × "
+                            f"{zahl_text(round(tenant_consumption, 1))} / {zahl_text(round(gesamt, 1))} {unit} "
+                            f"= {euro_text(runde(tenant_cost))}")
 
         elif billing_type == 'qm':
             # Erst hier abbrechen, nicht schon oben: eine Abrechnung ohne
@@ -2802,6 +2937,8 @@ def rechne(vorgang: Vorgang) -> dict:
         # Anteile in Prozent und Euro, Herkunft der Zahlen. None heisst:
         # keine Einstufung -- dann erklaert die blockierende Warnung, warum.
         'co2': co2_ausweis,
+        # Der Satz fuers PDF, wenn Rechnungen im Zeitraum fehlen (F-115).
+        'vorbehalt': abdeckungs_vorbehalt(luecken),
         'warnings': warnings
     }
 
@@ -3011,6 +3148,24 @@ def pruefe(vorgang: Vorgang) -> dict:
                 'reading_span_days': None,
                 'target_days': None,
                 'is_interpolated': False
+            })
+
+    # Luecken (F-115) und doppelte Tage (F-117) als Hinweis, nicht als
+    # Sperre: eine Abrechnung bis zur Luecke ist ja der Vorschlag.
+    hinweise = [('Rechnungen', 'Abdeckung', abdeckungs_warnung(
+        vorgang, abdeckungsluecken(vorgang, invoices)))]
+    hinweise += [('Rechnungen', 'Überschneidung', m)
+                 for m in ueberschneidende_rechnungen(vorgang, invoices)]
+    for kategorie, art_text, message in hinweise:
+        if message:
+            checks.append({
+                'category': kategorie, 'meter_type': art_text,
+                'meter_number': None, 'meter_id': None,
+                'apartment': vorgang.wohnung.name, 'invoice_period': None,
+                'status': 'warning', 'blocking': False, 'message': message,
+                'r_start': None, 'r_end': None, 'start_offset_days': None,
+                'end_offset_days': None, 'reading_span_days': None,
+                'target_days': None, 'is_interpolated': False,
             })
 
     statuses = [c['status'] for c in checks]

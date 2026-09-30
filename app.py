@@ -2418,6 +2418,7 @@ def finalize_bill():
         co2_ausweis=bill_data.get('co2'),
         landlord_share=bill_data.get('landlord_share'),
         anschreiben=anschreiben_text,
+        vorbehalt=bill_data.get('vorbehalt'),
     )
         
     # Save to NAS with type-specific filename
@@ -3238,6 +3239,7 @@ def korrigiere_billing_report(id):
             co2_ausweis=bill_data.get('co2'),
             landlord_share=bill_data.get('landlord_share'),
             anschreiben=anschreiben_text,
+            vorbehalt=bill_data.get('vorbehalt'),
         )
         pdf_path, _ = nas_handler.save_billing_report(
             DummyFile(dateiname, pdf_bytes), prop.name,
