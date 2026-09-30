@@ -14,14 +14,14 @@ lesen — ein Fachfeld ohne Oberfläche (F-50). Jetzt führt die Tabelle
 import pytest
 from reportlab.platypus import Spacer
 
-import girocode_generator
-from girocode_generator import (
+from nebenkostenfix import girocode_generator
+from nebenkostenfix.girocode_generator import (
     EingabeFehler,
     iban_pruefen,
     iban_saeubern,
     vermieter_ausweis,
 )
-from models import Vermieterdaten, db
+from nebenkostenfix.models import Vermieterdaten, db
 
 
 @pytest.fixture

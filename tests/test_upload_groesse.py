@@ -82,7 +82,7 @@ def test_die_anwendung_hat_ein_limit(app_ctx):
 
 
 def test_zu_grosser_beleg_gibt_413_auf_deutsch(auth_client, kleines_limit, app_ctx):
-    from models import Property, db
+    from nebenkostenfix.models import Property, db
 
     prop = Property(name='Haus Müllerstraße 3')
     db.session.add(prop)
@@ -117,7 +117,7 @@ def test_die_meldung_nennt_das_eingestellte_limit(auth_client, app_ctx):
 
 def test_datei_knapp_unter_dem_limit_geht_durch(auth_client, kleines_limit, app_ctx):
     """Gegenprobe: das Limit sperrt nicht einfach alles."""
-    from models import InvoiceDocument, Property, db
+    from nebenkostenfix.models import InvoiceDocument, Property, db
 
     prop = Property(name='Haus Müllerstraße 3')
     db.session.add(prop)
@@ -184,7 +184,7 @@ def test_ohne_anmeldung_bleibt_es_bei_401(anon_client, kleines_limit):
 
 def test_anmeldung_selbst_faellt_nicht_unter_das_limit(app_ctx, kleines_limit):
     """Gegenprobe zur Reihenfolge: /login ist oeffentlich und klein."""
-    from models import User, db
+    from nebenkostenfix.models import User, db
 
     user = User(username=TEST_USER)
     user.set_password(TEST_PASSWORD)

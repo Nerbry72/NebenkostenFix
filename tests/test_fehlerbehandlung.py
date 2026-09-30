@@ -21,7 +21,7 @@ import logging
 import pytest
 from werkzeug.exceptions import HTTPException
 
-import fehler
+from nebenkostenfix import fehler
 
 
 # Der Wortlaut, den eine geplatzte Anweisung mitbringt. Er darf im Protokoll
@@ -66,7 +66,7 @@ def platzende_route(monkeypatch):
     der ersten Anfrage keine neue Regel mehr an, und die Karte will ohnehin
     wissen, was an einer bestehenden Route passiert.
     """
-    from billing_engine import BillingEngine
+    from nebenkostenfix.billing_engine import BillingEngine
 
     def knallt(*args, **kwargs):
         raise RuntimeError(GEHEIM)
@@ -180,7 +180,7 @@ def test_die_dateiablage_schreibt_in_dasselbe_protokoll():
     Der NAS-Handler importiert ``fehler`` bewusst nicht -- er soll nicht die
     halbe Webschicht nachziehen. Der Name allein genuegt.
     """
-    from handlers import nas_handler
+    from nebenkostenfix.handlers import nas_handler
 
     assert nas_handler.protokoll.name.startswith(fehler.PROTOKOLLNAME + '.')
     assert nas_handler.protokoll.parent is fehler.protokoll
@@ -261,7 +261,7 @@ def test_die_anwendung_bedient_nach_einem_fehler_weiter(auth_client, platzende_r
 
 
 def test_zurueckrollen_verwirft_haengende_aenderungen(app_ctx):
-    from models import Property, db
+    from nebenkostenfix.models import Property, db
 
     db.session.add(Property(name='Haus Müllerstraße 3'))
     db.session.flush()
@@ -370,7 +370,7 @@ def test_serverfehler_steht_im_protokoll(auth_client, mitschnitt, monkeypatch, a
     ein Dienst dahinter wegbleibt. 4xx bleiben bewusst still, sonst ersaeuft
     das Protokoll in Tippfehlern der Bedienung.
     """
-    from billing_engine import BillingEngine
+    from nebenkostenfix.billing_engine import BillingEngine
     from flask import abort
 
     monkeypatch.setattr(
@@ -416,7 +416,7 @@ def test_ohne_anmeldung_bleibt_es_bei_401(anon_client, app_ctx):
 
 def test_413_behaelt_seinen_eigenen_handler(app_ctx):
     """Strukturprobe zu NK-029: der Code-Handler steht neben den Klassen."""
-    from validation import EingabeFehler
+    from nebenkostenfix.validation import EingabeFehler
 
     spec = app_ctx.app.error_handler_spec[None]
 

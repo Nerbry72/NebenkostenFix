@@ -20,10 +20,10 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-import zeit
+from nebenkostenfix import zeit
 from billing_factories import apt, house, tenant
-from frist import frist_ende
-from models import TenantBillingReport, User, db
+from nebenkostenfix.frist import frist_ende
+from nebenkostenfix.models import TenantBillingReport, User, db
 from test_auth import TEST_PASSWORD, TEST_USER
 
 

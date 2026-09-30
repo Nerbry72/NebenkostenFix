@@ -7,5 +7,5 @@
 - [ ] `make check` ist grün (Lint, Glossar, Bandit, Tests, Einzelschwelle, Abdeckung Rechenkern)
 - [ ] Neue Regel oder Fehlerbehebung mit Test, der ohne die Änderung rot ist
 - [ ] Neue Beschriftungen folgen `docs/glossar.md`
-- [ ] `SOFTWARE_VERSION` in `abrechnung_version.py` angehoben (nur wenn es ein Release werden soll)
+- [ ] `SOFTWARE_VERSION` in `nebenkostenfix/abrechnung_version.py` angehoben (nur wenn es ein Release werden soll)
 - [ ] Keine echten Mieterdaten in Tests, Screenshots oder Beschreibung

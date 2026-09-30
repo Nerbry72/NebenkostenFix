@@ -21,6 +21,7 @@ Diese Datei prueft die ganze Kette, von unten nach oben:
 from __future__ import annotations
 
 import ast
+from tests.importwaechter import importierte_module
 import doctest
 import pathlib
 from datetime import date
@@ -28,8 +29,8 @@ from datetime import date
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-import nutzung
-from nutzung import (
+from nebenkostenfix import nutzung
+from nebenkostenfix.nutzung import (
     ABRECHENBAR,
     ARTEN,
     GEMISCHT,
@@ -46,9 +47,9 @@ from nutzung import (
     pruefe,
 )
 
-from abrechnungsdaten import lade_vorgang
-from rechenkern import BillingDataError, rechne
-from rechenkern import pruefe as vorpruefung
+from nebenkostenfix.abrechnungsdaten import lade_vorgang
+from nebenkostenfix.rechenkern import BillingDataError, rechne
+from nebenkostenfix.rechenkern import pruefe as vorpruefung
 
 from tests import billing_factories as f
 
@@ -114,17 +115,8 @@ def test_nur_wohnen_ist_abrechenbar():
 
 def test_modul_haengt_nur_an_der_standardbibliothek():
     """Der Rechenkern importiert dieses Modul -- und kein ORM (NK-037)."""
-    baum = ast.parse((WURZEL / 'nutzung.py').read_text(encoding='utf-8'))
-    importiert = {
-        (knoten.module or '').split('.')[0]
-        for knoten in ast.walk(baum)
-        if isinstance(knoten, ast.ImportFrom)
-    } | {
-        alias.name.split('.')[0]
-        for knoten in ast.walk(baum)
-        if isinstance(knoten, ast.Import)
-        for alias in knoten.names
-    }
+    baum = ast.parse((WURZEL / 'nebenkostenfix' / 'nutzung.py').read_text(encoding='utf-8'))
+    importiert = importierte_module(baum)
     assert importiert <= {'__future__'}, (
         f'nutzung.py zieht fremde Module herein: {sorted(importiert)}'
     )
@@ -249,7 +241,7 @@ def test_ablehnung_unterscheidet_gemischt_von_gewerbe():
 def test_neue_wohnung_ist_wohnraum_ohne_eigenheiten(app_ctx):
     """Die Vorgabe am Modell ist der Normalfall eines Vermieters."""
     prop = f.house('Vorgabehaus')
-    from models import Apartment, db
+    from nebenkostenfix.models import Apartment, db
 
     wohnung = Apartment(property_id=prop.id, name='EG', sqm=50.0)
     db.session.add(wohnung)
@@ -267,7 +259,7 @@ def test_die_datenbank_weist_eine_erfundene_nutzungsart_ab(app_ctx):
     Sicherung, nicht den Import, nicht die Zeile per ``sqlite3``. Dasselbe
     Argument wie beim CHECK auf der Abrechnungsart (NK-096).
     """
-    from models import Apartment, db
+    from nebenkostenfix.models import Apartment, db
 
     prop = f.house('Checkhaus')
     db.session.add(Apartment(
@@ -279,7 +271,7 @@ def test_die_datenbank_weist_eine_erfundene_nutzungsart_ab(app_ctx):
 
 def test_ein_haushalt_ohne_kopf_wird_abgewiesen(app_ctx):
     """Null Personen ist kein Haushalt -- wer weg ist, hat ein Auszugsdatum."""
-    from models import Haushaltsgroesse, db
+    from nebenkostenfix.models import Haushaltsgroesse, db
 
     prop = f.house('Kopfhaus')
     wohnung = f.apt(prop, 'EG', 50.0)
@@ -294,7 +286,7 @@ def test_ein_haushalt_ohne_kopf_wird_abgewiesen(app_ctx):
 
 def test_zwei_eintraege_auf_denselben_tag_gehen_nicht(app_ctx):
     """Zwei Wahrheiten zum selben Stichtag -- welche gilt, koennte niemand sagen."""
-    from models import Haushaltsgroesse, db
+    from nebenkostenfix.models import Haushaltsgroesse, db
 
     prop = f.house('Doppelhaus')
     wohnung = f.apt(prop, 'EG', 50.0)

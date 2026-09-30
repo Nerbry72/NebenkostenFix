@@ -15,7 +15,7 @@ from decimal import Decimal
 
 import pytest
 
-import tabellenimport as ti
+from nebenkostenfix import tabellenimport as ti
 
 
 # --- Werte -----------------------------------------------------------------------
@@ -126,7 +126,7 @@ WOHNUNGEN = _csv('Immobilie;Wohnung;Fläche (m²);Nutzungsart;Eigene Heizung;Sel
 
 
 def test_wohnungen_probelauf_aendert_nichts_uebernahme_legt_an(auth_client):
-    from models import Apartment, Property
+    from nebenkostenfix.models import Apartment, Property
     gelesen = _lesen(auth_client, 'wohnungen', WOHNUNGEN)
     assert gelesen['zeilen'] == 3 and len(gelesen['zuordnung']) == 6
 
@@ -150,7 +150,7 @@ def test_wohnungen_probelauf_aendert_nichts_uebernahme_legt_an(auth_client):
 
 
 def test_alles_oder_nichts_mit_zeilennummern(auth_client):
-    from models import Apartment
+    from nebenkostenfix.models import Apartment
     inhalt = _csv('Immobilie;Wohnung;Fläche (m²)',
                   'Musterhaus Lindenstraße;EG links;62,5',
                   'Musterhaus Lindenstraße;OG;viel',
@@ -177,8 +177,8 @@ def test_pflichtspalte_ohne_zuordnung(auth_client):
 
 @pytest.fixture
 def haus(auth_client):
-    from models import Apartment, Meter, Property, db
-    from models import CostCategory
+    from nebenkostenfix.models import Apartment, Meter, Property, db
+    from nebenkostenfix.models import CostCategory
     haus = Property(name='Musterhaus Lindenstraße')
     db.session.add(haus)
     db.session.flush()
@@ -192,7 +192,7 @@ def haus(auth_client):
 
 
 def test_mieter_mit_personen_und_fehlern(haus):
-    from models import Tenant
+    from nebenkostenfix.models import Tenant
     inhalt = _csv('Immobilie;Wohnung;Name;Einzug;Auszug;Personen',
                   'Musterhaus Lindenstraße;EG links;Anna Mieterin;01.03.2024;;2',
                   'Musterhaus Lindenstraße;EG rechts;Ben Beispiel;01.03.2024;;',
@@ -214,7 +214,7 @@ def test_mieter_mit_personen_und_fehlern(haus):
 
 def test_rechnungen_aus_excel_mit_datums_und_zahlenzellen(haus):
     import openpyxl
-    from models import CostInvoice, Provider
+    from nebenkostenfix.models import CostInvoice, Provider
     mappe = openpyxl.Workbook()
     blatt = mappe.active
     blatt.append(['Objekt', 'Kategorie', 'Summe', 'Beginn', 'Ende', 'Nr', 'Firma'])
@@ -243,7 +243,7 @@ def test_rechnungen_aus_excel_mit_datums_und_zahlenzellen(haus):
 
 
 def test_rechnungen_uebernehmen_und_doppelte_melden(haus):
-    from models import CostInvoice, Provider
+    from nebenkostenfix.models import CostInvoice, Provider
     inhalt = _csv('Immobilie;Kostenart;Betrag (€);Zeitraum von;Zeitraum bis;Rechnungsnummer;Anbieter;Nur für Wohnung',
                   'Musterhaus Lindenstraße;Grundsteuer;1.234,56;01.01.2025;31.12.2025;GS-17;Stadtkasse;',
                   'Musterhaus Lindenstraße;Müllabfuhr;486;01.01.2025;31.12.2025;;Stadtkasse;EG links')
@@ -262,8 +262,8 @@ def test_rechnungen_uebernehmen_und_doppelte_melden(haus):
 
 
 def test_zahlungen_mit_kurzform_der_art(haus):
-    from models import Payment, Tenant, db
-    eg = __import__('models').Apartment.query.filter_by(name='EG links').one()
+    from nebenkostenfix.models import Apartment, Payment, Tenant, db
+    eg = Apartment.query.filter_by(name='EG links').one()
     db.session.add(Tenant(apartment_id=eg.id, name='Anna Mieterin', move_in_date=date(2024, 1, 1)))
     db.session.commit()
     inhalt = _csv('Immobilie;Wohnung;Mieter;Datum;Betrag (€);Art',
@@ -281,7 +281,7 @@ def test_zahlungen_mit_kurzform_der_art(haus):
 
 
 def test_zaehlerstaende(haus):
-    from models import MeterReading
+    from nebenkostenfix.models import MeterReading
     inhalt = _csv('Immobilie;Zählernummer;Ablesedatum;Stand;Stand Niedertarif;Zwischenablesung',
                   'Musterhaus Lindenstraße;WZ-10442;31.12.2025;1284,5;;nein',
                   'Musterhaus Lindenstraße;WZ-10442;30.06.2025;1100;;ja',
@@ -300,7 +300,7 @@ def test_zaehlerstaende(haus):
 
 
 def test_tabellen_erfassung_der_rechnungen(haus):
-    from models import CostInvoice
+    from nebenkostenfix.models import CostInvoice
     zeilen = [
         {'immobilie': 'Musterhaus Lindenstraße', 'kostenart': 'Grundsteuer', 'betrag': '1.234,56',
          'von': '2025-01-01', 'bis': '2025-12-31'},
@@ -354,7 +354,7 @@ def _zip(eintraege: dict) -> bytes:
 
 
 def test_ods_und_fremde_zip_und_bombe(auth_client):
-    import uploads
+    from nebenkostenfix import uploads
     with pytest.raises(Exception, match='OpenDocument'):
         uploads.pruefe_tabelle(_zip({'mimetype': 'x', 'content.xml': '<x/>'}))
     with pytest.raises(Exception, match='keine Tabelle'):

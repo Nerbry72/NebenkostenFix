@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 import desktop
-import windows_ordner
+from nebenkostenfix import windows_ordner
 
 WURZEL = Path(__file__).resolve().parents[1]
 
@@ -177,7 +177,7 @@ def test_einrichtung_in_der_app_ohne_einmal_code(als_app, anon_client):
         'username': 'anna', 'password': 'ein-langes-passwort',
         'password2': 'ein-langes-passwort'})
     assert antwort.status_code in (200, 201), antwort.get_data(as_text=True)
-    from models import User
+    from nebenkostenfix.models import User
     assert User.query.filter_by(username='anna').count() == 1
 
 
@@ -199,7 +199,7 @@ def test_passwort_zuruecksetzen_nur_in_der_app(app_ctx, anon_client, auth_client
 
 
 def test_passwort_zuruecksetzen_in_der_app(als_app, anon_client):
-    from models import User, db
+    from nebenkostenfix.models import User, db
     konto = User(username='anna')
     konto.set_password('das-alte-passwort')
     db.session.add(konto)
@@ -363,7 +363,7 @@ def test_bruecke_zeigt_pywebview_nur_methoden():
 
 def test_extern_nur_projektseite_und_kofi(monkeypatch):
     """NK-175/NK-179: der Standardbrowser öffnet nur Projektseite und Ko-fi."""
-    import marke
+    from nebenkostenfix import marke
     import webbrowser
     geoeffnet = []
     monkeypatch.setattr(webbrowser, 'open', lambda adresse: geoeffnet.append(adresse) or True)
@@ -384,7 +384,7 @@ def test_paket_waehlen_hat_gueltige_dateifilter(monkeypatch, tmp_path):
     import re
     import types
 
-    import umzug
+    from nebenkostenfix import umzug
     # Aus pywebview 6.2.1, webview/util.py parse_file_type
     gueltig = r'^([\w ]+)\((\*(?:\.(?:\w+|\*))*(?:;\*(?:\.(?:\w+|\*))*)*)\)$'
     paket = tmp_path / 'umzug.nkfix'

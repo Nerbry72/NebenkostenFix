@@ -47,7 +47,7 @@ def test_erklaerungen_sind_ein_gesiezter_satz():
 
 
 def test_kurzanleitung_als_pdf(auth_client):
-    import hilfe
+    from nebenkostenfix import hilfe
     antwort = auth_client.get('/api/hilfe/kurzanleitung.pdf')
     assert antwort.status_code == 200 and antwort.mimetype == 'application/pdf'
     assert antwort.data.startswith(b'%PDF-')
@@ -56,7 +56,7 @@ def test_kurzanleitung_als_pdf(auth_client):
 
 
 def test_kurzanleitung_nennt_die_frist_und_keine_rechtsberatung():
-    import hilfe
+    from nebenkostenfix import hilfe
     text = ' '.join(' '.join(absaetze) for _, absaetze in hilfe.KURZANLEITUNG)
     assert '§ 556 Abs. 3 BGB' in text and 'Keine Rechtsberatung' in text
 

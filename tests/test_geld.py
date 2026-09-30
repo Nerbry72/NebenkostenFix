@@ -20,7 +20,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import Column, Integer, MetaData, Table, create_engine, select
 
-from geld import (
+from nebenkostenfix.geld import (
     CENT,
     NULL,
     Geld,
@@ -336,7 +336,7 @@ def test_keine_geldstelle_einer_abrechnung_ist_ein_float(app_ctx):
     """
     from datetime import date
 
-    from billing_engine import BillingEngine
+    from nebenkostenfix.billing_engine import BillingEngine
     from tests.billing_factories import (
         YEAR_END,
         YEAR_START,
@@ -392,7 +392,7 @@ def test_keine_geldstelle_einer_abrechnung_ist_ein_float(app_ctx):
 
 def test_ein_betrag_kommt_als_decimal_aus_der_datenbank_zurueck(app_ctx):
     """Nicht nur im Rechenkern, auch ueber die Sitzung hinweg."""
-    from models import CostInvoice, db
+    from nebenkostenfix.models import CostInvoice, db
     from tests.billing_factories import category, house, invoice
 
     prop = house()
@@ -423,7 +423,7 @@ def test_ein_betrag_kommt_als_decimal_aus_der_datenbank_zurueck(app_ctx):
 
 def test_ein_betrag_geht_als_zahl_ueber_die_json_grenze(auth_client):
     """Der GeldJSON-Provider aus app.py, an einer echten Route gemessen."""
-    from models import db
+    from nebenkostenfix.models import db
     from tests.billing_factories import category, house
 
     prop = house()
@@ -458,7 +458,7 @@ def test_die_json_grenze_verliert_keinen_cent(auth_client):
     Gegenprobe zur Entscheidung oben: waere die Rundung nicht vorher passiert,
     stuende hier der Beweis, dass float doch etwas verschluckt.
     """
-    from models import db
+    from nebenkostenfix.models import db
     from tests.billing_factories import category, house
 
     prop = house()

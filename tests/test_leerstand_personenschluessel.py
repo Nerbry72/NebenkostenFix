@@ -23,8 +23,8 @@ Die Fälle hier sind der Probelauf aus F-34 und seine Ränder, gerechnet in
 from datetime import date
 from decimal import Decimal
 
-from leerstand import EIGENNUTZUNG, LEERSTAND
-from rechenkern import Kategorie, Mieter, Rechnung, Vorgang, Wohnung, rechne
+from nebenkostenfix.leerstand import EIGENNUTZUNG, LEERSTAND
+from nebenkostenfix.rechenkern import Kategorie, Mieter, Rechnung, Vorgang, Wohnung, rechne
 
 JAHR_BEGINN = date(2025, 1, 1)
 JAHR_ENDE = date(2025, 12, 31)

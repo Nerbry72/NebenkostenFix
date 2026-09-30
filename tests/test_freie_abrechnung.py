@@ -19,7 +19,7 @@ import pytest
 @pytest.fixture
 def freies_mietverhaeltnis(app_ctx):
     """Mieter mit Einzug zum Jahreswechsel und zwei Kostenarten."""
-    from models import (Apartment, CostCategory, CostInvoice, Property,
+    from nebenkostenfix.models import (Apartment, CostCategory, CostInvoice, Property,
                         Tenant, db)
 
     haus = Property(name='Haus Frei')
@@ -57,7 +57,7 @@ def test_freier_auftrag_rechnet_alle_kostenarten(app_ctx, auth_client,
     frei = auth_client.post('/api/billing/generate', json=auftrag)
     assert frei.status_code == 200, frei.get_data(as_text=True)
 
-    from models import CostCategory
+    from nebenkostenfix.models import CostCategory
     ids = [c.id for c in CostCategory.query.filter(
         CostCategory.name.in_(['Grundsteuer', 'Wasserversorgung'])).all()]
     vorschlagsweg = auth_client.post(
@@ -74,7 +74,7 @@ def test_freier_auftrag_rechnet_alle_kostenarten(app_ctx, auth_client,
 
 def test_festsetzung_auch_ohne_kategorienliste(app_ctx, auth_client,
                                                freies_mietverhaeltnis):
-    from models import TenantBillingReport
+    from nebenkostenfix.models import TenantBillingReport
 
     res = auth_client.post('/api/billing/finalize', json={
         'tenant_id': freies_mietverhaeltnis.id,

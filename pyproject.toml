@@ -61,10 +61,10 @@ skip_empty = false
 # abrechnungsdaten.py 96,23 %. Die Zweigabdeckung des Kerns prueft `make
 # kern` gesondert, weil coverage.py sie nur projektweit einschalten kann.
 [tool.nk.einzelschwelle]
-"auth.py" = 90
-"backup.py" = 90
-"rechenkern.py" = 95
-"abrechnungsdaten.py" = 90
+"nebenkostenfix/auth.py" = 90
+"nebenkostenfix/backup.py" = 90
+"nebenkostenfix/rechenkern.py" = 95
+"nebenkostenfix/abrechnungsdaten.py" = 90
 
 [tool.ruff]
 target-version = "py311"

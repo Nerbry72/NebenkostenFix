@@ -12,10 +12,10 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-import aktualisierung
-import einstellungen
-import marke
-from aktualisierung import AktualisierungsFehler
+from nebenkostenfix import aktualisierung
+from nebenkostenfix import einstellungen
+from nebenkostenfix import marke
+from nebenkostenfix.aktualisierung import AktualisierungsFehler
 
 WURZEL = Path(__file__).resolve().parents[1]
 QUELLE = 'https://beispiel.invalid/update.json'
@@ -154,7 +154,7 @@ def test_installer_mit_pruefsumme(schluessel, quelle, tmp_path):
 
 
 def test_installer_startet_still_und_die_app_danach_wieder():
-    quelltext = (WURZEL / 'aktualisierung.py').read_text(encoding='utf-8')
+    quelltext = (WURZEL / 'nebenkostenfix' / 'aktualisierung.py').read_text(encoding='utf-8')
     assert "'/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NEUSTART=1']" in quelltext
     assert 'subprocess.Popen(befehl, close_fds=True)' in quelltext
     # Der normale Start-Haken trägt skipifsilent; ohne eigenen Eintrag bliebe
@@ -283,7 +283,7 @@ def test_api_update_suche(schluessel, auth_client, monkeypatch):
 
 
 def test_api_einstellung(auth_client, monkeypatch, tmp_path):
-    import datenordner
+    from nebenkostenfix import datenordner
     monkeypatch.setattr(datenordner, 'datenordner', lambda: tmp_path)
     assert auth_client.get('/api/aktualisierung/einstellung').get_json()['automatisch'] is True
     assert auth_client.put('/api/aktualisierung/einstellung',
@@ -294,7 +294,7 @@ def test_api_einstellung(auth_client, monkeypatch, tmp_path):
 
 
 def test_installieren_sichert_vorher(schluessel, auth_client, monkeypatch, tmp_path):
-    import backup
+    from nebenkostenfix import backup
     from app import app
     reihenfolge = []
     monkeypatch.setitem(app.config, 'DESKTOP', True)
@@ -324,7 +324,7 @@ def test_keine_lizenz_mehr_in_der_anwendung():
     for rest in ('lizenz-stand', 'lizenzEinspielen', 'data-gruppe="lizenz"'):
         assert rest not in seite, rest
     assert '/api/lizenz' not in skript and 'ladeLizenz' not in skript
-    for datei in WURZEL.glob('*.py'):
+    for datei in [*WURZEL.glob('*.py'), *(WURZEL / 'nebenkostenfix').rglob('*.py')]:
         text = datei.read_text(encoding='utf-8')
         assert 'import lizenz' not in text and 'from lizenz' not in text, datei.name
 
@@ -359,8 +359,8 @@ def test_werkzeug_rundlauf(tmp_path, monkeypatch):
 # --- Haftungshinweis (NK-174) ---------------------------------------------------
 
 def test_api_haftung(auth_client, monkeypatch, tmp_path):
-    import datenordner
-    import haftung
+    from nebenkostenfix import datenordner
+    from nebenkostenfix import haftung
     monkeypatch.setattr(datenordner, 'datenordner', lambda: tmp_path)
     stand = auth_client.get('/api/haftung').get_json()
     assert stand['bestaetigt'] is False and stand['version'] == haftung.VERSION

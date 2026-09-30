@@ -126,7 +126,7 @@ def test_keine_env_pflicht_und_kein_secret_im_abbild():
     assert '.env' not in DOCKERFILE.split('COPY . .')[0].replace('.env-', '')
     dockerignore = (WURZEL / '.dockerignore').read_text(encoding='utf-8')
     assert re.search(r'^\.env$', dockerignore, re.M)
-    assert re.search(r'^debug_routen\.py$', dockerignore, re.M)
+    assert re.search(r'^nebenkostenfix/debug_routen\.py$', dockerignore, re.M)
 
 
 def test_ohne_apt_schicht():
@@ -140,7 +140,7 @@ def test_compose_nennt_das_registry_abbild():
 def test_sqlite_laeuft_im_wal_modus(app_ctx):
     from sqlalchemy import text
 
-    from models import db
+    from nebenkostenfix.models import db
     with db.engine.connect() as verbindung:
         modus = verbindung.execute(text('PRAGMA journal_mode')).scalar()
         warten = verbindung.execute(text('PRAGMA busy_timeout')).scalar()
@@ -150,6 +150,6 @@ def test_sqlite_laeuft_im_wal_modus(app_ctx):
 
 def test_einspielen_verwirft_das_alte_journal(tmp_path):
     """Nach dem Austausch der Datei duerfen -wal/-shm der alten nicht bleiben."""
-    quelle = (WURZEL / 'backup.py').read_text(encoding='utf-8')
+    quelle = (WURZEL / 'nebenkostenfix' / 'backup.py').read_text(encoding='utf-8')
     rumpf = quelle[quelle.index('def _einspielen_klartext'):]
     assert "('-wal', '-shm')" in rumpf

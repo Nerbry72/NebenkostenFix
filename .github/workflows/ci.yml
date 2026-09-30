@@ -50,7 +50,7 @@ jobs:
 
   version:
     # Jeder Merge nach main wird ein Release. Die Nummer in
-    # abrechnung_version.py muss dafuer neu sein.
+    # nebenkostenfix/abrechnung_version.py muss dafuer neu sein.
     name: Neue Versionsnummer
     if: github.event_name == 'pull_request' && github.base_ref == 'main'
     runs-on: ubuntu-latest
@@ -59,9 +59,9 @@ jobs:
         with:
           fetch-depth: 0
       - run: |
-          v=$(python3 -c "from abrechnung_version import SOFTWARE_VERSION as v; print(v)")
+          v=$(python3 -c "from nebenkostenfix.abrechnung_version import SOFTWARE_VERSION as v; print(v)")
           if git rev-parse -q --verify "refs/tags/v$v" >/dev/null; then
-            echo "::error file=abrechnung_version.py::v$v ist schon veroeffentlicht. SOFTWARE_VERSION anheben."
+            echo "::error file=nebenkostenfix/abrechnung_version.py::v$v ist schon veroeffentlicht. SOFTWARE_VERSION anheben."
             exit 1
           fi
           echo "Release nach dem Merge: v$v" >> "$GITHUB_STEP_SUMMARY"

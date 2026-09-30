@@ -28,14 +28,15 @@ Geprueft wird von unten nach oben:
 from __future__ import annotations
 
 import ast
+from tests.importwaechter import importierte_module
 import doctest
 import pathlib
 from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
-import leerstand
-from leerstand import (
+from nebenkostenfix import leerstand
+from nebenkostenfix.leerstand import (
     EIGENNUTZUNG,
     LEERSTAND,
     VERMIETET,
@@ -44,7 +45,7 @@ from leerstand import (
     bilanzen,
     unbelegte_flaechentage,
 )
-from rechenkern import Kategorie, Mieter, Rechnung, Vorgang, Wohnung, rechne
+from nebenkostenfix.rechenkern import Kategorie, Mieter, Rechnung, Vorgang, Wohnung, rechne
 
 WURZEL = pathlib.Path(__file__).resolve().parent.parent
 
@@ -70,14 +71,9 @@ def test_modul_haengt_an_nichts_als_zeitraum():
     ``leerstand`` ist ein Baustein des Rechenkerns (NK-037). Zoege es ein
     Modell herein, waere der Kern ueber einen Umweg wieder an der Datenbank.
     """
-    baum = ast.parse((WURZEL / 'leerstand.py').read_text(encoding='utf-8'))
+    baum = ast.parse((WURZEL / 'nebenkostenfix' / 'leerstand.py').read_text(encoding='utf-8'))
 
-    importiert = set()
-    for knoten in ast.walk(baum):
-        if isinstance(knoten, ast.Import):
-            importiert.update(a.name.split('.')[0] for a in knoten.names)
-        elif isinstance(knoten, ast.ImportFrom) and knoten.module:
-            importiert.add(knoten.module.split('.')[0])
+    importiert = importierte_module(baum)
 
     assert importiert <= {
         '__future__', 'dataclasses', 'datetime', 'typing', 'zeitraum',

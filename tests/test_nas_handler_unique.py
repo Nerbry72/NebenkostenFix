@@ -19,7 +19,7 @@ from io import BytesIO
 import pytest
 from werkzeug.datastructures import FileStorage
 
-from handlers.nas_handler import NASHandler
+from nebenkostenfix.handlers.nas_handler import NASHandler
 
 
 @pytest.fixture

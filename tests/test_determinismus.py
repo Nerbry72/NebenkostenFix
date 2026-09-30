@@ -32,10 +32,10 @@ from pathlib import Path
 
 import pytest
 
-import abrechnungsdaten
-import rechenkern
-from abrechnungsdaten import lade_vorgang, lade_zaehler
-from rechenkern import rechne
+from nebenkostenfix import abrechnungsdaten
+from nebenkostenfix import rechenkern
+from nebenkostenfix.abrechnungsdaten import lade_vorgang, lade_zaehler
+from nebenkostenfix.rechenkern import rechne
 from tests import billing_factories as f
 from tests.determinismus_lauf import als_json, baue_vorgang
 
@@ -268,7 +268,7 @@ def test_die_wasserkategorie_ist_dieselbe_bei_jedem_lauf(app_ctx):
     Frischwasser die richtige ist, wenn es mehrere sind, bleibt eine
     Sachfrage; dass es bei jedem Lauf dieselbe ist, gehoert hierher.
     """
-    from models import CostCategory, Meter, db
+    from nebenkostenfix.models import CostCategory, Meter, db
 
     haus = f.house(name='Gartenhaus')
     wng = f.apt(haus, 'G-EG', 50.0)

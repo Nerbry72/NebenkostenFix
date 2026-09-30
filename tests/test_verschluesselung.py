@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-import verschluesselung as v
-from verschluesselung import VerschluesselungsFehler
+from nebenkostenfix import verschluesselung as v
+from nebenkostenfix.verschluesselung import VerschluesselungsFehler
 
 PASS = 'korrekte pferdebatterie heftklammer'
 
@@ -105,7 +105,7 @@ def test_keine_verschluesselte_datei(tmp_path):
 def gestempelt(app_ctx):
     from flask_migrate import stamp
 
-    import backup
+    from nebenkostenfix import backup
     stamp(revision="head")
     ordner = backup.datenbankpfad(app_ctx.app).parent
     for rest in list(ordner.glob('sicherung*')) + \
@@ -120,7 +120,7 @@ def gestempelt(app_ctx):
 def test_verschluesselte_sicherung_rundlauf_ueber_die_api(gestempelt, auth_client):
     from sqlalchemy import text
 
-    from models import Property, db
+    from nebenkostenfix.models import Property, db
     db.session.add(Property(name='Vor der Sicherung'))
     db.session.commit()
     antwort = auth_client.post('/api/backup/erstellen', json={'passphrase': PASS})
@@ -173,7 +173,7 @@ def test_zu_kurze_passphrase_ueber_die_api(gestempelt, auth_client):
 
 
 def test_cli_verschluesselt_und_entschluesselt(gestempelt, tmp_path):
-    import backup
+    from nebenkostenfix import backup
     runner = gestempelt.app.test_cli_runner()
     erg = runner.invoke(args=['backup', 'create', '--ziel', str(tmp_path),
                               '--verschluesseln'], input=f'{PASS}\n{PASS}\n')
@@ -191,7 +191,7 @@ def test_cli_verschluesselt_und_entschluesselt(gestempelt, tmp_path):
 # --- Export -------------------------------------------------------------------
 
 def test_export_verschluesselt(app_ctx, auth_client, tmp_path):
-    from models import Property, db
+    from nebenkostenfix.models import Property, db
     db.session.add(Property(name='Exporthaus'))
     db.session.commit()
     antwort = auth_client.post('/api/export', json={'passphrase': PASS})
@@ -215,7 +215,7 @@ def test_export_ohne_passphrase_bleibt_json(app_ctx, auth_client):
 @pytest.mark.skipif(sys.platform == 'win32', reason='liest /proc und /sys, nur Linux')
 def test_festplatte_linux_erkennung(tmp_path):
     """dm-crypt meldet sich mit CRYPT- in der uuid des dm-Geraets."""
-    import festplatte
+    from nebenkostenfix import festplatte
     sysb = tmp_path / 'sys'
     (sysb / 'dm-0' / 'dm').mkdir(parents=True)
     (sysb / 'dm-0' / 'dm' / 'uuid').write_text('CRYPT-LUKS2-abc')
@@ -236,7 +236,7 @@ def test_festplatte_linux_erkennung(tmp_path):
 
 
 def test_festplatte_liefert_immer_ein_ergebnis(tmp_path):
-    import festplatte
+    from nebenkostenfix import festplatte
     ergebnis = festplatte.pruefen(str(tmp_path))
     assert ergebnis['status'] in ('ja', 'nein', 'unbekannt')
     assert 'BitLocker' in ergebnis['hinweis']

@@ -46,7 +46,7 @@ from decimal import Decimal
 
 import pytest
 
-from billing_engine import BillingEngine
+from nebenkostenfix.billing_engine import BillingEngine
 
 from tests.billing_factories import (
     YEAR_END,

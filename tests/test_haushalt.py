@@ -23,6 +23,7 @@ Diese Datei prueft von unten nach oben:
 from __future__ import annotations
 
 import ast
+from tests.importwaechter import importierte_module
 import doctest
 import pathlib
 from dataclasses import replace
@@ -31,9 +32,9 @@ from decimal import Decimal
 
 import pytest
 
-import haushalt
-from abrechnungsdaten import lade_vorgang
-from haushalt import (
+from nebenkostenfix import haushalt
+from nebenkostenfix.abrechnungsdaten import lade_vorgang
+from nebenkostenfix.haushalt import (
     MINDESTENS,
     VORGABE,
     HaushaltsFehler,
@@ -44,8 +45,8 @@ from haushalt import (
     personentage,
     pruefe,
 )
-from rechenkern import Kategorie, Mieter, Rechnung, Vorgang, Wohnung, Zaehler, rechne
-from rechenkern import Stand as Zaehlerstand
+from nebenkostenfix.rechenkern import Kategorie, Mieter, Rechnung, Vorgang, Wohnung, Zaehler, rechne
+from nebenkostenfix.rechenkern import Stand as Zaehlerstand
 from tests import billing_factories as f
 
 WURZEL = pathlib.Path(__file__).resolve().parent.parent
@@ -83,17 +84,8 @@ def test_modul_haengt_nur_an_der_standardbibliothek_und_zeitraum():
     ``zeitraum`` darf herein: es traegt die halboffene Tageskonvention aus
     R-NUM-03 und haengt selbst an nichts als ``datetime``.
     """
-    baum = ast.parse((WURZEL / 'haushalt.py').read_text(encoding='utf-8'))
-    importiert = {
-        (knoten.module or '').split('.')[0]
-        for knoten in ast.walk(baum)
-        if isinstance(knoten, ast.ImportFrom)
-    } | {
-        alias.name.split('.')[0]
-        for knoten in ast.walk(baum)
-        if isinstance(knoten, ast.Import)
-        for alias in knoten.names
-    }
+    baum = ast.parse((WURZEL / 'nebenkostenfix' / 'haushalt.py').read_text(encoding='utf-8'))
+    importiert = importierte_module(baum)
     assert importiert <= {'__future__', 'datetime', 'typing', 'zeitraum'}, (
         f'haushalt.py zieht fremde Module herein: {sorted(importiert)}'
     )

@@ -28,7 +28,7 @@ from pathlib import Path
 
 import pytest
 
-import fehler
+from nebenkostenfix import fehler
 
 
 @pytest.fixture
@@ -414,7 +414,7 @@ SCHLUSSZEILEN = 5
 SCHREIBER = '''
 import logging, os, sys, time
 sys.path.insert(0, {wurzel!r})
-from fehler import Mehrprozessrotierend
+from nebenkostenfix.fehler import Mehrprozessrotierend
 ziel, marke, anzahl, pause, marke_datei = sys.argv[1:6]
 anzahl, pause = int(anzahl), float(pause)
 h = Mehrprozessrotierend(ziel, maxBytes=2000, backupCount=3, encoding='utf-8')

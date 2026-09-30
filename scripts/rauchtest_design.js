@@ -114,7 +114,7 @@ for (const ton of ['--success-bg', '--danger-bg', '--warning-bg']) {
 // Wächter ruft openAddMeterModal mit dem echten Katalog auf und zählt die
 // Optionen: 18 Stück (NK-117: Nr. 3 zweimal), jede Bezeichnung genau einmal.
 function katalog_aus_quelle() {
-    const betrkvQuelle = fs.readFileSync(path.join(__dirname, '..', 'betrkv.py'), 'utf8');
+    const betrkvQuelle = fs.readFileSync(path.join(__dirname, '..', 'nebenkostenfix', 'betrkv.py'), 'utf8');
     const zeilen = [];
     const muster = /\{'nr': (\d+), 'name': '([^']+)', 'verteilung': '(\w+)', 'zaehler': (True|False)\}/g;
     let treffer;

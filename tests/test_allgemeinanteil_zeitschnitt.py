@@ -25,7 +25,7 @@ keine Datenbank.
 from datetime import date
 from decimal import Decimal
 
-from rechenkern import (
+from nebenkostenfix.rechenkern import (
     Mieter,
     Stand,
     Vorgang,

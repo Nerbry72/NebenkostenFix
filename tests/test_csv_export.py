@@ -17,7 +17,7 @@ ZEITRAUM = {'start_date': '2025-01-01', 'end_date': '2025-12-31'}
 
 
 def _welt():
-    from models import db
+    from nebenkostenfix.models import db
 
     grundsteuer = category('Grundsteuer')
     prop = house('Musterhaus Lindenstraße')
@@ -33,7 +33,7 @@ def _welt():
 
 
 def _festsetzen(auth_client, mieter_id):
-    from models import TenantBillingReport
+    from nebenkostenfix.models import TenantBillingReport
 
     antwort = auth_client.post('/api/billing/finalize', json={
         'tenant_id': mieter_id, **ZEITRAUM})
@@ -78,7 +78,7 @@ def test_csv_traegt_die_positionen_der_festgesetzten_abrechnung(app_ctx, auth_cl
 def test_csv_liest_den_schnappschuss_nicht_die_heutigen_daten(app_ctx, auth_client):
     """R-DOC-02: aendert sich die Rechnung nach der Festsetzung, bleibt die
     CSV bei den Zahlen, die der Mieter bekommen hat."""
-    from models import db
+    from nebenkostenfix.models import db
 
     mieter, rechnung = _welt()
     report = _festsetzen(auth_client, mieter.id)
@@ -94,7 +94,7 @@ def test_csv_liest_den_schnappschuss_nicht_die_heutigen_daten(app_ctx, auth_clie
 def test_formel_im_anbieternamen_wird_entschaerft():
     """CSV-Injektion: ein Text, der mit = beginnt, waere in Excel eine
     Formel. Betraege bleiben Zahlen, auch negative."""
-    from csv_export import positionen_csv
+    from nebenkostenfix.csv_export import positionen_csv
 
     text = positionen_csv({
         'line_items': [{

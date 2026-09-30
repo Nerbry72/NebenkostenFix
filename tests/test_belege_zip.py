@@ -35,7 +35,7 @@ def _welt(app_ctx, monkeypatch, nas):
     Rechnung, das Ergebnis trägt die Verweise. Der NAS-Sandbox-Ordner
     nimmt zwei echte Dateien auf; die dritte Rechnung bleibt ohne Beleg.
     Liefert den Mieter."""
-    from models import InvoiceDocument, db
+    from nebenkostenfix.models import InvoiceDocument, db
 
     monkeypatch.setenv('NAS_MOUNT_PATH', str(nas))
     kategorie = category('Wasserversorgung')
@@ -79,7 +79,7 @@ def _welt(app_ctx, monkeypatch, nas):
 
 
 def _finalisiere(auth_client, mieter_id):
-    from models import TenantBillingReport
+    from nebenkostenfix.models import TenantBillingReport
 
     antwort = auth_client.post('/api/billing/finalize', json={
         'tenant_id': mieter_id, **ZEITRAUM})
@@ -144,7 +144,7 @@ def test_die_verweise_kommen_aus_dem_ergebnis(auth_client, app_ctx,
     über die Rechnung aus dem Ergebnis geholt -- selbst wenn heute eine
     zweite Rechnung aus dem Zeiträumen liegen würde, die nicht in der
     Abrechnung steht."""
-    from models import CostInvoice, db
+    from nebenkostenfix.models import CostInvoice, db
 
     nas = tmp_path / 'nas'
     nas.mkdir()
@@ -158,7 +158,7 @@ def test_die_verweise_kommen_aus_dem_ergebnis(auth_client, app_ctx,
     prop = kategorie.invoices[0].property
     datei_neu = nas / 'spaeter-kommend.pdf'
     datei_neu.write_bytes(b'%PDF-1.4 spaeter')
-    from models import InvoiceDocument
+    from nebenkostenfix.models import InvoiceDocument
     dokument = InvoiceDocument(
         property_id=prop.id, filename='spaeter-kommend.pdf',
         document_path=str(datei_neu), upload_date=date(2025, 12, 31),
@@ -180,8 +180,8 @@ def test_ohne_irgendwelche_belege_wird_abgesagt(auth_client, app_ctx):
     """Ein Ergebnis ohne Rechnungsverweise -- hier: ein handgesetzter
     Schnappschuss, dessen Zeile keine Rechnung nennt -- liefert keine
     Belege: die Route sagt ab, statt ein leeres Paket zu geben."""
-    from models import BillingReportVersion, TenantBillingReport, db
-    from frist import frist_ende
+    from nebenkostenfix.models import BillingReportVersion, TenantBillingReport, db
+    from nebenkostenfix.frist import frist_ende
 
     prop = house()
     wohnung = apt(prop, 'EG links', 50.0)

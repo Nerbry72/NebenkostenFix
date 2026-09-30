@@ -23,7 +23,7 @@ Jede Zahl ist von Hand nachgerechnet und steht im Test.
 from datetime import date
 from decimal import Decimal
 
-from rechenkern import (
+from nebenkostenfix.rechenkern import (
     Kategorie,
     Mieter,
     Rechnung,
@@ -136,8 +136,8 @@ from billing_factories import apt, house, meter, tenant  # noqa: E402
 
 def test_die_kopplung_nimmt_nur_zaehler_des_objekts(app_ctx):
     """Zwei Objekte, zwei Frischwasserkategorien: jede haelt sich an ihre."""
-    from models import CostCategory, db
-    from abrechnungsdaten import _wasser_kategorie_id
+    from nebenkostenfix.models import CostCategory, db
+    from nebenkostenfix.abrechnungsdaten import _wasser_kategorie_id
 
     ost = house(name='Osthaus')
     west = house(name='Westhaus')
@@ -155,15 +155,15 @@ def test_die_kopplung_nimmt_nur_zaehler_des_objekts(app_ctx):
     # Am Westhaus haengt kein Frischwasserzaehler: keine Kopplung.
     assert _wasser_kategorie_id(west.id) is None
 
-    from abrechnungsdaten import lade_vorgang
+    from nebenkostenfix.abrechnungsdaten import lade_vorgang
     vorgang = lade_vorgang(mieter.id, JAHR_BEGINN, JAHR_ENDE)
     assert vorgang.wasser_kategorie_id == wasser_ost.id
 
 
 def test_warmwasser_ist_kein_frischwasser(app_ctx):
     """Der Warmwasserzaehler misst § 8, nicht den Abwasserfuss."""
-    from models import CostCategory, db
-    from abrechnungsdaten import _wasser_kategorie_id
+    from nebenkostenfix.models import CostCategory, db
+    from nebenkostenfix.abrechnungsdaten import _wasser_kategorie_id
 
     haus = house(name='Kopplungshaus')
     warm = CostCategory(name='Warmwasser Ost', allocation_method='units',
@@ -185,8 +185,8 @@ def test_warmwasser_ist_kein_frischwasser(app_ctx):
 
 def test_schmutz_und_niederschlag_sind_kein_frischwasser(app_ctx):
     """Schmutzwasser und Niederschlagswasser sind Abwasserposten, keine Messung."""
-    from models import CostCategory, db
-    from abrechnungsdaten import _wasser_kategorie_id
+    from nebenkostenfix.models import CostCategory, db
+    from nebenkostenfix.abrechnungsdaten import _wasser_kategorie_id
 
     haus = house(name='Rinnenhaus')
     schmutz = CostCategory(name='Schmutzwasser Nord', allocation_method='units',

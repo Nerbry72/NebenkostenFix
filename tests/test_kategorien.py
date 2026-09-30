@@ -14,7 +14,7 @@ import sqlite3
 
 import pytest
 
-from kategorien import (
+from nebenkostenfix.kategorien import (
     KategorieFehler,
     dubletten_finden,
     fastdubletten_finden,
@@ -268,8 +268,8 @@ def cli(tmp_path):
     """Eine kleine App mit dem alten Schema und registriertem kategorien-CLI."""
     from flask import Flask
 
-    from kategorien import init_kategorien
-    from models import db as modelldb
+    from nebenkostenfix.kategorien import init_kategorien
+    from nebenkostenfix.models import db as modelldb
 
     datei = tmp_path / 'alt.db'
     verbindung = sqlite3.connect(datei)

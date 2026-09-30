@@ -20,5 +20,5 @@ sys.stdout.write(json.dumps({
     'debug_regeln': sorted(r.rule for r in regeln if r.rule.startswith('/api/debug/')),
     'hat_reset_db': any(r.endpoint == 'reset_db' for r in regeln),
     'anzahl_regeln': len(regeln),
-    'modul_geladen': 'debug_routen' in sys.modules,
+    'modul_geladen': 'nebenkostenfix.debug_routen' in sys.modules,
 }))

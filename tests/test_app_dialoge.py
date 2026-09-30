@@ -52,7 +52,7 @@ def test_hinweis_bleibt_beim_tippen_deutsch():
 
 
 def test_anmeldeseiten_laden_formularhinweise(anon_client):
-    import auth
+    from nebenkostenfix import auth
     # Anmeldung, Einrichtung und Passwort der Hülle bauen auf _seitenkopf auf.
     for seite in (auth.LOGIN_PAGE, auth.ERSTEINRICHTUNG_PAGE,
                   anon_client.get('/einrichtung').get_data(as_text=True)):

@@ -12,7 +12,7 @@ sie legt eine neue Version an, die auf die ersetzte verweist.
 import re
 from datetime import date
 
-from abrechnung_version import SOFTWARE_VERSION, REGEL_VERSION
+from nebenkostenfix.abrechnung_version import SOFTWARE_VERSION, REGEL_VERSION
 from billing_factories import (
     apt,
     category,
@@ -38,7 +38,7 @@ def _welt(app_ctx):
     Zähler, dessen letzte Lesung); nach den Routen wird immer frisch
     nachgeladen, nichts bleibt über einen Request hinaus.
     """
-    from models import db
+    from nebenkostenfix.models import db
 
     kategorie = category('Wasserversorgung')
     prop = house()
@@ -62,7 +62,7 @@ def _welt(app_ctx):
 
 def _finalisiere(auth_client, mieter_id, **zusatz):
     """Finalisiert einmal und liefert den Bericht."""
-    from models import TenantBillingReport
+    from nebenkostenfix.models import TenantBillingReport
 
     antwort = auth_client.post('/api/billing/finalize', json={
         'tenant_id': mieter_id, **ZEITRAUM, **zusatz})
@@ -72,7 +72,7 @@ def _finalisiere(auth_client, mieter_id, **zusatz):
 
 def _bericht(bericht_id):
     """Lädt den Bericht frisch (nach Requests ist die Sitzung leer)."""
-    from models import db, TenantBillingReport
+    from nebenkostenfix.models import db, TenantBillingReport
 
     return db.session.get(TenantBillingReport, bericht_id)
 
@@ -122,8 +122,8 @@ def test_geaenderter_zaehlerstand_laesst_die_abrechnung_unberuehrt(
         auth_client, app_ctx):
     """Der Regeltest von R-DOC-02: Nach Änderung eines Zählerstands liefert
     die finalisierte Abrechnung unverändert dasselbe Ergebnis."""
-    from models import db, MeterReading
-    from billing_engine import BillingEngine
+    from nebenkostenfix.models import db, MeterReading
+    from nebenkostenfix.billing_engine import BillingEngine
 
     mieter_id, _, lese_id = _welt(app_ctx)
     report = _finalisiere(auth_client, mieter_id)
@@ -153,8 +153,8 @@ def test_die_korrektur_legt_eine_neue_version_mit_verweis_an(
         auth_client, app_ctx):
     """Die Korrektur ändert die ersetzte Version nicht; sie legt Version 2
     an, die auf die ersetzte verweist, und setzt die PDFs neu auf."""
-    from models import db, MeterReading
-    from billing_engine import BillingEngine
+    from nebenkostenfix.models import db, MeterReading
+    from nebenkostenfix.billing_engine import BillingEngine
 
     mieter_id, _, lese_id = _welt(app_ctx)
     report = _finalisiere(auth_client, mieter_id)
@@ -203,7 +203,7 @@ def test_die_korrektur_legt_eine_neue_version_mit_verweis_an(
 def test_die_korrektur_ohne_aenderung_wird_abgelehnt(auth_client, app_ctx):
     """Ohne geänderte Daten wäre eine neue Version nur eine Kopie -- die
     Route lehnt ab, und es bleibt bei der einen Version."""
-    from models import db
+    from nebenkostenfix.models import db
 
     mieter_id, _, _ = _welt(app_ctx)
     report = _finalisiere(auth_client, mieter_id)
@@ -237,8 +237,8 @@ def test_altbestand_ohne_version_wird_weiter_live_gerechnet(auth_client, app_ctx
     erkennbar daran, dass keine Version mitkommt. Über die JSON-Grenze geht
     Geld als Zahl (NK-036), im Schnappschuss steht es als Zeichenkette
     (R-NUM-01): der Altbestand zeigt den Unterschied."""
-    from models import TenantBillingReport, db
-    from frist import frist_ende
+    from nebenkostenfix.models import TenantBillingReport, db
+    from nebenkostenfix.frist import frist_ende
 
     mieter_id, _, _ = _welt(app_ctx)
     report = TenantBillingReport(

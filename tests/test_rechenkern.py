@@ -17,8 +17,8 @@ from decimal import Decimal
 
 import pytest
 
-from abrechnungsart import ARTEN
-from rechenkern import (
+from nebenkostenfix.abrechnungsart import ARTEN
+from nebenkostenfix.rechenkern import (
     BillingDataError,
     Beleg,
     Kategorie,
@@ -128,16 +128,12 @@ def test_kern_importiert_kein_orm():
     nichts als der Standardbibliothek.
     """
     import ast
-    import rechenkern
+    from nebenkostenfix import rechenkern
+    from tests.importwaechter import importierte_module
 
     baum = ast.parse(open(rechenkern.__file__, encoding='utf-8').read())
 
-    importiert = set()
-    for knoten in ast.walk(baum):
-        if isinstance(knoten, ast.Import):
-            importiert.update(a.name.split('.')[0] for a in knoten.names)
-        elif isinstance(knoten, ast.ImportFrom) and knoten.module:
-            importiert.add(knoten.module.split('.')[0])
+    importiert = importierte_module(baum)
 
     assert importiert <= {
         '__future__', 'os', 'dataclasses', 'datetime', 'decimal', 'typing',

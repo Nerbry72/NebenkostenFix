@@ -45,8 +45,8 @@ import urllib.request
 from http.cookiejar import CookieJar
 from pathlib import Path
 
-import marke
-import windows_ordner
+from nebenkostenfix import marke
+from nebenkostenfix import windows_ordner
 
 protokoll = logging.getLogger(__name__)
 
@@ -251,7 +251,7 @@ class Bruecke:
     def paket_waehlen(self):
         import webview
 
-        import umzug
+        from nebenkostenfix import umzug
         auswahl = self._fenster.create_file_dialog(
             webview.OPEN_DIALOG,
             file_types=('NebenkostenFix Paket (*.nkfix;*.nkbak;*.tar.gz)', 'Alle Dateien (*.*)'))
@@ -262,7 +262,7 @@ class Bruecke:
     def paket_speichern_unter(self, dateiname: str):
         import webview
 
-        import umzug
+        from nebenkostenfix import umzug
         ziel = self._fenster.create_file_dialog(
             webview.SAVE_DIALOG, save_filename=Path(dateiname).name)
         if not ziel:
@@ -326,7 +326,7 @@ def umzug_probe(datenordner: Path, paket: Path, bericht_datei: str | None = None
     """Übernimmt ein Paket (etwa unter Linux gebaut) in der gebauten App."""
     datenordner.mkdir(parents=True, exist_ok=True)
     app_modul = anwendung_laden(datenordner)
-    import umzug
+    from nebenkostenfix import umzug
     try:
         bericht = umzug.uebernehmen(app_modul.app, paket)
         ergebnis = umzug.bestandsbericht(app_modul.app)

@@ -26,10 +26,10 @@ from decimal import Decimal
 import pytest
 import reportlab.rl_config
 
-import marke
-from abrechnung_version import SOFTWARE_VERSION, REGEL_VERSION
+from nebenkostenfix import marke
+from nebenkostenfix.abrechnung_version import SOFTWARE_VERSION, REGEL_VERSION
 from reportlab.lib.pagesizes import A4
-from pdf_generator import PDFGenerator
+from nebenkostenfix.pdf_generator import PDFGenerator
 
 FARM = 'Haus am Anger'
 
@@ -129,7 +129,7 @@ def _viele_zeilen() -> list[dict]:
 
 def _fuss(sftware: str, regelstand: str) -> str:
     """Die Fußzeile so, wie sie geklebt im PDF-Text steht."""
-    import pdf_generator as generator
+    from nebenkostenfix import pdf_generator as generator
 
     try:
         stand = generator.datetime.strptime(

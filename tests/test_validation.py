@@ -15,7 +15,7 @@ from decimal import Decimal
 
 import pytest
 
-from validation import (
+from nebenkostenfix.validation import (
     Eingabe,
     EingabeFehler,
     FELDNAMEN,
@@ -43,7 +43,7 @@ def _fehler(aufruf):
 @pytest.fixture
 def wohnung(app_ctx):
     """Eine Immobilie mit einer Wohnung, fuer die Routen, die beides brauchen."""
-    from models import Apartment, Property, db
+    from nebenkostenfix.models import Apartment, Property, db
     haus = Property(name='Haus Müllerstraße 3')
     db.session.add(haus)
     db.session.flush()
@@ -492,7 +492,7 @@ def test_zaehlerstand_mit_text_als_wert(auth_client):
 
 
 def _zaehler_anlegen(auth_client, haus):
-    from models import CostCategory
+    from nebenkostenfix.models import CostCategory
     kategorie = CostCategory.query.filter_by(name='Strom').first() or \
         CostCategory.query.first()
     antwort = auth_client.post('/api/meters', json={
@@ -532,7 +532,7 @@ def test_zaehlerstand_mit_zwischenablesung(auth_client, wohnung):
         '/api/readings',
         data={'meter_id': str(zaehler), 'reading_date': '2025-07-01',
               'value': '505'})
-    from models import MeterReading
+    from nebenkostenfix.models import MeterReading
     arten = {r.reading_date.isoformat(): r.ablesungsart
              for r in MeterReading.query.order_by(MeterReading.reading_date)}
     assert arten == {'2025-06-30': 'zwischenablesung',
@@ -548,7 +548,7 @@ def test_ablesungsart_wird_berichtigt(auth_client, wohnung):
         '/api/readings',
         data={'meter_id': str(zaehler), 'reading_date': '2025-06-30',
               'value': '500'})
-    from models import MeterReading
+    from nebenkostenfix.models import MeterReading
     stand = MeterReading.query.order_by(MeterReading.id).first()
     assert stand.ablesungsart == 'ablesung'
     antwort = auth_client.put(
@@ -580,7 +580,7 @@ def test_rechnung_ohne_betrag(auth_client):
 def test_rechnung_mit_deutschem_betrag(auth_client, wohnung):
     """1234,50 ist eine gueltige Eingabe und muss ankommen."""
     haus, _ = wohnung
-    from models import CostCategory
+    from nebenkostenfix.models import CostCategory
     kategorie = CostCategory.query.filter_by(name='Grundsteuer').first()
     antwort = auth_client.post('/api/invoices', data={
         'category_id': str(kategorie.id),
@@ -590,7 +590,7 @@ def test_rechnung_mit_deutschem_betrag(auth_client, wohnung):
         'end_date': '2025-12-31',
     })
     assert antwort.status_code == 201, antwort.get_data(as_text=True)
-    from models import CostInvoice
+    from nebenkostenfix.models import CostInvoice
     assert CostInvoice.query.get(_json(antwort)['id']).amount == 1234.50
 
 
@@ -646,7 +646,7 @@ def test_mieteraenderung_schluckt_ein_kaputtes_datum_nicht_mehr(auth_client, woh
     hatte einen unveraenderten Stand.
     """
     from datetime import date
-    from models import Tenant
+    from nebenkostenfix.models import Tenant
     _, wng = wohnung
     angelegt = auth_client.post('/api/tenants', json={
         'name': 'Müller', 'apartment_id': wng.id, 'move_in_date': '2025-01-01'})
@@ -660,7 +660,7 @@ def test_mieteraenderung_schluckt_ein_kaputtes_datum_nicht_mehr(auth_client, woh
 
 def test_mieteraenderung_raeumt_das_auszugsdatum_aus(auth_client, wohnung):
     """Leer heisst weiterhin: Feld leeren. Das darf die Pruefung nicht kippen."""
-    from models import Tenant
+    from nebenkostenfix.models import Tenant
     _, wng = wohnung
     angelegt = auth_client.post('/api/tenants', json={
         'name': 'Müller', 'apartment_id': wng.id,
@@ -800,7 +800,7 @@ def test_keine_englische_pflichtfeldmeldung_mehr():
 
 
 def test_kostenprofile_nimmt_die_fuenf_arten():
-    from abrechnungsart import ARTEN
+    from nebenkostenfix.abrechnungsart import ARTEN
     roh = {str(nummer): art for nummer, art in enumerate(ARTEN, start=1)}
     assert kostenprofile(roh) == dict(enumerate(ARTEN, start=1))
 
@@ -838,7 +838,7 @@ def _kostenart(name='Wasser'):
     ``cost_categories.name`` ist seit NK-095 UNIQUE -- eine zweite 'Wasser'
     anzulegen waere ein IntegrityError, kein Testfall.
     """
-    from models import CostCategory, db
+    from nebenkostenfix.models import CostCategory, db
     vorhanden = CostCategory.query.filter_by(name=name).first()
     if vorhanden:
         return vorhanden
@@ -853,7 +853,7 @@ def _kostenart(name='Wasser'):
 def test_profilroute_lehnt_erfundene_art_mit_400_ab(auth_client, wohnung):
     """Vorher: der Wert ging ungeprueft in die Datenbank, und der Rechenkern
     liess die Kostenart spaeter lautlos aus dem Blatt fallen (F-25)."""
-    from models import TenantCostProfile
+    from nebenkostenfix.models import TenantCostProfile
     _, wng = wohnung
     kat = _kostenart()
     angelegt = auth_client.post('/api/tenants', json={
@@ -871,7 +871,7 @@ def test_profilroute_lehnt_erfundene_art_mit_400_ab(auth_client, wohnung):
 
 def test_profilroute_laesst_die_alten_profile_stehen(auth_client, wohnung):
     """Eine abgelehnte Anfrage darf nichts loeschen."""
-    from models import TenantCostProfile
+    from nebenkostenfix.models import TenantCostProfile
     _, wng = wohnung
     kat = _kostenart()
     angelegt = auth_client.post('/api/tenants', json={
@@ -892,7 +892,7 @@ def test_profilroute_laesst_die_alten_profile_stehen(auth_client, wohnung):
 def test_profilroute_speichert_normiert(auth_client, wohnung):
     """Was in der Datenbank landet, ist immer die normierte Form -- nur
     deshalb darf die Bedingung im Schema hart sein."""
-    from models import TenantCostProfile
+    from nebenkostenfix.models import TenantCostProfile
     _, wng = wohnung
     kat = _kostenart()
     angelegt = auth_client.post('/api/tenants', json={

@@ -247,45 +247,45 @@ import re
 import io
 from decimal import Decimal
 from pathlib import Path
-import zeit
+from nebenkostenfix import zeit
 from flask import Flask, jsonify, make_response, request, send_file
 import click
 import json
 import tempfile
-import uploads
-import verschluesselung
+from nebenkostenfix import uploads
+from nebenkostenfix import verschluesselung
 from flask.json.provider import DefaultJSONProvider
 from dotenv import load_dotenv
-from geld import NULL, runde
-import betrkv
-import mieter_daten
-import beispielimmobilie
-import zeitleiste
-from zeitraum import ein_jahr_nach, grenze, letzter_tag
-from frist import frist_status, einwendungsfrist, zustellwarnung
-from heizung import (
+from nebenkostenfix.geld import NULL, runde
+from nebenkostenfix import betrkv
+from nebenkostenfix import mieter_daten
+from nebenkostenfix import beispielimmobilie
+from nebenkostenfix import zeitleiste
+from nebenkostenfix.zeitraum import ein_jahr_nach, grenze, letzter_tag
+from nebenkostenfix.frist import frist_status, einwendungsfrist, zustellwarnung
+from nebenkostenfix.heizung import (
     ABLESUNG, ABLESUNGSARTEN, HEIZUNG, VERBUNDEN, WARMWASSER,
     WW_ZAEHLER, KOSTENARTEN as HEIZKOSTENARTEN,
     HeizungsFehler, pruefe_anteil, pruefe_kostenart, pruefe_versorgungsart,
     pruefe_warmwasserweg,
 )
-from models import db, User, Property, Apartment, Tenant, Haushaltsgroesse, CostCategory, CostInvoice, Meter, MeterReading, TenantCostProfile, InvoiceDocument, Provider, TenantBillingReport, BillingReportCategory, BillingReportVersion, AnschreibenVorlage, Vermieterdaten, Heizungsanlage
-from girocode_generator import iban_pruefen, iban_saeubern
-from abrechnung_version import schnappschuss, json_sicher, SOFTWARE_VERSION, REGEL_VERSION
-from anschreiben import VORGABE, PLATZHALTER, text_fuer
-from ablage import Ablage
-from auth import init_auth
-from backup import init_backup
-from umzug import init_umzug
-from tabellenimport import init_tabellenimport
-from hilfe import init_hilfe
-from jahresabrechnung import init_jahresabrechnung
-from kategorien import init_kategorien
+from nebenkostenfix.models import db, User, Property, Apartment, Tenant, Haushaltsgroesse, CostCategory, CostInvoice, Meter, MeterReading, TenantCostProfile, InvoiceDocument, Provider, TenantBillingReport, BillingReportCategory, BillingReportVersion, AnschreibenVorlage, Vermieterdaten, Heizungsanlage
+from nebenkostenfix.girocode_generator import iban_pruefen, iban_saeubern
+from nebenkostenfix.abrechnung_version import schnappschuss, json_sicher, SOFTWARE_VERSION, REGEL_VERSION
+from nebenkostenfix.anschreiben import VORGABE, PLATZHALTER, text_fuer
+from nebenkostenfix.ablage import Ablage
+from nebenkostenfix.auth import init_auth
+from nebenkostenfix.backup import init_backup
+from nebenkostenfix.umzug import init_umzug
+from nebenkostenfix.tabellenimport import init_tabellenimport
+from nebenkostenfix.hilfe import init_hilfe
+from nebenkostenfix.jahresabrechnung import init_jahresabrechnung
+from nebenkostenfix.kategorien import init_kategorien
 from flask_migrate import Migrate
 from contextlib import contextmanager
-from validation import Eingabe, EingabeFehler, init_validation, kostenprofile
-from nutzung import VORGABE as NUTZUNG_VORGABE
-from fehler import init_fehlerbehandlung, protokoll
+from nebenkostenfix.validation import Eingabe, EingabeFehler, init_validation, kostenprofile
+from nebenkostenfix.nutzung import VORGABE as NUTZUNG_VORGABE
+from nebenkostenfix.fehler import init_fehlerbehandlung, protokoll
 from datetime import datetime, timedelta, date
 
 # Load environment variables from .env file
@@ -341,14 +341,14 @@ app.json = GeldJSON(app)
 # Datenordner und Datenbank (NK-132, D-90): ein Ordner DATA_DIR fuer
 # Datenbank, Belege, Sicherungen und Schluessel. Ohne DATABASE_URL liegt die
 # SQLite-Datei darin; die .env ist dafuer nicht mehr noetig.
-import datenordner
-import vermieter_logo
-import aktualisierung
-import einstellungen
-import haftung
-import marke
+from nebenkostenfix import datenordner
+from nebenkostenfix import vermieter_logo
+from nebenkostenfix import aktualisierung
+from nebenkostenfix import einstellungen
+from nebenkostenfix import haftung
+from nebenkostenfix import marke
 import platform
-from aktualisierung import AktualisierungsFehler
+from nebenkostenfix.aktualisierung import AktualisierungsFehler
 if not (os.environ.get('DATABASE_URL') or '').strip() or \
         (os.environ.get('DATA_DIR') or '').strip():
     datenordner.anlegen()
@@ -593,7 +593,7 @@ def vor_der_wanderung_sichern(stand):
     Sicherung, startet die Anwendung nicht -- lieber kein Start als eine
     umgebaute Datenbank ohne Rueckweg.
     """
-    import backup
+    from nebenkostenfix import backup
 
     try:
         datei = backup.datenbankpfad(app)
@@ -630,7 +630,7 @@ def _startsperre():
     """
     # NK-151 (F-81): plattformneutral -- fcntl unter Linux, msvcrt unter
     # Windows. Bis hierher brach unter Windows schon der Import ab.
-    from dateisperre import dateisperre
+    from nebenkostenfix.dateisperre import dateisperre
 
     pfad = os.path.join(os.path.dirname(_datenbankdatei()) or '.', '.migration.lock')
     with dateisperre(pfad):
@@ -649,7 +649,7 @@ def belege_migrieren():
     """Altbestand auf neutrale Dateinamen (NK-131). Scheitert die Wanderung,
     startet die Anwendung trotzdem: die Datenbank zeigt dann weiter auf die
     alten, vollstaendigen Dateien (siehe ablage_migration)."""
-    import ablage_migration
+    from nebenkostenfix import ablage_migration
 
     if not os.path.isdir(nas_handler.nas_mount_path):
         return None
@@ -720,7 +720,7 @@ def belege_umstellen_befehl(pruefen):
     Läuft beim Start ohnehin; der Befehl ist für die Probe gegen eine Kopie
     des Bestands (Tor 0.8-S) und nennt nur Zahlen.
     """
-    import ablage_migration
+    from nebenkostenfix import ablage_migration
 
     bericht = ablage_migration.migrieren(db.session, nas_handler.nas_mount_path,
                                          pruefen=pruefen)
@@ -769,7 +769,7 @@ def health_check():
 # faehrt die Anwendung ohne die Route weiter; im Entwicklungsstapel liegt das
 # Arbeitsverzeichnis als Volume im Container, dort ist sie da.
 try:
-    import debug_routen
+    from nebenkostenfix import debug_routen
 except ImportError:
     # Kein ``pass``: dass die Entwicklerroute fehlt, ist der Normalfall im
     # Auslieferungsbuild und kein Fehler -- aber wer im Entwicklungsstapel
@@ -1640,7 +1640,7 @@ def datei_antwort(gespeichert, anzeigename=None):
 def belege_exportieren():
     """Alle Belege (oder die einer Immobilie) als ZIP mit sprechenden Namen
     (NK-131, D-87). Die Ablage selbst kennt nur neutrale Namen."""
-    import belege_export
+    from nebenkostenfix import belege_export
 
     property_id = request.args.get('property_id', type=int)
     if property_id is not None:
@@ -2097,7 +2097,7 @@ def billing_suggestions():
             
     return jsonify(suggestions), 200
 
-from billing_engine import BillingEngine, BillingDataError
+from nebenkostenfix.billing_engine import BillingEngine, BillingDataError
 
 
 def _abrechnungsauftrag(eingabe):
@@ -2306,7 +2306,7 @@ def generate_bill():
     
     return jsonify(bill_data), 200
 
-from pdf_generator import PDFGenerator
+from nebenkostenfix.pdf_generator import PDFGenerator
 import zipfile
 from io import BytesIO
 
@@ -2590,7 +2590,7 @@ def aktualisierung_installieren():
     if not app.config.get('DESKTOP'):
         return jsonify({'error': 'Installieren geht nur in der Windows-App. Im '
                                  'Docker-Betrieb aktualisieren Sie das Abbild.'}), 400
-    import backup
+    from nebenkostenfix import backup
 
     try:
         datei = aktualisierung.installer_laden(SOFTWARE_VERSION)
@@ -2887,7 +2887,7 @@ def _bericht_ergebnis(report):
     if version is not None:
         return version.ergebnis, version
 
-    from billing_engine import BillingEngine
+    from nebenkostenfix.billing_engine import BillingEngine
     engine = BillingEngine(
         tenant_id=report.tenant_id,
         start_date=report.start_date,
@@ -3104,7 +3104,7 @@ def get_billing_report_csv(id):
     """Die Positionen der Abrechnung als CSV fuer die Tabellenkalkulation
     (NK-145). Gelesen wird das gespeicherte Ergebnis -- dieselben Zahlen wie
     auf dem Blatt des Mieters, nicht eine neue Rechnung."""
-    from csv_export import dateiname, positionen_csv
+    from nebenkostenfix.csv_export import dateiname, positionen_csv
 
     report = TenantBillingReport.query.get_or_404(id)
     try:
@@ -3132,7 +3132,7 @@ def korrigiere_billing_report(id):
     report = TenantBillingReport.query.get_or_404(id)
 
     category_ids = [c.category_id for c in report.categories] or None
-    from billing_engine import BillingEngine
+    from nebenkostenfix.billing_engine import BillingEngine
     engine = BillingEngine(
         tenant_id=report.tenant_id,
         start_date=report.start_date,
@@ -3227,14 +3227,14 @@ def get_interpolation_audit():
     start_date = eingabe.datum('start_date', pflicht=True)
     end_date = eingabe.datum('end_date', pflicht=True)
 
-    from billing_engine import BillingEngine
+    from nebenkostenfix.billing_engine import BillingEngine
     result = BillingEngine.get_meter_consumption_detailed(meter_id, start_date, end_date)
     return jsonify(result)
 
 @app.route('/api/payments', methods=['GET'])
 def get_payments():
     # Import here to avoid circular imports if any, or just use the model
-    from models import Payment, Tenant
+    from nebenkostenfix.models import Payment, Tenant
     payments = (db.session.query(Payment, Tenant)
                 .join(Tenant, Payment.tenant_id == Tenant.id)
                 .filter(Tenant.gesperrt_bis.is_(None)).all())
@@ -3256,7 +3256,7 @@ def get_payments():
 
 @app.route('/api/payments', methods=['POST'])
 def add_payment():
-    from models import Payment
+    from nebenkostenfix.models import Payment
     from datetime import date
     import calendar
     
@@ -3319,7 +3319,7 @@ def add_payment():
 
 @app.route('/api/payments/<int:id>', methods=['DELETE'])
 def delete_payment(id):
-    from models import Payment
+    from nebenkostenfix.models import Payment
     payment = Payment.query.get_or_404(id)
     db.session.delete(payment)
     db.session.commit()
@@ -3328,7 +3328,7 @@ def delete_payment(id):
 
 @app.route('/api/payments/bulk', methods=['DELETE'])
 def bulk_delete_payments():
-    from models import Payment
+    from nebenkostenfix.models import Payment
     eingabe = Eingabe.aus_request()
     ids = eingabe.ganzzahlliste('ids', pflicht=True)
     Payment.query.filter(Payment.id.in_(ids)).delete(synchronize_session=False)
@@ -3367,9 +3367,9 @@ def _map_to_bucket(cat_name):
 
 @app.route('/api/analytics/building/<int:property_id>', methods=['GET'])
 def analytics_building(property_id):
-    from models import CostInvoice, Payment, CostCategory, Meter, Tenant, Apartment, db
+    from nebenkostenfix.models import CostInvoice, Payment, CostCategory, Meter, Tenant, Apartment, db
     import datetime
-    from billing_engine import BillingEngine
+    from nebenkostenfix.billing_engine import BillingEngine
     
     def _zufluss_datum(inv):
         """Tag, an dem die Rechnung im Cashflow zählt (NK-120).
@@ -3431,7 +3431,7 @@ def analytics_building(property_id):
     general_power_prev = 0
     power_period = ''
     
-    from models import MeterReading
+    from nebenkostenfix.models import MeterReading
     
     general_power_is_interpolated = False
     
@@ -3764,7 +3764,7 @@ def analytics_building(property_id):
 
 @app.route('/api/analytics/apartment/<int:apartment_id>', methods=['GET'])
 def analytics_apartment(apartment_id):
-    from models import Meter, TenantBillingReport, db
+    from nebenkostenfix.models import Meter, TenantBillingReport, db
     
     sub_meters = Meter.query.filter_by(apartment_id=apartment_id, is_main_meter=False).all()
     years = set(str(r.reading_date.year) for m in sub_meters for r in m.readings)
@@ -3789,7 +3789,7 @@ def analytics_apartment(apartment_id):
                     'value': round(diff, 2),
                     'unit': _get_unit(cat_name)
                 })
-    from models import Tenant
+    from nebenkostenfix.models import Tenant
     tenants = Tenant.query.filter_by(apartment_id=apartment_id).all()
     tenant_ids = [t.id for t in tenants]
     
@@ -3797,7 +3797,7 @@ def analytics_apartment(apartment_id):
     
     cost_distribution = {'Energie': 0, 'Wasser & Abwasser': 0, 'Betriebskosten': 0}
     if latest_report:
-        from billing_engine import BillingEngine
+        from nebenkostenfix.billing_engine import BillingEngine
         engine = BillingEngine(latest_report.tenant_id, latest_report.start_date, latest_report.end_date)
         try:
             bill_data = engine.calculate_bill()
@@ -3817,7 +3817,7 @@ def analytics_apartment(apartment_id):
 @app.route('/api/analytics/data-quality/<int:property_id>', methods=['GET'])
 def analytics_data_quality(property_id):
     """Data quality dashboard: meter freshness + missing sub-meter warnings."""
-    from models import Meter, MeterReading, Tenant, TenantCostProfile, CostCategory, Apartment
+    from nebenkostenfix.models import Meter, MeterReading, Tenant, TenantCostProfile, CostCategory, Apartment
     from datetime import date as date_type
 
     today = date_type.today()

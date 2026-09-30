@@ -85,7 +85,7 @@ def upgrade():
     # Der Import steht hier und nicht oben: eine Wanderung laeuft auch aus
     # scripts/ heraus, und ein Importfehler auf Modulebene machte dort das
     # ganze Verzeichnis unbrauchbar (Vorbild: 9c1f4a2b7d33).
-    from nutzung import GUELTIG, VORGABE
+    from nebenkostenfix.nutzung import GUELTIG, VORGABE
 
     verbindung = op.get_bind()
 

@@ -34,10 +34,10 @@ from datetime import date
 from decimal import Decimal
 from typing import Callable, Mapping, Optional, Tuple
 
-import heizung
+from nebenkostenfix import heizung
 import pytest
 
-from rechenkern import (
+from nebenkostenfix.rechenkern import (
     Heizungsanlage,
     Kategorie,
     Mieter,

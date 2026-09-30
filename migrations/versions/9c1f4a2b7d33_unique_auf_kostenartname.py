@@ -42,7 +42,7 @@ def upgrade():
     # Der Import steht hier und nicht oben: eine Wanderung laeuft auch aus
     # scripts/ und aus dem Notfallweg heraus, und ein Importfehler auf
     # Modulebene wuerde dort das ganze Verzeichnis unbrauchbar machen.
-    from kategorien import dubletten_finden, meldung_zu_dubletten
+    from nebenkostenfix.kategorien import dubletten_finden, meldung_zu_dubletten
 
     verbindung = op.get_bind()
     dubletten = dubletten_finden(verbindung)

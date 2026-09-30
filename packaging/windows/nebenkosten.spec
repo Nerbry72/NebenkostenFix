@@ -5,16 +5,24 @@
 # onedir (schneller Start, keine Entpackerei bei jedem Start), windowed (kein
 # Konsolenfenster, D-84). Positivliste statt "alles": nur Code, migrations/,
 # static/ und die Daten der Bibliotheken -- keine Tests, keine Doku, keine
-# Planungsdateien, kein debug_routen.py (NK-040, NK-133).
+# Planungsdateien, kein nebenkostenfix/debug_routen.py (NK-040, NK-133).
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 WURZEL = Path(SPECPATH).resolve().parents[1]
 
-# Die eigenen Module: jede *.py der Wurzel ausser Entwicklungswerkzeugen.
-AUSGESCHLOSSEN = {'debug_routen.py'}
-module = sorted(p.stem for p in WURZEL.glob('*.py') if p.name not in AUSGESCHLOSSEN)
+# Die eigenen Module: app.py und desktop.py in der Wurzel, dazu jedes Modul
+# im Paket nebenkostenfix/ ausser Entwicklungswerkzeugen. Die Liste folgt dem
+# Ordner: ein hier fehlendes Modul fehlt der EXE, ohne dass die Analyse es
+# meldet (D-110).
+PAKET = WURZEL / 'nebenkostenfix'
+AUSGESCHLOSSEN = {'nebenkostenfix.debug_routen'}
+paketmodule = {
+    '.'.join(('nebenkostenfix', *p.relative_to(PAKET).with_suffix('').parts)).removesuffix('.__init__')
+    for p in PAKET.rglob('*.py')
+}
+module = sorted(p.stem for p in WURZEL.glob('*.py')) + sorted(paketmodule - AUSGESCHLOSSEN)
 
 daten = [
     (str(WURZEL / 'static'), 'static'),
@@ -36,7 +44,7 @@ for datei in (WURZEL / 'migrations').rglob('*.py'):
         elif isinstance(knoten, ast.ImportFrom) and knoten.module and not knoten.level:
             wanderungsimporte.add(knoten.module)
 
-versteckt = module + ['handlers', 'handlers.nas_handler', 'waitress', 'logging.config']
+versteckt = module + ['waitress', 'logging.config']
 versteckt += sorted(wanderungsimporte)
 versteckt += collect_submodules('webview')
 versteckt += collect_submodules('sqlalchemy.dialects.sqlite')
@@ -48,7 +56,7 @@ a = Analysis(
     pathex=[str(WURZEL)],
     datas=daten,
     hiddenimports=versteckt,
-    excludes=['debug_routen', 'pytest', 'tkinter', 'gunicorn'],
+    excludes=['nebenkostenfix.debug_routen', 'pytest', 'tkinter', 'gunicorn'],
     noarchive=False,
 )
 pyz = PYZ(a.pure)

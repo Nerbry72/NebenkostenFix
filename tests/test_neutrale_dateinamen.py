@@ -10,8 +10,8 @@ from pathlib import Path
 import pytest
 from werkzeug.datastructures import FileStorage
 
-import ablage_migration
-from handlers.nas_handler import NASHandler
+from nebenkostenfix import ablage_migration
+from nebenkostenfix.handlers.nas_handler import NASHandler
 
 PDF = b'%PDF-1.4\n%Probe\n%%EOF\n'
 JPG = b'\xff\xd8\xff\xe0\x00\x10JFIF\x00' + b'\x01' * 40
@@ -61,7 +61,7 @@ def _alt_anlegen(wurzel: Path, relativ: str, inhalt: bytes) -> str:
 def altbestand(app_ctx, monkeypatch, tmp_path):
     """Ein Bestand im Baum vor NK-131, mit geteiltem und fehlendem Pfad."""
     from billing_factories import apt, category, house, meter, tenant
-    from models import (CostInvoice, InvoiceDocument, MeterReading,
+    from nebenkostenfix.models import (CostInvoice, InvoiceDocument, MeterReading,
                         TenantBillingReport, db)
 
     wurzel = tmp_path / 'belege'
@@ -103,14 +103,14 @@ def altbestand(app_ctx, monkeypatch, tmp_path):
 
 
 def _alle_pfade():
-    from models import db
+    from nebenkostenfix.models import db
     return {pfad for modell, spalte in ablage_migration._spalten()
             for (pfad,) in db.session.query(getattr(modell, spalte))
             if pfad}
 
 
 def test_wanderung_bringt_jeden_beleg_bytegleich_auf_neutrale_namen(altbestand):
-    from models import db
+    from nebenkostenfix.models import db
     vorher = {}
     for pfad in _alle_pfade():
         voll = Path(pfad) if os.path.isabs(pfad) else altbestand / pfad
@@ -132,13 +132,13 @@ def test_wanderung_bringt_jeden_beleg_bytegleich_auf_neutrale_namen(altbestand):
 
 
 def test_geteilter_pfad_bleibt_geteilt(altbestand):
-    from models import CostInvoice, InvoiceDocument, db
+    from nebenkostenfix.models import CostInvoice, InvoiceDocument, db
     ablage_migration.migrieren(db.session, altbestand)
     assert CostInvoice.query.one().document_path == InvoiceDocument.query.one().document_path
 
 
 def test_zweiter_lauf_tut_nichts(altbestand):
-    from models import db
+    from nebenkostenfix.models import db
     ablage_migration.migrieren(db.session, altbestand)
     stand = _alle_pfade()
     bericht = ablage_migration.migrieren(db.session, altbestand)
@@ -147,7 +147,7 @@ def test_zweiter_lauf_tut_nichts(altbestand):
 
 
 def test_probelauf_aendert_nichts(altbestand):
-    from models import db
+    from nebenkostenfix.models import db
     vorher = _alle_pfade()
     dateien = sorted(p for p in altbestand.rglob('*') if p.is_file())
     bericht = ablage_migration.migrieren(db.session, altbestand, pruefen=True)
@@ -159,7 +159,7 @@ def test_probelauf_aendert_nichts(altbestand):
 def test_abbruch_vor_dem_festschreiben_verliert_nichts(altbestand, monkeypatch):
     """Faellt der Lauf beim Festschreiben, zeigt die Datenbank weiter auf
     vollstaendige alte Dateien."""
-    from models import db
+    from nebenkostenfix.models import db
     vorher = _alle_pfade()
 
     def kaputt():
@@ -181,7 +181,7 @@ def test_abbruch_vor_dem_festschreiben_verliert_nichts(altbestand, monkeypatch):
 
 
 def test_die_anwendung_liefert_nach_der_wanderung_aus(altbestand, auth_client):
-    from models import Tenant, db
+    from nebenkostenfix.models import Tenant, db
     ablage_migration.migrieren(db.session, altbestand)
     mieter = Tenant.query.one()
     antwort = auth_client.get(f'/api/dateien/mietvertrag/{mieter.id}')
@@ -192,7 +192,7 @@ def test_die_anwendung_liefert_nach_der_wanderung_aus(altbestand, auth_client):
 # --- Sprechender Export --------------------------------------------------------
 
 def test_belege_exportieren_mit_sprechenden_namen(altbestand, auth_client):
-    from models import db
+    from nebenkostenfix.models import db
     ablage_migration.migrieren(db.session, altbestand)
     antwort = auth_client.get('/api/belege/export')
     assert antwort.status_code == 200
@@ -210,14 +210,14 @@ def test_belege_exportieren_mit_sprechenden_namen(altbestand, auth_client):
 
 
 def test_belege_export_je_immobilie_und_unbekannt(altbestand, auth_client):
-    from models import Property
+    from nebenkostenfix.models import Property
     haus = Property.query.one()
     assert auth_client.get(f'/api/belege/export?property_id={haus.id}').status_code == 200
     assert auth_client.get('/api/belege/export?property_id=999').status_code == 404
 
 
 def test_namen_im_export_sind_entschaerft():
-    import belege_export
+    from nebenkostenfix import belege_export
     name = belege_export._name('../../etc/passwd')
     assert '/' not in name and not name.startswith('.')
     assert '/' not in belege_export._name('a/b\\c:d')
@@ -246,7 +246,7 @@ def test_absoluter_pfad_der_alten_instanz_wird_gefunden(app_ctx, monkeypatch, tm
     """NK-147: die alte Instanz speicherte manche Pfade absolut unter ihrem
     Einhaengepunkt. Nach dem Umzug liegt der Baum unter der neuen Wurzel."""
     from billing_factories import house
-    from models import InvoiceDocument, db
+    from nebenkostenfix.models import InvoiceDocument, db
 
     wurzel = tmp_path / 'belege'
     _alt_anlegen(wurzel, 'Haus/Allgemein/Dokumente/Strom.pdf', PDF + b'strom')

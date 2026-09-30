@@ -10,8 +10,8 @@ import time
 
 import pytest
 
-import anmeldeschutz
-from models import User, db
+from nebenkostenfix import anmeldeschutz
+from nebenkostenfix.models import User, db
 
 KONTO = 'haertung'
 PASSWORT = 'haertung-passwort-1'
@@ -202,7 +202,7 @@ def test_hsts_nur_hinter_https(auth_client, monkeypatch):
 
 
 def test_csp_erlaubt_keine_fremde_quelle():
-    import auth
+    from nebenkostenfix import auth
     for teil in auth.CSP.split(';'):
         assert 'http' not in teil and '*' not in teil, teil
 
@@ -210,7 +210,7 @@ def test_csp_erlaubt_keine_fremde_quelle():
 # --- Leerlauf und Abmeldung (F-57) -------------------------------------------
 
 def test_abmeldung_nach_leerlauf(auth_client, monkeypatch):
-    import auth
+    from nebenkostenfix import auth
     assert auth_client.get('/api/properties').status_code == 200
     jetzt = time.time()
     monkeypatch.setattr(auth.time, 'time', lambda: jetzt + 61 * 60)
@@ -218,7 +218,7 @@ def test_abmeldung_nach_leerlauf(auth_client, monkeypatch):
 
 
 def test_aktivitaet_haelt_die_sitzung(auth_client, monkeypatch):
-    import auth
+    from nebenkostenfix import auth
     jetzt = time.time()
     for minute in (30, 60, 90, 120):
         monkeypatch.setattr(auth.time, 'time', lambda m=minute: jetzt + m * 60)
@@ -226,7 +226,7 @@ def test_aktivitaet_haelt_die_sitzung(auth_client, monkeypatch):
 
 
 def test_leerlauf_einstellbar(auth_client, monkeypatch):
-    import auth
+    from nebenkostenfix import auth
     monkeypatch.setenv('SITZUNG_LEERLAUF_MIN', '5')
     auth_client.get('/api/properties')
     jetzt = time.time()
@@ -239,7 +239,7 @@ def test_leerlauf_einstellbar(auth_client, monkeypatch):
 def test_start_ohne_https_warnt(monkeypatch, caplog):
     from flask import Flask
 
-    import auth
+    from nebenkostenfix import auth
     monkeypatch.delenv('BEHIND_HTTPS', raising=False)
     probe = Flask('probe')
     with caplog.at_level('WARNING'):
@@ -250,7 +250,7 @@ def test_start_ohne_https_warnt(monkeypatch, caplog):
 def test_start_mit_https_warnt_nicht(monkeypatch, caplog):
     from flask import Flask
 
-    import auth
+    from nebenkostenfix import auth
     monkeypatch.setenv('BEHIND_HTTPS', '1')
     probe = Flask('probe')
     with caplog.at_level('WARNING'):

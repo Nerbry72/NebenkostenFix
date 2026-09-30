@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from billing_engine import BillingDataError, BillingEngine
+from nebenkostenfix.billing_engine import BillingDataError, BillingEngine
 
 from tests.billing_factories import (
     YEAR_END,

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-import datenordner
+from nebenkostenfix import datenordner
 
 
 @pytest.fixture
@@ -73,7 +73,7 @@ def test_ohne_jeden_hinweis_bricht_ab(sauber):
 
 
 def test_die_ablage_folgt_dem_datenordner(sauber, tmp_path):
-    from ablage import Ablage
+    from nebenkostenfix.ablage import Ablage
     sauber.setenv('DATA_DIR', str(tmp_path))
     assert Ablage().wurzel == str(tmp_path / 'belege')
 

@@ -66,7 +66,7 @@ def _vorzustand():
     auch aus ``scripts/`` heraus, und ein Importfehler auf Modulebene machte
     dort das ganze Verzeichnis unbrauchbar (Vorbild: 9c1f4a2b7d33).
     """
-    from heizung import (
+    from nebenkostenfix.heizung import (
         ANTEIL_MAX, ANTEIL_MIN, ANTEIL_VORGABE, HEIZUNG, VERSORGT)
 
     return sa.Table(
@@ -97,7 +97,7 @@ def _vorzustand():
 
 
 def upgrade():
-    from heizung import VERBUNDEN, WW_KALTWASSER_GRAD, WW_WEGE
+    from nebenkostenfix.heizung import VERBUNDEN, WW_KALTWASSER_GRAD, WW_WEGE
 
     with op.batch_alter_table(
             'heizungsanlagen', schema=None,
@@ -169,7 +169,7 @@ def _nachzustand():
     fallen lassen, und die Datenbank stuende ohne den Rahmen des § 7 Abs. 1
     da -- an einer Stelle, an der niemand mehr nachsieht.
     """
-    from heizung import VERBUNDEN, WW_KALTWASSER_GRAD, WW_WEGE
+    from nebenkostenfix.heizung import VERBUNDEN, WW_KALTWASSER_GRAD, WW_WEGE
 
     tabelle = _vorzustand()
     for spalte in (

@@ -29,8 +29,8 @@ from decimal import Decimal
 
 import pytest
 
-from geld import summe
-from rechenkern import (
+from nebenkostenfix.geld import summe
+from nebenkostenfix.rechenkern import (
     Kategorie,
     Mieter,
     Rechnung,

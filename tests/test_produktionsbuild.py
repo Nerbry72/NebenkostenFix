@@ -115,9 +115,9 @@ def test_app_py_meldet_selbst_keine_debugadresse_an():
 
 def test_genau_eine_datei_traegt_die_reset_adresse():
     traeger = _traeger_von_debugrouten()
-    assert set(traeger) == {WURZEL / 'debug_routen.py'}, {
+    assert set(traeger) == {WURZEL / 'nebenkostenfix' / 'debug_routen.py'}, {
         str(p): sorted(v) for p, v in traeger.items()}
-    assert traeger[WURZEL / 'debug_routen.py'] == {'/api/debug/reset_db'}
+    assert traeger[WURZEL / 'nebenkostenfix' / 'debug_routen.py'] == {'/api/debug/reset_db'}
 
 
 # --------------------------------------------------------------------------
@@ -147,7 +147,7 @@ def test_jede_datei_mit_debugadresse_steht_in_dockerignore():
 
 def test_debug_routen_steht_namentlich_drin():
     """Doppelt zum Test darueber, aber namentlich lesbar im Bericht."""
-    assert 'debug_routen.py' in _dockerignore_zeilen()
+    assert 'nebenkostenfix/debug_routen.py' in _dockerignore_zeilen()
 
 
 def test_der_dockerfile_kopiert_pauschal():
@@ -233,7 +233,7 @@ def test_das_notfallwerkzeug_bleibt_drin():
 
 def test_die_anwendung_verweist_wirklich_auf_das_notfallwerkzeug():
     """Ohne diesen Beleg waere der Test darueber eine blosse Behauptung."""
-    hinweise = (WURZEL / 'kategorien.py').read_text(encoding='utf-8')
+    hinweise = (WURZEL / 'nebenkostenfix' / 'kategorien.py').read_text(encoding='utf-8')
     assert 'scripts/kostenarten.py' in hinweise
 
 
@@ -249,16 +249,20 @@ def test_der_ordner_selbst_ist_nicht_pauschal_ausgeschlossen():
 
 # Was ein Anwendungsstart braucht. Bewusst eine Positivliste: ein pauschales
 # Verlinken der Wurzel wuerde .env und data/ mit in den Probebaum ziehen.
-VERZEICHNISSE = ('handlers', 'migrations', 'static')
+VERZEICHNISSE = ('migrations', 'static')
 
 
 def _baue_baum(ziel: Path, *, mit_debugmodul: bool) -> None:
     """Ein Arbeitsverzeichnis aus Symlinks -- die Datei fehlt wirklich."""
     ziel.mkdir(parents=True, exist_ok=True)
     for quelle in sorted(WURZEL.glob('*.py')):
-        if quelle.name == 'debug_routen.py' and not mit_debugmodul:
-            continue
         os.symlink(quelle, ziel / quelle.name)
+    (ziel / 'nebenkostenfix').mkdir()
+    for quelle in sorted((WURZEL / 'nebenkostenfix').iterdir()):
+        if quelle.name == '__pycache__' or (
+                quelle.name == 'debug_routen.py' and not mit_debugmodul):
+            continue
+        os.symlink(quelle, ziel / 'nebenkostenfix' / quelle.name)
     for name in VERZEICHNISSE:
         os.symlink(WURZEL / name, ziel / name)
     # Das Skript wird kopiert statt verlinkt: so ist sys.path[0] der Probebaum

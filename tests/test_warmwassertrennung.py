@@ -12,8 +12,8 @@ Faelle laufen ohne Datenbank, wie der ganze Kern seit NK-037.
 from datetime import date
 from decimal import Decimal
 
-import heizung
-from rechenkern import (
+from nebenkostenfix import heizung
+from nebenkostenfix.rechenkern import (
     Heizungsanlage,
     Kategorie,
     Mieter,

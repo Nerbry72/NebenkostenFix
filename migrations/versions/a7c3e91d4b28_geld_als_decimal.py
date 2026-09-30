@@ -53,7 +53,7 @@ def _auf_cent_ruecken(verbindung, tabelle, spalte):
     # Der Import steht hier und nicht oben: eine Wanderung laeuft auch aus
     # scripts/ heraus, und ein Importfehler auf Modulebene machte dort das
     # ganze Verzeichnis unbrauchbar (Vorbild: 9c1f4a2b7d33).
-    from geld import dec, runde
+    from nebenkostenfix.geld import dec, runde
 
     zeilen = verbindung.execute(
         sa.text(f'SELECT id, {spalte} FROM {tabelle} WHERE {spalte} IS NOT NULL')

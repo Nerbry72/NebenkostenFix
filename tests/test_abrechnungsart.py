@@ -16,14 +16,15 @@ lautlos aus dem Blatt fallen liess. Diese Datei prueft drei Dinge:
 from __future__ import annotations
 
 import ast
+from tests.importwaechter import importierte_module
 import doctest
 import pathlib
 import re
 
 import pytest
 
-import abrechnungsart
-from abrechnungsart import (
+from nebenkostenfix import abrechnungsart
+from nebenkostenfix.abrechnungsart import (
     ARTEN,
     ERSATZ,
     GUELTIG,
@@ -187,7 +188,7 @@ def test_rechenkern_behandelt_genau_die_fuenf_arten():
     Ort, sondern der zweite -- und genau daran ist F-25 entstanden.
     """
     im_kern = _billing_type_literale(
-        (WURZEL / 'rechenkern.py').read_text(encoding='utf-8')
+        (WURZEL / 'nebenkostenfix' / 'rechenkern.py').read_text(encoding='utf-8')
     )
     fehlt = GUELTIG - im_kern
     zuviel = im_kern - GUELTIG
@@ -203,17 +204,8 @@ def test_rechenkern_behandelt_genau_die_fuenf_arten():
 
 def test_modul_haengt_nur_an_der_standardbibliothek():
     """Der Rechenkern importiert dieses Modul -- und kein ORM (NK-037)."""
-    baum = ast.parse((WURZEL / 'abrechnungsart.py').read_text(encoding='utf-8'))
-    importiert = {
-        (knoten.module or '').split('.')[0]
-        for knoten in ast.walk(baum)
-        if isinstance(knoten, ast.ImportFrom)
-    } | {
-        alias.name.split('.')[0]
-        for knoten in ast.walk(baum)
-        if isinstance(knoten, ast.Import)
-        for alias in knoten.names
-    }
+    baum = ast.parse((WURZEL / 'nebenkostenfix' / 'abrechnungsart.py').read_text(encoding='utf-8'))
+    importiert = importierte_module(baum)
     assert importiert <= {'__future__'}, (
         f'abrechnungsart.py zieht fremde Module herein: {sorted(importiert)}'
     )

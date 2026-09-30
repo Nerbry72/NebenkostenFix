@@ -20,7 +20,7 @@ from decimal import Decimal
 import pytest
 import reportlab.rl_config
 
-from pdf_generator import PDFGenerator
+from nebenkostenfix.pdf_generator import PDFGenerator
 
 
 @pytest.fixture
@@ -270,7 +270,7 @@ def test_die_einfache_variante_fuehrt_keine_rechnungsbetraege(unkomprimiert):
 
 def test_rechnungsdatum_angabe_gibt_iso_oder_nichts():
     """Der Kern liefert die Rohangabe JSON-sicher (D-57)."""
-    from rechenkern import rechnungsdatum_angabe
+    from nebenkostenfix.rechenkern import rechnungsdatum_angabe
 
     assert rechnungsdatum_angabe(date(2024, 4, 15)) == '2024-04-15'
     assert rechnungsdatum_angabe(None) is None
@@ -283,7 +283,7 @@ from billing_factories import apt, house  # noqa: E402
 
 def test_die_route_nimmt_das_rechnungsdatum_an(auth_client, app_ctx):
     """Das Ausstellungsdatum wandert von der Eingabe bis zur Ausgabe."""
-    from models import CostCategory, CostInvoice
+    from nebenkostenfix.models import CostCategory, CostInvoice
 
     prop = house('Belegshaus')
     apt(prop, 'Beleg-EG', 50.0)
@@ -310,7 +310,7 @@ def test_die_route_nimmt_das_rechnungsdatum_an(auth_client, app_ctx):
 
 def test_die_route_vertraegt_ein_fehlendes_rechnungsdatum(auth_client, app_ctx):
     """Der Altbestand traegt kein Datum -- die Route verlangt es nicht."""
-    from models import CostCategory, CostInvoice
+    from nebenkostenfix.models import CostCategory, CostInvoice
 
     prop = house('Belegshaus Alt')
     apt(prop, 'Beleg-OG', 50.0)
@@ -331,7 +331,7 @@ def test_die_route_vertraegt_ein_fehlendes_rechnungsdatum(auth_client, app_ctx):
 
 def test_die_zeile_des_kerns_traegt_die_belegangaben():
     """Der Kern uebermittelt Nummer, Datum (ISO), Anbieter und Beleg je Zeile."""
-    from rechenkern import (
+    from nebenkostenfix.rechenkern import (
         Beleg, Kategorie, Mieter, Rechnung, Wohnung, Vorgang, rechne,
     )
 

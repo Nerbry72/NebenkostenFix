@@ -19,8 +19,8 @@ import pytest
 
 from sqlalchemy import text
 
-import backup
-from backup import datenbankpfad
+from nebenkostenfix import backup
+from nebenkostenfix.backup import datenbankpfad
 
 
 @pytest.fixture
@@ -59,7 +59,7 @@ def _beleg_schreiben(wurzel: Path, relativ: str, inhalt: bytes = b'%PDF-1.4\n%%E
 
 
 def _dokument(property_id: int, pfad: str, name: str):
-    from models import InvoiceDocument, db
+    from nebenkostenfix.models import InvoiceDocument, db
 
     dokument = InvoiceDocument(
         property_id=property_id,
@@ -75,7 +75,7 @@ def _dokument(property_id: int, pfad: str, name: str):
 def _dokumentpfade(app) -> list[str]:
     """Frische Verbindung in eigenem Kontext: die Fixture-Session zeigt nach
     dem Austausch der Datei noch den alten Stand (wie in test_backup.py)."""
-    from models import db
+    from nebenkostenfix.models import db
 
     with app.app_context():
         with db.engine.connect() as verbindung:
@@ -191,7 +191,7 @@ def instanz_mit_beleg(gestempelt, tmp_path, monkeypatch):
     belege = tmp_path / 'belege'
     belege.mkdir()
     monkeypatch.setenv('NAS_MOUNT_PATH', str(belege))
-    from models import Property, db
+    from nebenkostenfix.models import Property, db
 
     haus = Property(name='Haus Backupweg', is_standalone=False)
     db.session.add(haus)
@@ -211,7 +211,7 @@ def test_einspielen_stellt_archivstand_wieder_her(gestempelt, auth_client,
     # Der "Unfall": ein zweiter Beleg kommt dazu und bleibt erhalten -- im
     # Archiv ist er nicht.
     _beleg_schreiben(belege, 'Haus Backupweg/Strom 2025.pdf')
-    from models import Property, db
+    from nebenkostenfix.models import Property, db
     haus = Property.query.filter_by(name='Haus Backupweg').one()
     _dokument(haus.id, 'Haus Backupweg/Strom 2025.pdf', 'strom2025.pdf')
     assert _dokumentpfade(gestempelt.app) == [
@@ -265,7 +265,7 @@ def test_einspielen_von_muell_lehnt_ab_und_behaelt_stand(gestempelt, auth_client
         tar.add(fremd, arcname='fremd.txt')
     res = auth_client.post('/api/backup/einspielen', json={'archiv': str(muell)})
     assert res.status_code == 400
-    from models import db
+    from nebenkostenfix.models import db
     assert db.session.execute(
         text('SELECT COUNT(*) FROM properties')).scalar() == 0
 
@@ -340,7 +340,7 @@ def test_einspielen_laesst_keine_verbindung_offen(gestempelt, auth_client,
     gegen Ersetzen. SQLite loescht das WAL-Journal, sobald die letzte
     Verbindung schliesst -- liegt es nach dem Schliessen noch da, haelt
     jemand die Datei fest, und unter Windows scheitert das Einspielen."""
-    import backup
+    from nebenkostenfix import backup
     erstes = auth_client.post('/api/backup/erstellen', json={}).get_json()
     beobachtet = []
     original = backup._verbindungen_schliessen

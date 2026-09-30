@@ -34,7 +34,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey 
 from cryptography.hazmat.primitives.serialization import (  # noqa: E402
     Encoding, NoEncryption, PrivateFormat, PublicFormat, load_pem_private_key)
 
-import aktualisierung  # noqa: E402
+from nebenkostenfix import aktualisierung  # noqa: E402
 
 
 def oeffentlich_b64(privat: Ed25519PrivateKey) -> str:

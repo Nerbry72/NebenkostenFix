@@ -12,7 +12,7 @@ from decimal import Decimal
 
 import pytest
 
-import beispielimmobilie as demo
+from nebenkostenfix import beispielimmobilie as demo
 
 
 @pytest.fixture
@@ -28,7 +28,7 @@ def _stand(client, haus, jahr):
 
 
 def test_kostenarten_mit_vorjahr_und_luecken(auth_client, haus):
-    from models import CostCategory, CostInvoice, db
+    from nebenkostenfix.models import CostCategory, CostInvoice, db
     jahr = date.today().year - 1
     # Im Vorvorjahr gab es eine Hauswart-Rechnung, im Jahr nicht: fehlt.
     hauswart = CostCategory.query.filter_by(name='Hauswart').one()
@@ -55,7 +55,7 @@ def test_mieter_mit_zeitraum_und_vorhandener_abrechnung(auth_client, haus):
 
 
 def test_ablesungen_zum_stichtag_und_beim_wechsel(auth_client, haus):
-    from models import Apartment, CostCategory, Meter, MeterReading, Tenant, db
+    from nebenkostenfix.models import Apartment, CostCategory, Meter, MeterReading, Tenant, db
     jahr = date.today().year - 1
     ben = Tenant.query.filter_by(name='Ben Beispiel').one()
     ben.move_in_date = date(jahr, 3, 1)          # ein Wechsel im Jahr
