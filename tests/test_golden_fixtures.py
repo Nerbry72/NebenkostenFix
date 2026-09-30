@@ -292,28 +292,32 @@ GOLDEN_VORTEIL: tuple = (
 
     # 732,00, Nutzerwechsel in Wohnung 2 (Bert bis zum 30.06., Caesar ab
     # 01.07.): Anna 366 PT, Bert 181, Caesar 184; der 30.06. bleibt als
-    # Leer-Tag (Vorgabe 1) beim Vermieter. 1,00 EUR je PT.
+    # Leer-Tag (Vorgabe 1) beim Vermieter. 1,00 EUR je PT. Seit F-128 steht
+    # der Leer-Tag nur in den Abrechnungen, deren Zeitraum ihn enthaelt --
+    # Berts endet am 29.06.
     Golden(
         nr='GO-12', titel='Personen, Nutzerwechsel mit Leer-Tag',
         welt=lambda n: haus(n, (
             ANNA, mieter(2, 'Bert', 2, auszug=WECHSEL24),
             mieter(3, 'Caesar', 2, einzug=date(2024, 7, 1))),
             (umlage('732.00'),), profile={1: 'personen'}),
-        soll={'Anna': ('366.00', '1.00'), 'Bert': ('181.00', '1.00'),
+        soll={'Anna': ('366.00', '1.00'), 'Bert': ('181.00', '0.00'),
               'Caesar': ('184.00', '1.00')},
         bilanz='732.00'),
 
     # 600,00, Anna zieht zum 30.06. aus, Wohnung 2 bleibt leer. Das
     # Verhaeltnis traegt die Zeit: Nenner 732 = Anna 181 PT + Leerstand 551
     # PT (Wohnung 1 ab 30.06.: 185 Tage, Wohnung 2 ganzjaehrig 366). Anna
-    # 600 * 181/732 = 148,36, Vermieter 600 * 551/732 = 451,64.
+    # 600 * 181/732 = 148,36. Der Vermieter traegt in dieser Abrechnung nur
+    # den Leerstand bis 29.06. (F-128): Wohnung 2, 181 PT = 148,36. Die
+    # Bilanz ist der Teil der Rechnung im Zeitraum, 600 * 181/366 = 296,72.
     Golden(
         nr='GO-13', titel='Personen, Auszug mit Leerstand',
         welt=lambda n: haus(n, (mieter(1, 'Anna', 1, auszug=WECHSEL24),),
                             (umlage('600.00'),), profile={1: 'personen'},
                             ende=WECHSEL24),
-        soll={'Anna': ('148.36', '451.64')},
-        bilanz='600.00'),
+        soll={'Anna': ('148.36', '148.36')},
+        bilanz='296.72'),
 
     # --- Eigenverbrauch nach Zaehlerstand (§ 556a, NK-055) -------------------
 

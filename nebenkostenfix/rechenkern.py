@@ -1144,11 +1144,11 @@ def _allgemeinquoten(vorgang: Vorgang, haupt: Zaehler, unter, von: date, bis: da
     F-122: die Rechnung zerfaellt an jedem Einzug, Auszug und jeder Aenderung
     der Haushaltsgroesse in Abschnitte gleicher Belegung. In jedem Abschnitt
     wird der Allgemeinverbrauch gemessen und nach Personentagen geteilt; die
-    Quote ist der Anteil an der Summe. Der Mieter traegt nur aus seinem
-    Abrechnungsfenster ``[fenster_von, fenster_bis)``, der Vermieter aus der
-    ganzen Rechnung. Mal dem Allgemeinbetrag der ganzen Rechnung ergeben die
-    Anteile aller Mieter plus der Vermieteranteil die Rechnung -- auch wenn
-    der Verbrauch uebers Jahr ungleich liegt.
+    Quote ist der Anteil an der Summe. Mieter wie Vermieter tragen nur aus
+    dem Abrechnungsfenster ``[fenster_von, fenster_bis)`` (der Vermieter seit
+    F-128). Mal dem Allgemeinbetrag der ganzen Rechnung ergeben die Anteile
+    aller Mieter plus der Vermieteranteile aller Zeitraeume die Rechnung --
+    auch wenn der Verbrauch uebers Jahr ungleich liegt.
 
     D-73 je Abschnitt: misst ein Abschnitt negativen Allgemeinverbrauch, zaehlt
     er als null. Niemand bekommt eine Gutschrift, und die positiven Abschnitte
@@ -1181,7 +1181,7 @@ def _allgemeinquoten(vorgang: Vorgang, haupt: Zaehler, unter, von: date, bis: da
         summe += allgemein
         if fenster_von <= a and e <= fenster_bis:
             mieter += allgemein * dec(eigene) / dec(alle + leer)
-        vermieter += allgemein * dec(leer) / dec(alle + leer)
+            vermieter += allgemein * dec(leer) / dec(alle + leer)
     if summe <= 0:
         return None
     return mieter / summe, vermieter / summe
@@ -1296,11 +1296,13 @@ def _vermieterpersonenanteil(vorgang, kategorie_name, rechnung, bilanz,
     -- ausgewiesen statt zwischen den Zeilen zu verschwinden (R-NUM-05,
     Produktprinzip 3).
 
-    Gemessen wird ueber den vollen Rechnungszeitraum -- derselbe Nenner, an
-    dem auch die Personentage der Mieter haengen, denn beim Personenschluessel
-    steckt die Zeitanteiligkeit im Verhaeltnis und nicht im Betrag (R-NUM-04).
-    Damit gilt Zeile fuer Zeile: die Anteile aller Mieter plus der
-    Vermieteranteil ergeben den vollen Rechnungsbetrag.
+    Der Nenner ist der des vollen Rechnungszeitraums -- derselbe, an dem auch
+    die Personentage der Mieter haengen, denn beim Personenschluessel steckt
+    die Zeitanteiligkeit im Verhaeltnis und nicht im Betrag (R-NUM-04). Die
+    ``bilanz`` und ``vermieter_pt`` gelten dagegen nur fuer den Zeitraum der
+    Abrechnung (F-128): ueber alle Zeitraeume zusammen ergeben die Anteile
+    aller Mieter plus der Vermieteranteile den vollen Rechnungsbetrag, und
+    keiner zeigt Leerstand, der ausserhalb seines Zeitraums liegt.
 
     ``betrag`` ersetzt den Rechnungsbetrag, wenn nur ein Teil nach Personen
     geht -- im Zaehlerzweig die Kosten des Allgemeinverbrauchs (F-121).
@@ -1327,7 +1329,7 @@ def _vermieterpersonenanteil(vorgang, kategorie_name, rechnung, bilanz,
             # Haushaltseintrag: eine Person (Entscheidung zu NK-098).
             'personen': HAUSHALT_VORGABE,
             'vacant_days': b.unbelegt,
-            'period_days': tage(rechnung.beginn, rechnung.ende_grenze),
+            'period_days': b.belegt + b.unbelegt,
             'reason': b.grund,
             'reason_text': GRUND_TEXT[b.grund],
         }
@@ -1360,7 +1362,8 @@ def _vermieterpersonenanteil(vorgang, kategorie_name, rechnung, bilanz,
 
 
 def _belegte_verbrauchsmenge(vorgang: Vorgang, zaehler: Zaehler,
-                             rechnung: Rechnung, gemessen: bool = False) -> float:
+                             rechnung: Rechnung, gemessen: bool = False,
+                             fenster=None) -> float:
     """Wie viel der Menge eines Zaehlers auf Mietverhaeltnisse entfaellt.
 
     Fuer jede Wohnung zaehlt dasselbe, was auch ihre Zeile als
@@ -1374,19 +1377,22 @@ def _belegte_verbrauchsmenge(vorgang: Vorgang, zaehler: Zaehler,
     Zusammen mit dem Rest dieser Funktion haelt sie die Bilanz der Zeile:
     was die Mieter verbrauchsabhaengig zahlen und was beim Vermieter
     verbleibt, ergibt zusammen den Verbrauchsteil der Rechnung.
+
+    ``fenster`` (``(von, bis)``) zaehlt nur die Mietzeit darin (F-128).
     """
     von = rechnung.beginn
     bis = rechnung.ende_grenze
     laenge = tage(von, bis)
     if laenge <= 0:
         return 0.0
+    f_von, f_bis = fenster or (von, bis)
     volle_menge = verbrauch(zaehler, rechnung.beginn, rechnung.ende)
     menge = 0.0
     for m in vorgang.mieter_der_immobilie:
         if m.wohnung_id != zaehler.wohnung_id:
             continue
-        fenster_von = max(m.einzug, von)
-        fenster_bis = min(m.auszug, bis) if m.auszug else bis
+        fenster_von = max(m.einzug, von, f_von)
+        fenster_bis = min(m.auszug or bis, bis, f_bis)
         if tage(fenster_von, fenster_bis) <= 0:
             continue
         raende = [
@@ -1409,7 +1415,8 @@ def _vermieterverbrauchsanteil(vorgang: Vorgang, kategorie_name: str,
                                rechnung: Rechnung, verbrauchsteil,
                                summe_zaehler: float, zaehler: dict,
                                einheit: str, ids: set,
-                               gemessen: bool = False) -> Optional[dict]:
+                               gemessen: bool = False,
+                               fenster=None) -> Optional[dict]:
     """Was vom Verbrauchsteil einer Rechnung beim Vermieter bleibt.
 
     Eine leer stehende oder eigengenutzte Wohnung verbraucht dennoch Waerme
@@ -1420,11 +1427,16 @@ def _vermieterverbrauchsanteil(vorgang: Vorgang, kategorie_name: str,
     verbrauchsabhaengigen Anteile aller Mieter plus dieser Rest ergeben
     zusammen den Verbrauchsteil der Rechnung -- nichts wird doppelt
     verteilt, nichts verschwindet.
+
+    ``fenster`` (``(von, bis)``, der Teil der Rechnung im Zeitraum der
+    Abrechnung) misst nur den Rest darin (F-128): keine Abrechnung zeigt
+    Leerstand ausserhalb ihres Zeitraums, und ueber alle Zeitraeume ergibt
+    sich der Rest der ganzen Rechnung.
     """
     if verbrauchsteil is None or summe_zaehler <= 0:
         return None
-    bilanz = _leerstandsbilanz(
-        vorgang, rechnung.beginn, rechnung.ende_grenze, ids)
+    von, bis = fenster or (rechnung.beginn, rechnung.ende_grenze)
+    bilanz = _leerstandsbilanz(vorgang, von, bis, ids)
     einheiten = []
     mengen = {LEERSTAND: 0.0, EIGENNUTZUNG: 0.0}
     for b in bilanz:
@@ -1433,14 +1445,15 @@ def _vermieterverbrauchsanteil(vorgang: Vorgang, kategorie_name: str,
         z = zaehler.get(b.wohnung_id)
         if z is None:
             continue
-        rest = verbrauch(z, rechnung.beginn, rechnung.ende) - \
-            _belegte_verbrauchsmenge(vorgang, z, rechnung, gemessen)
+        menge = (verbrauch_in(z, von, bis)['consumption'] if fenster
+                 else verbrauch(z, rechnung.beginn, rechnung.ende))
+        rest = menge - _belegte_verbrauchsmenge(vorgang, z, rechnung, gemessen, fenster)
         if rest <= 0:
             continue
         einheiten.append({
             'apartment': b.name,
             'vacant_days': b.unbelegt,
-            'period_days': tage(rechnung.beginn, rechnung.ende_grenze),
+            'period_days': tage(von, bis),
             'consumption': round(rest, 1),
             'reason': b.grund,
             'reason_text': GRUND_TEXT[b.grund],
@@ -2514,12 +2527,13 @@ def rechne(vorgang: Vorgang) -> dict:
                     verbrauch(leer_zaehler, inv.beginn, inv.ende),
                     {inv.wohnung_id: leer_zaehler},
                     einheit_fuer(cat.name, cat.betrkv_nr), {inv.wohnung_id},
-                    gemessen=True)
+                    gemessen=True, fenster=(overlap_von, overlap_bis))
             else:
                 qm = next((w.qm for w in vorgang.wohnungen if w.id == inv.wohnung_id), None)
+                # F-128: nur der Leerstand im Zeitraum dieser Abrechnung.
                 anteil = qm and _vermieteranteil(
-                    vorgang, cat.name, inv, inv.betrag, qm,
-                    inv.beginn, inv.ende_grenze, nur={inv.wohnung_id})
+                    vorgang, cat.name, inv, prorated_invoice_amount, qm,
+                    overlap_von, overlap_bis, nur={inv.wohnung_id})
             if anteil:
                 vermieter_positionen.append(anteil)
             if vorgang.wohnung.id != inv.wohnung_id:
@@ -2617,9 +2631,14 @@ def rechne(vorgang: Vorgang) -> dict:
                     f"{euro_text(inv.betrag)} nach Personentagen "
                     f"{this_tenant_days} von {nenner} = "
                     f"{euro_text(tenant_cost)}")
-                if vermieter_pt > 0:
+                # F-128: ausgewiesen wird nur der Leerstand im Zeitraum dieser
+                # Abrechnung, wie beim qm-Schluessel -- der Nenner bleibt der
+                # der ganzen Rechnung, wie bei den Mietern.
+                zeitraum = _leerstandsbilanz(vorgang, overlap_von, overlap_bis)
+                zeitraum_pt = sum(b.unbelegt for b in zeitraum if b.traegt_der_vermieter)
+                if zeitraum_pt > 0:
                     anteil = _vermieterpersonenanteil(
-                        vorgang, cat.name, inv, bilanz, vermieter_pt, nenner)
+                        vorgang, cat.name, inv, zeitraum, zeitraum_pt, nenner)
                     if anteil:
                         vermieter_positionen.append(anteil)
 
@@ -2762,9 +2781,8 @@ def rechne(vorgang: Vorgang) -> dict:
                     # wie ein Einpersonenhaushalt (wie NK-098 beim
                     # Personenschluessel) -- sonst traegen die Mieter ihren
                     # Anteil am Allgemeinverbrauch still mit.
-                    vermieter_pt = sum(
-                        b.unbelegt for b in _leerstandsbilanz(vorgang, overlap_von, overlap_bis)
-                        if b.traegt_der_vermieter)
+                    zeitraum = _leerstandsbilanz(vorgang, overlap_von, overlap_bis)
+                    vermieter_pt = sum(b.unbelegt for b in zeitraum if b.traegt_der_vermieter)
                     total_person_days += vermieter_pt
 
                     # Der Allgemeinbetrag der ganzen Rechnung (D-73: nie negativ).
@@ -2794,17 +2812,14 @@ def rechne(vorgang: Vorgang) -> dict:
                     else:
                         tenant_allgemein_share_prorated = NULL
 
-                    # Ausgewiesen wird der Vermieteranteil ueber den vollen
-                    # Rechnungszeitraum, wie beim Personenschluessel: in jeder
-                    # Abrechnung des Hauses steht derselbe Betrag.
-                    voll_bilanz = _leerstandsbilanz(vorgang, inv.beginn, inv.ende_grenze)
-                    voll_pt = sum(b.unbelegt for b in voll_bilanz if b.traegt_der_vermieter)
-                    if voll_pt > 0:
-                        _, voll_mieter_pt, _ = _personentage_im_haus(
-                            vorgang, inv.beginn, inv.ende_grenze)
+                    # Ausgewiesen wird der Vermieteranteil im selben Fenster
+                    # wie die Mieterzeile (F-128): keine Abrechnung zeigt
+                    # Leerstand ausserhalb ihres Zeitraums.
+                    if vermieter_pt > 0:
                         anteil = _vermieterpersonenanteil(
-                            vorgang, f"{cat.name} (Allgemeinverbrauch)", inv, voll_bilanz,
-                            voll_pt, voll_mieter_pt + voll_pt, betrag=allgemein_voll,
+                            vorgang, f"{cat.name} (Allgemeinverbrauch)", inv, zeitraum,
+                            vermieter_pt, total_person_days,
+                            betrag=allgemein_voll if quoten else allgemein_cost,
                             quote=quoten[1] if quoten else None)
                         if anteil:
                             vermieter_positionen.append(anteil)
@@ -2821,7 +2836,7 @@ def rechne(vorgang: Vorgang) -> dict:
                             vorgang, f"{cat.name} (Verbrauch der Wohnung)", inv,
                             inv.betrag, rechnung_main_consumption,
                             {m.wohnung_id: m for m in all_sub_meters}, unit, None,
-                            gemessen=True)
+                            gemessen=True, fenster=(overlap_von, overlap_bis))
                         if anteil:
                             vermieter_positionen.append(anteil)
 

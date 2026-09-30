@@ -289,8 +289,8 @@ def _erhaltung(mieter: list) -> list:
                 'soll': soll, 'mieter': round(mieter_je[inv.id], 2),
                 'vermieter': round(vermieter_je[inv.id], 2), 'differenz': round(soll - ist, 2),
                 # Pruefbar nur, wenn alle Mieter beitragen und die Rechnung ganz
-                # im Zeitraum liegt: der Vermieteranteil gilt fuer die ganze
-                # Rechnung, das Soll hier nur fuer den Teil im Zeitraum.
+                # im Zeitraum liegt: seit F-128 gilt der Vermieteranteil dem
+                # Zeitraum, bei Heizung und CO2 aber noch der ganzen Rechnung.
                 'abrechnungen': len(rechnungen), 'vollstaendig': komplett and drin == tage})
     return befunde
 
