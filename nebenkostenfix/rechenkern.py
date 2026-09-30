@@ -1113,6 +1113,48 @@ def _personentage_im_haus(vorgang: Vorgang, von: date, bis: date):
     return eigene, alle, parteien
 
 
+def _allgemeinquoten(vorgang: Vorgang, haupt: Zaehler, unter, von: date, bis: date):
+    """``(Mieter, Vermieter)``: die Anteile am Allgemeinverbrauch in ``[von, bis)``.
+
+    F-122: der Zeitraum zerfaellt an jedem Einzug, Auszug und jeder Aenderung
+    der Haushaltsgroesse in Abschnitte gleicher Belegung. In jedem Abschnitt
+    wird der Allgemeinverbrauch gemessen und nach Personentagen geteilt; die
+    Quote ist der Anteil an der Summe. So gilt dieselbe Regel fuer jeden
+    Zeitraum, und die Anteile aller Mieter plus der Vermieteranteil ergeben
+    die Rechnung -- auch wenn der Verbrauch uebers Jahr ungleich liegt.
+
+    ``None``, wenn es nur einen Abschnitt gibt (dann ist die Quote das
+    Verhaeltnis der Personentage, wie seit NK-097) oder der Allgemeinverbrauch
+    nicht positiv ist (D-73 regelt den Fall).
+    """
+    grenzen = {von, bis}
+    for m in vorgang.mieter_der_immobilie:
+        grenzen |= {m.einzug, mietende(m.auszug, bis)}
+        grenzen |= {h.gueltig_ab for h in m.haushaltsgroessen}
+    grenzen = [g for g in sorted(grenzen) if von <= g <= bis]
+    if len(grenzen) <= 2:
+        return None
+
+    menge = mieter = vermieter = NULL
+    for a, e in zip(grenzen, grenzen[1:]):
+        eigene, alle, _ = _personentage_im_haus(vorgang, a, e)
+        leer = sum(b.unbelegt for b in _leerstandsbilanz(vorgang, a, e)
+                   if b.traegt_der_vermieter)
+        if alle + leer <= 0:
+            continue
+        allgemein = dec(verbrauch_in(haupt, a, e)['consumption']) - sum(
+            dec(verbrauch_in(z, a, e)['consumption']) for z in unter)
+        menge += allgemein
+        mieter += allgemein * dec(eigene) / dec(alle + leer)
+        vermieter += allgemein * dec(leer) / dec(alle + leer)
+    if menge <= 0:
+        return None
+    # ponytail: ein negativer Abschnitt in einem positiven Zeitraum kann die
+    # Quote ueber 1 schieben; geklemmt, bis ein echter Bestand das zeigt.
+    klemme = lambda q: min(Decimal(1), max(NULL, q))  # noqa: E731
+    return klemme(mieter / menge), klemme(vermieter / menge)
+
+
 def _leerstandsbilanz(vorgang: Vorgang, von: date, bis: date, nur=None) -> list:
     """Je aktiver Wohnung eine Bilanz belegter und unbelegter Tage (R-NUM-05).
 
@@ -1210,7 +1252,8 @@ def _vermieteranteil(vorgang, kategorie_name, rechnung, anteiliger_betrag,
 
 
 def _vermieterpersonenanteil(vorgang, kategorie_name, rechnung, bilanz,
-                             vermieter_pt, nenner, betrag=None) -> Optional[dict]:
+                             vermieter_pt, nenner, betrag=None,
+                             quote=None) -> Optional[dict]:
     """Was von einer Personen-Umlage beim Vermieter bleibt -- oder ``None``.
 
     Der Personennenner zaehlte nur Mietverhaeltnisse; eine Wohnung ohne
@@ -1229,12 +1272,16 @@ def _vermieterpersonenanteil(vorgang, kategorie_name, rechnung, bilanz,
 
     ``betrag`` ersetzt den Rechnungsbetrag, wenn nur ein Teil nach Personen
     geht -- im Zaehlerzweig die Kosten des Allgemeinverbrauchs (F-121).
+    ``quote`` ersetzt dort das Verhaeltnis der Personentage, wenn der
+    Verbrauch je Belegungsabschnitt gemessen wurde (F-122).
     """
     if vermieter_pt <= 0 or nenner <= 0:
         return None
 
     basis = rechnung.betrag if betrag is None else betrag
-    anteiliger_betrag = runde(dec(basis) * (dec(vermieter_pt) / dec(nenner)))
+    if quote is None:
+        quote = dec(vermieter_pt) / dec(nenner)
+    anteiliger_betrag = runde(dec(basis) * quote)
     leer_tage = sum(b.unbelegt for b in bilanz if b.grund == LEERSTAND)
     eigen_tage = sum(b.unbelegt for b in bilanz if b.grund == EIGENNUTZUNG)
     leer_betrag = runde(anteiliger_betrag * (dec(leer_tage) / dec(vermieter_pt)))
@@ -2375,6 +2422,9 @@ def rechne(vorgang: Vorgang) -> dict:
         preis_nt_eff = None
         this_tenant_days = 0
         total_person_days = 0
+        # F-122: steht hinter "Personentagen", wenn der Allgemeinanteil je
+        # Belegungsabschnitt gemessen wurde.
+        abschnitte_text = ''
 
         # Halboffen (R-NUM-03): der erste Tag zaehlt, der letzte nicht.
         # ``ende_grenze`` entscheidet dabei, ob das Ende ein Zeitraumende ist
@@ -2433,6 +2483,22 @@ def rechne(vorgang: Vorgang) -> dict:
                             f"{euro_text(inv.betrag)} Rechnungsbetrag × "
                             f"{zahl_text(round(tenant_consumption, 1))} / {zahl_text(round(gesamt, 1))} {unit} "
                             f"= {euro_text(runde(tenant_cost))}")
+
+            # F-123: was die Wohnung verbraucht, waehrend niemand dort wohnt,
+            # zahlt kein Mieter. Es bleibt beim Vermieter und steht dort --
+            # gemessen am Zaehler der Wohnung, ohne Zaehler nach Tagen.
+            if tenant_meter:
+                anteil = _vermieterverbrauchsanteil(
+                    vorgang, cat.name, inv, inv.betrag,
+                    verbrauch(tenant_meter, inv.beginn, inv.ende),
+                    {inv.wohnung_id: tenant_meter}, unit, {inv.wohnung_id},
+                    gemessen=True)
+            else:
+                anteil = _vermieteranteil(
+                    vorgang, cat.name, inv, inv.betrag, vorgang.wohnung.qm,
+                    inv.beginn, inv.ende_grenze, nur={inv.wohnung_id})
+            if anteil:
+                vermieter_positionen.append(anteil)
 
         elif billing_type == 'qm':
             # Erst hier abbrechen, nicht schon oben: eine Abrechnung ohne
@@ -2649,7 +2715,14 @@ def rechne(vorgang: Vorgang) -> dict:
                         if b.traegt_der_vermieter)
                     total_person_days += vermieter_pt
 
-                    if total_person_days > 0:
+                    # F-122: wechselt die Belegung im Fenster, wird je
+                    # Abschnitt gemessen -- sonst die Quote der Personentage.
+                    quoten = _allgemeinquoten(
+                        vorgang, main_meter, all_sub_meters, overlap_von, overlap_bis)
+                    if quoten:
+                        tenant_allgemein_share_prorated = allgemein_cost * quoten[0]
+                        abschnitte_text = ', gemessen je Belegungsabschnitt'
+                    elif total_person_days > 0:
                         tenant_allgemein_share_prorated = allgemein_cost * (dec(this_tenant_days) / dec(total_person_days))
                     else:
                         tenant_allgemein_share_prorated = NULL
@@ -2674,9 +2747,12 @@ def rechne(vorgang: Vorgang) -> dict:
                         else:
                             allgemein_voll = dec(max(0, haupt['consumption'] - sum(
                                 d['consumption'] for d in unter))) * cost_per_unit
+                        voll_quoten = _allgemeinquoten(
+                            vorgang, main_meter, all_sub_meters, inv.beginn, inv.ende_grenze)
                         anteil = _vermieterpersonenanteil(
                             vorgang, f"{cat.name} (Allgemeinverbrauch)", inv, voll_bilanz,
-                            voll_pt, voll_mieter_pt + voll_pt, betrag=allgemein_voll)
+                            voll_pt, voll_mieter_pt + voll_pt, betrag=allgemein_voll,
+                            quote=voll_quoten[1] if voll_quoten else None)
                         if anteil:
                             vermieter_positionen.append(anteil)
 
@@ -2707,10 +2783,10 @@ def rechne(vorgang: Vorgang) -> dict:
                             tenant_direct_cost = dec(tenant_consumption) * cost_per_unit
 
                         tenant_cost = tenant_direct_cost + tenant_allgemein_share_prorated
-                        description = f"Eigenverbrauch ({tenant_consumption:.1f} {unit}) + Anteil Allgemein (Haus gesamt: {allgemein_consumption:.1f} {unit}, Anteil: {this_tenant_days} von {total_person_days} Personentagen)"
+                        description = f"Eigenverbrauch ({tenant_consumption:.1f} {unit}) + Anteil Allgemein (Haus gesamt: {allgemein_consumption:.1f} {unit}, Anteil: {this_tenant_days} von {total_person_days} Personentagen{abschnitte_text})"
                     else:
                         tenant_cost = tenant_allgemein_share_prorated
-                        description = f"Anteil am Allgemeinverbrauch (Haus gesamt: {allgemein_consumption:.1f} {unit}, Anteil: {this_tenant_days} von {total_person_days} Personentagen)"
+                        description = f"Anteil am Allgemeinverbrauch (Haus gesamt: {allgemein_consumption:.1f} {unit}, Anteil: {this_tenant_days} von {total_person_days} Personentagen{abschnitte_text})"
                 else:
                     # Kein Hauptzaehler: der Preis je Einheit kommt aus der Summe der Unterzaehler
                     unter_rechnung_details = [verbrauch_detail(m, inv.beginn, inv.ende)
@@ -2777,7 +2853,7 @@ def rechne(vorgang: Vorgang) -> dict:
                         'description': f"Eigenverbrauch ({tenant_consumption:.1f} {unit})",
                         'cost': runde(tenant_direct_cost)
                     })
-                    sub_desc = f"Anteil Allgemein (Haus gesamt: {allgemein_consumption:.1f} {unit}, Anteil: {this_tenant_days} von {total_person_days} Personentagen)"
+                    sub_desc = f"Anteil Allgemein (Haus gesamt: {allgemein_consumption:.1f} {unit}, Anteil: {this_tenant_days} von {total_person_days} Personentagen{abschnitte_text})"
                     sub_items.append({
                         'type': 'allgemein',
                         'description': sub_desc,
@@ -2785,7 +2861,7 @@ def rechne(vorgang: Vorgang) -> dict:
                     })
             elif billing_type == 'nur_allgemein' or (billing_type == 'direkt' and not tenant_meter):
                 if 'Entfällt' not in description and 'Fehler' not in description:
-                    sub_desc = f"Anteil Allgemein (Haus gesamt: {allgemein_consumption:.1f} {unit}, Anteil: {this_tenant_days} von {total_person_days} Personentagen)"
+                    sub_desc = f"Anteil Allgemein (Haus gesamt: {allgemein_consumption:.1f} {unit}, Anteil: {this_tenant_days} von {total_person_days} Personentagen{abschnitte_text})"
                     sub_items.append({
                         'type': 'allgemein',
                         'description': sub_desc,
