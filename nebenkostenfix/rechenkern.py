@@ -1210,7 +1210,7 @@ def _vermieteranteil(vorgang, kategorie_name, rechnung, anteiliger_betrag,
 
 
 def _vermieterpersonenanteil(vorgang, kategorie_name, rechnung, bilanz,
-                             vermieter_pt, nenner) -> Optional[dict]:
+                             vermieter_pt, nenner, betrag=None) -> Optional[dict]:
     """Was von einer Personen-Umlage beim Vermieter bleibt -- oder ``None``.
 
     Der Personennenner zaehlte nur Mietverhaeltnisse; eine Wohnung ohne
@@ -1226,11 +1226,15 @@ def _vermieterpersonenanteil(vorgang, kategorie_name, rechnung, bilanz,
     steckt die Zeitanteiligkeit im Verhaeltnis und nicht im Betrag (R-NUM-04).
     Damit gilt Zeile fuer Zeile: die Anteile aller Mieter plus der
     Vermieteranteil ergeben den vollen Rechnungsbetrag.
+
+    ``betrag`` ersetzt den Rechnungsbetrag, wenn nur ein Teil nach Personen
+    geht -- im Zaehlerzweig die Kosten des Allgemeinverbrauchs (F-121).
     """
     if vermieter_pt <= 0 or nenner <= 0:
         return None
 
-    anteiliger_betrag = runde(dec(rechnung.betrag) * (dec(vermieter_pt) / dec(nenner)))
+    basis = rechnung.betrag if betrag is None else betrag
+    anteiliger_betrag = runde(dec(basis) * (dec(vermieter_pt) / dec(nenner)))
     leer_tage = sum(b.unbelegt for b in bilanz if b.grund == LEERSTAND)
     eigen_tage = sum(b.unbelegt for b in bilanz if b.grund == EIGENNUTZUNG)
     leer_betrag = runde(anteiliger_betrag * (dec(leer_tage) / dec(vermieter_pt)))
@@ -1277,11 +1281,12 @@ def _vermieterpersonenanteil(vorgang, kategorie_name, rechnung, bilanz,
 
 
 def _belegte_verbrauchsmenge(vorgang: Vorgang, zaehler: Zaehler,
-                             rechnung: Rechnung) -> float:
+                             rechnung: Rechnung, gemessen: bool = False) -> float:
     """Wie viel der Menge eines Zaehlers auf Mietverhaeltnisse entfaellt.
 
     Fuer jede Wohnung zaehlt dasselbe, was auch ihre Zeile als
-    verbrauchsabhaengige Menge annimmt (D-52): liegt an jedem Mietrand des
+    verbrauchsabhaengige Menge annimmt (D-52; im Zaehlerzweig mit
+    ``gemessen`` immer die Menge im Fenster, F-120): liegt an jedem Mietrand des
     Mietverhaeltnisses eine Zwischenablesung, die gemessene Menge des
     Fensters -- sonst der Ersatzmassstab, die gemessene Menge der Wohnung,
     zeitanteilig geteilt. Fuer eine ganz belegte Wohnung ergibt das genau
@@ -1312,7 +1317,7 @@ def _belegte_verbrauchsmenge(vorgang: Vorgang, zaehler: Zaehler,
             g for g in raende
             if not any(s.art == heizung.ZWISCHENABLESUNG and s.datum == g
                        for s in zaehler.staende)]
-        if fehlen:
+        if fehlen and not gemessen:
             # Ersatzmassstab: die Tage des Mietverhaeltnisses im Zeitraum.
             menge += volle_menge * (tage(fenster_von, fenster_bis) / laenge)
         else:
@@ -1324,7 +1329,8 @@ def _belegte_verbrauchsmenge(vorgang: Vorgang, zaehler: Zaehler,
 def _vermieterverbrauchsanteil(vorgang: Vorgang, kategorie_name: str,
                                rechnung: Rechnung, verbrauchsteil,
                                summe_zaehler: float, zaehler: dict,
-                               einheit: str, ids: set) -> Optional[dict]:
+                               einheit: str, ids: set,
+                               gemessen: bool = False) -> Optional[dict]:
     """Was vom Verbrauchsteil einer Rechnung beim Vermieter bleibt.
 
     Eine leer stehende oder eigengenutzte Wohnung verbraucht dennoch Waerme
@@ -1349,7 +1355,7 @@ def _vermieterverbrauchsanteil(vorgang: Vorgang, kategorie_name: str,
         if z is None:
             continue
         rest = verbrauch(z, rechnung.beginn, rechnung.ende) - \
-            _belegte_verbrauchsmenge(vorgang, z, rechnung)
+            _belegte_verbrauchsmenge(vorgang, z, rechnung, gemessen)
         if rest <= 0:
             continue
         einheiten.append({
@@ -2634,11 +2640,61 @@ def rechne(vorgang: Vorgang) -> dict:
                     # verteilten Verbrauch gar nicht verursacht haben.
                     this_tenant_days, total_person_days, active_tenants = (
                         _personentage_im_haus(vorgang, overlap_von, overlap_bis))
+                    # F-121: Wohnungen ohne Mietverhaeltnis zaehlen auch hier
+                    # wie ein Einpersonenhaushalt (wie NK-098 beim
+                    # Personenschluessel) -- sonst traegen die Mieter ihren
+                    # Anteil am Allgemeinverbrauch still mit.
+                    vermieter_pt = sum(
+                        b.unbelegt for b in _leerstandsbilanz(vorgang, overlap_von, overlap_bis)
+                        if b.traegt_der_vermieter)
+                    total_person_days += vermieter_pt
 
                     if total_person_days > 0:
                         tenant_allgemein_share_prorated = allgemein_cost * (dec(this_tenant_days) / dec(total_person_days))
                     else:
                         tenant_allgemein_share_prorated = NULL
+
+                    # Ausgewiesen wird der Vermieteranteil ueber den vollen
+                    # Rechnungszeitraum, wie beim Personenschluessel: in jeder
+                    # Abrechnung des Hauses steht derselbe Betrag.
+                    voll_bilanz = _leerstandsbilanz(vorgang, inv.beginn, inv.ende_grenze)
+                    voll_pt = sum(b.unbelegt for b in voll_bilanz if b.traegt_der_vermieter)
+                    if voll_pt > 0:
+                        _, voll_mieter_pt, _ = _personentage_im_haus(
+                            vorgang, inv.beginn, inv.ende_grenze)
+                        haupt = verbrauch_in(main_meter, inv.beginn, inv.ende_grenze)
+                        unter = [verbrauch_in(m, inv.beginn, inv.ende_grenze)
+                                 for m in all_sub_meters]
+                        if preis_ht_eff is not None:
+                            allgemein_voll = (
+                                max(NULL, dec(haupt['ht']) - sum(dec(d['ht']) for d in unter))
+                                * preis_ht_eff
+                                + max(NULL, dec(haupt['nt']) - sum(dec(d['nt']) for d in unter))
+                                * preis_nt_eff)
+                        else:
+                            allgemein_voll = dec(max(0, haupt['consumption'] - sum(
+                                d['consumption'] for d in unter))) * cost_per_unit
+                        anteil = _vermieterpersonenanteil(
+                            vorgang, f"{cat.name} (Allgemeinverbrauch)", inv, voll_bilanz,
+                            voll_pt, voll_mieter_pt + voll_pt, betrag=allgemein_voll)
+                        if anteil:
+                            vermieter_positionen.append(anteil)
+
+                    # F-120: was der Unterzaehler einer leeren oder
+                    # eigengenutzten Wohnung misst, zahlt kein Mieter. Es
+                    # bleibt beim Vermieter -- ausgewiesen wie bei der Heizung.
+                    # Gemessen wird wie in der Mieterzeile (verbrauch_in), damit
+                    # die Rechnung aufgeht.
+                    # ponytail: beim Dualtarif mit dem Mischpreis der Rechnung,
+                    # getrennte Register erst, wenn es jemand braucht.
+                    if billing_type == 'direkt':
+                        anteil = _vermieterverbrauchsanteil(
+                            vorgang, f"{cat.name} (Verbrauch der Wohnung)", inv,
+                            inv.betrag, rechnung_main_consumption,
+                            {m.wohnung_id: m for m in all_sub_meters}, unit, None,
+                            gemessen=True)
+                        if anteil:
+                            vermieter_positionen.append(anteil)
 
                     if billing_type == 'direkt' and tenant_meter:
                         tenant_detail = verbrauch_in(tenant_meter, overlap_von, overlap_bis)
