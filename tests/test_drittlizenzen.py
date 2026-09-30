@@ -127,3 +127,30 @@ def test_das_release_traegt_die_lizenzen():
     release = (WURZEL / '.github/workflows/release.yml').read_text(encoding='utf-8')
     assert 'find windows -name THIRD_PARTY_LICENSES.txt' in release
     assert 'dateien=("$exe" SHA256SUMS.txt THIRD_PARTY_LICENSES.txt)' in release
+
+
+def test_bau_bricht_ab_ohne_python_lizenz(tmp_path, monkeypatch, capsys):
+    # Copilot-Review zu #22: sonst stünde im Release nur ein Verweis auf die Webseite.
+    monkeypatch.setattr(drittlizenzen, '_python_lizenz', lambda: None)
+    ausgabe = tmp_path / 'THIRD_PARTY_LICENSES.txt'
+    assert drittlizenzen.main([str(ANFORDERUNGEN), '--ausgabe', str(ausgabe)]) == 1
+    assert not ausgabe.exists()
+    assert 'Lizenztext fehlt: Python ' in capsys.readouterr().err
+
+
+def test_bau_bricht_ab_wenn_einem_paket_der_lizenztext_fehlt(tmp_path, monkeypatch, capsys):
+    echt = drittlizenzen.lizenztexte
+    monkeypatch.setattr(drittlizenzen, 'lizenztexte',
+                        lambda dist: [] if dist.metadata['Name'] == 'segno' else echt(dist))
+    ausgabe = tmp_path / 'THIRD_PARTY_LICENSES.txt'
+    assert drittlizenzen.main([str(ANFORDERUNGEN), '--ausgabe', str(ausgabe)]) == 1
+    assert not ausgabe.exists()
+    assert f'segno {md.version("segno")}' in capsys.readouterr().err
+
+
+def test_ohne_bau_verweist_der_text_statt_abzubrechen(tmp_path, monkeypatch):
+    # In der Entwicklung (kein gebautes THIRD_PARTY_LICENSES.txt) soll der
+    # Über-Dialog trotzdem etwas zeigen, etwa unter Debians System-Python.
+    monkeypatch.setattr(drittlizenzen, '_python_lizenz', lambda: None)
+    (tmp_path / 'requirements.txt').write_text('segno==1.6.6\n', encoding='utf-8')
+    assert drittlizenzen.PYTHON_LIZENZ_URL in drittlizenzen.lesen(tmp_path)

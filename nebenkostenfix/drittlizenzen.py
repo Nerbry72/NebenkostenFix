@@ -10,8 +10,10 @@ dass ihr Wortlaut der Weitergabe beiliegt. Der Bau schreibt ihn deshalb nach
         requirements.txt [requirements-desktop.txt]
 
 Die Datei liegt dann im Abbild, im Programmordner der Windows-App und am
-Release. Der Über-Dialog zeigt sie (``/api/drittlizenzen``); ohne gebaute
-Datei, also in der Entwicklung, entsteht der Text aus der laufenden Umgebung.
+Release. Fehlt dem Bau ein Lizenztext (von Python oder einem Paket), bricht
+er ab, statt nur auf eine Webseite zu verweisen. Der Über-Dialog zeigt die
+Datei (``/api/drittlizenzen``); ohne gebaute Datei, also in der Entwicklung,
+entsteht der Text aus der laufenden Umgebung, dort mit Verweis statt Abbruch.
 """
 from __future__ import annotations
 
@@ -154,11 +156,20 @@ def _kopf(titel: str, zeichen: str = '=') -> list[str]:
     return ['', titel, zeichen * len(titel), '']
 
 
-def erzeugen(dateien, wurzel: Path = WURZEL) -> str:
-    """Der ganze Text: Übersicht, dann jede Lizenz im Wortlaut."""
+def erzeugen(dateien, wurzel: Path = WURZEL, streng: bool = False) -> str:
+    """Der ganze Text: Übersicht, dann jede Lizenz im Wortlaut.
+
+    ``streng`` (der Bau): Fehlt ein Wortlaut, bricht es mit allen Lücken ab.
+    """
     python = f'Python {platform.python_version()}'
     liste = pakete(dateien)
     vendor = _vendor(wurzel)
+    python_lizenz = _python_lizenz()
+    if streng:
+        luecken = [] if python_lizenz else [python]
+        luecken += [f'{d.metadata["Name"]} {d.version}' for d in liste if not lizenztexte(d)]
+        if luecken:
+            raise LookupError(f'Lizenztext fehlt: {", ".join(luecken)}.')
 
     zeilen = [f'Drittsoftware in NebenkostenFix {SOFTWARE_VERSION}', '=' * 40, '',
               'NebenkostenFix selbst steht unter der GPL-3.0 (Datei LICENSE im',
@@ -173,7 +184,7 @@ def erzeugen(dateien, wurzel: Path = WURZEL) -> str:
         zeilen.append(f'{name:<34} {pfad}')
 
     zeilen += _kopf(python)
-    zeilen.append(_python_lizenz() or f'Der Lizenztext von Python steht unter {PYTHON_LIZENZ_URL}.')
+    zeilen.append(python_lizenz or f'Der Lizenztext von Python steht unter {PYTHON_LIZENZ_URL}.')
     for dist in liste:
         texte = lizenztexte(dist)
         kopf = f'{dist.metadata["Name"]} {dist.version} ({lizenzname(dist)})'
@@ -202,7 +213,11 @@ def main(argumente=None) -> int:
     parser.add_argument('anforderungen', nargs='+', type=Path)
     parser.add_argument('--ausgabe', type=Path, default=WURZEL / DATEINAME)
     optionen = parser.parse_args(argumente)
-    text = erzeugen(optionen.anforderungen)
+    try:
+        text = erzeugen(optionen.anforderungen, streng=True)
+    except LookupError as fehler:
+        sys.stderr.write(f'{fehler}\n')
+        return 1
     optionen.ausgabe.write_text(text, encoding='utf-8', newline='\n')
     sys.stdout.write(f'{optionen.ausgabe}: {len(text.splitlines())} Zeilen\n')
     return 0
