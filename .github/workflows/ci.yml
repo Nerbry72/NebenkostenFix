@@ -1,18 +1,20 @@
-# Qualitaetstor fuer jeden Push auf einen Feature-Branch und jeden Pull
-# Request: Lint, Glossar, Sicherheit, Tests, Abdeckung des Rechenkerns,
-# bekannte Luecken in Abhaengigkeiten und Secret-Scan. Der Release-Workflow
-# ruft denselben Lauf vor jedem Release auf.
+# Qualitaetstor fuer jeden Pull Request: Lint, Glossar, Sicherheit, Tests,
+# Abdeckung des Rechenkerns, bekannte Luecken in Abhaengigkeiten und
+# Secret-Scan. Einmal pro Stand: kein zusaetzlicher Lauf beim Push, und das
+# Release wiederholt ihn nicht (main nimmt nur aktuelle, gepruefte PRs an).
 name: ci
 
 on:
-  push:
-    branches-ignore: [main]
   pull_request:
-  workflow_call:
   workflow_dispatch:
 
 permissions:
   contents: read
+
+# Neuer Push auf denselben Pull Request bricht den alten Lauf ab.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   pruefen:

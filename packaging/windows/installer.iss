@@ -1,6 +1,6 @@
 ; Installer von NebenkostenFix (NK-079, NK-155, D-84, D-95, F-82). Inno Setup 6.
 ;
-;   iscc /DAppVersion=0.9.3 packaging\windows\installer.iss
+;   iscc /DAppVersion=0.10.0 packaging\windows\installer.iss
 ;
 ; Erwartet das PyInstaller-Ergebnis unter dist\NebenkostenFix\ (Wurzel
 ; des Repos). Optional:
@@ -90,6 +90,8 @@ Name: "desktopicon"; Description: "Symbol auf dem Desktop anlegen"; GroupDescrip
 
 [Files]
 Source: "{#Quelle}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; GPL-3.0: der Lizenztext reist mit dem Programm.
+Source: "..\..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 #ifdef WebView2Bootstrapper
 Source: "{#WebView2Bootstrapper}"; DestDir: "{tmp}"; DestName: "MicrosoftEdgeWebview2Setup.exe"; Flags: deleteafterinstall; Check: WebView2Fehlt
 #endif
@@ -122,11 +124,19 @@ Name: "{code:Datenordner}"; Flags: uninsneveruninstall
 Filename: "{tmp}\MicrosoftEdgeWebview2Setup.exe"; Parameters: "/silent /install"; StatusMsg: "Microsoft Edge WebView2 wird eingerichtet …"; Check: WebView2Fehlt
 #endif
 Filename: "{app}\{#AppExe}"; Description: "{#AppName} jetzt starten"; Flags: nowait postinstall skipifsilent
+; NK-175: nach dem stillen Update aus der App startet sie wieder. Nur mit
+; /NEUSTART=1, damit stille Installationen (Admin, CI-Probe) nichts starten.
+Filename: "{app}\{#AppExe}"; Flags: nowait runasoriginaluser; Check: NachUpdateStarten
 
 [Code]
 var
   DatenSeite: TInputDirWizardPage;
   OneDriveOk: Boolean;
+
+function NachUpdateStarten: Boolean;
+begin
+  Result := WizardSilent and (ExpandConstant('{param:NEUSTART|0}') = '1');
+end;
 
 function WebView2Fehlt: Boolean;
 var

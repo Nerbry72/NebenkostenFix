@@ -66,7 +66,7 @@ scripts/html_maskierung.py
 scripts/probe_ersteinrichtung.py
 scripts/rauchtest_design.js
 # NK-080: Lizenzen und Manifeste stellt nur der Herausgeber aus.
-scripts/lizenz_werkzeug.py
+scripts/update_signieren.py
 # NK-155: Erzeuger der Markenbilder (die Bilder selbst liegen in static/).
 scripts/marke_bilder.py
 # NK-157: Browser-Rundgang der CI (Playwright, Chromium).
@@ -83,6 +83,9 @@ Makefile
 docker-compose.yml
 docs/
 README.md
+CONTRIBUTING.md
+SECURITY.md
+PRIVACY.md
 .gitleaks.toml
 
 # Windows-Paket (NK-079): Bau, Installer und CI gehoeren nicht ins Abbild.

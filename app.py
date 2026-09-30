@@ -39,10 +39,14 @@ Oberflaeche und Betrieb
   GET         /api/health                                  -> health_check
   GET         /api/dateien/<art>/<int:kennung>             -> datei_ausliefern
   GET         /api/belege/export                           -> belege_exportieren
-  GET         /api/lizenz                                  -> lizenz_anzeigen
+  GET         /api/haftung                                 -> haftung_anzeigen
+  POST        /api/haftung                                 -> haftung_bestaetigen
+  GET         /api/ueber                                   -> ueber_anzeigen
+  GET         /api/aktualisierung/einstellung              -> update_einstellung_anzeigen
+  PUT         /api/aktualisierung/einstellung              -> update_einstellung_setzen
+  GET         /api/aktualisierung/automatisch              -> aktualisierung_automatisch
   GET         /api/aktualisierung                          -> aktualisierung_suchen
   POST        /api/aktualisierung/installieren             -> aktualisierung_installieren
-  POST        /api/lizenz                                  -> lizenz_hinterlegen
   GET         /api/vermieter                               -> get_vermieterdaten
   PUT         /api/vermieter                               -> setze_vermieterdaten
   GET         /api/vermieter/logo                          -> vermieter_logo_zeigen
@@ -340,9 +344,11 @@ app.json = GeldJSON(app)
 import datenordner
 import vermieter_logo
 import aktualisierung
-import lizenz
+import einstellungen
+import haftung
+import marke
+import platform
 from aktualisierung import AktualisierungsFehler
-from lizenz import LizenzFehler
 if not (os.environ.get('DATABASE_URL') or '').strip() or \
         (os.environ.get('DATA_DIR') or '').strip():
     datenordner.anlegen()
@@ -2495,26 +2501,78 @@ def _vermieter_stand():
     }
 
 
-@app.route('/api/lizenz', methods=['GET'])
-def lizenz_anzeigen():
-    """Der Lizenzstand fuer die Einstellungen (NK-080).
-
-    Nur Anzeige: keine Funktion der Anwendung haengt an der Lizenz (E-9,
-    D-93). Gefragt wird sie allein von der Update-Suche.
-    """
-    return jsonify(_lizenzstand())
+@app.route('/api/haftung', methods=['GET'])
+def haftung_anzeigen():
+    """Der Haftungshinweis und ob diese Fassung bestaetigt ist (NK-174)."""
+    return jsonify(haftung.stand())
 
 
-def _lizenzstand():
-    return lizenz.status(datenordner.datenordner())
+@app.route('/api/haftung', methods=['POST'])
+def haftung_bestaetigen():
+    """„Verstanden“ im Hinweis der App: bestaetigt nur die aktuelle Fassung."""
+    daten = request.get_json(silent=True) or {}
+    if daten.get('version') != haftung.VERSION:
+        return jsonify({'error': 'Der Hinweis hat sich geändert. Bitte lesen Sie '
+                                 'ihn noch einmal.'}), 409
+    haftung.bestaetigen()
+    return jsonify(haftung.stand())
+
+
+@app.route('/api/ueber', methods=['GET'])
+def ueber_anzeigen():
+    """„Über NebenkostenFix“ im Hilfe-Tab (NK-179): Stand, feste Adressen,
+    Haftungshinweis. Nichts aus der Datenbank."""
+    if aktualisierung.paketmodus():
+        weg = 'Microsoft Store'
+    elif app.config.get('DESKTOP'):
+        weg = 'Windows-App'
+    else:
+        weg = 'Docker'
+    system = f'{platform.system()} {platform.release()}'
+    return jsonify({
+        'version': SOFTWARE_VERSION, 'weg': weg,
+        'projektseite': marke.REPO_URL, 'neuigkeiten': marke.NEUIGKEITEN_URL,
+        'fehler_melden': marke.fehler_melden_url(SOFTWARE_VERSION, weg, system),
+        'unterstuetzen': marke.KOFI_URL, 'lizenz': marke.LIZENZ_URL,
+        'haftung': list(haftung.TEXT)})
+
+
+def _update_einstellung():
+    return {'automatisch': einstellungen.lesen()['updates_automatisch'],
+            'paketmodus': aktualisierung.paketmodus(),
+            'desktop': bool(app.config.get('DESKTOP'))}
+
+
+@app.route('/api/aktualisierung/einstellung', methods=['GET'])
+def update_einstellung_anzeigen():
+    return jsonify(_update_einstellung())
+
+
+@app.route('/api/aktualisierung/einstellung', methods=['PUT'])
+def update_einstellung_setzen():
+    """„Automatisch nach Updates suchen“ (NK-175), ab Werk an."""
+    daten = request.get_json(silent=True) or {}
+    if not isinstance(daten.get('automatisch'), bool):
+        return jsonify({'error': 'Bitte an oder aus wählen.'}), 400
+    einstellungen.schreiben(updates_automatisch=daten['automatisch'])
+    return jsonify(_update_einstellung())
+
+
+@app.route('/api/aktualisierung/automatisch', methods=['GET'])
+def aktualisierung_automatisch():
+    """Die Suche beim Start (NK-175): hoechstens alle 24 Stunden, still bei
+    jedem Fehler. ``neu: false`` heisst: nichts zeigen."""
+    ergebnis = aktualisierung.automatisch(
+        SOFTWARE_VERSION, desktop=bool(app.config.get('DESKTOP')))
+    return jsonify(ergebnis or {'neu': False})
 
 
 @app.route('/api/aktualisierung', methods=['GET'])
 def aktualisierung_suchen():
-    """Nach Updates suchen -- nur auf Knopfdruck, nie von selbst (NK-081)."""
+    """Nach Updates suchen auf Knopfdruck (NK-081, NK-175)."""
     try:
         ergebnis = aktualisierung.suchen(
-            SOFTWARE_VERSION, _lizenzstand(), desktop=bool(app.config.get('DESKTOP')))
+            SOFTWARE_VERSION, desktop=bool(app.config.get('DESKTOP')))
     except AktualisierungsFehler as fehler:
         return jsonify({'error': str(fehler)}), 400
     except OSError:
@@ -2526,39 +2584,29 @@ def aktualisierung_suchen():
 
 @app.route('/api/aktualisierung/installieren', methods=['POST'])
 def aktualisierung_installieren():
-    """Windows-App: Installer laden, pruefen, starten (NK-081). Er schliesst
-    die App selbst und installiert ueber die bestehende Installation."""
+    """Windows-App: Installer laden, pruefen, Daten sichern, starten (NK-081,
+    NK-175). Er schliesst die App selbst und installiert ueber die bestehende
+    Installation."""
     if not app.config.get('DESKTOP'):
         return jsonify({'error': 'Installieren geht nur in der Windows-App. Im '
                                  'Docker-Betrieb aktualisieren Sie das Abbild.'}), 400
+    import backup
+
     try:
-        datei = aktualisierung.installer_laden(SOFTWARE_VERSION, _lizenzstand())
+        datei = aktualisierung.installer_laden(SOFTWARE_VERSION)
+        backup.sicherung_erstellen(
+            app, datenordner.sicherungsordner(), praefix='sicherung-vor-update')
         aktualisierung.installer_starten(datei)
-    except AktualisierungsFehler as fehler:
+    except (AktualisierungsFehler, backup.SicherungsFehler) as fehler:
         return jsonify({'error': str(fehler)}), 400
     except OSError:
         app.logger.warning('Update nicht ladbar', exc_info=True)
         return jsonify({'error': 'Das Update ließ sich nicht laden. Ihre installierte '
                                  'Version bleibt unverändert.'}), 502
-    app.logger.info('Update-Installer gestartet (NK-081).')
-    return jsonify({'text': 'Der Installer startet. Die Anwendung schließt sich dafür '
-                            'kurz; Ihre Daten bleiben, wo sie sind.'})
-
-
-@app.route('/api/lizenz', methods=['POST'])
-def lizenz_hinterlegen():
-    """Nimmt eine Lizenzdatei (Inhalt als Text) und legt sie in den
-    Datenordner. Eine ungueltige Datei ersetzt die vorhandene nicht."""
-    daten = request.get_json(silent=True) or {}
-    inhalt = daten.get('inhalt')
-    if not isinstance(inhalt, str) or not inhalt.strip():
-        return jsonify({'error': 'Bitte wählen Sie eine Lizenzdatei aus.'}), 400
-    try:
-        stand = lizenz.hinterlegen(datenordner.datenordner(), inhalt)
-    except LizenzFehler as fehler:
-        return jsonify({'error': str(fehler)}), 400
-    app.logger.info('Lizenzdatei hinterlegt (NK-080).')
-    return jsonify(stand)
+    app.logger.info('Update-Installer gestartet (NK-175).')
+    return jsonify({'text': 'Ihre Daten sind gesichert, der Installer startet. Die '
+                            'Anwendung schließt sich dafür kurz und kommt mit der '
+                            'neuen Version wieder.'})
 
 
 @app.route('/api/vermieter', methods=['GET'])

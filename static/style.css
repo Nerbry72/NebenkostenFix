@@ -1735,6 +1735,25 @@ input[type="number"] {
     line-height: 1.5;
 }
 
+/* NK-179: Über NebenkostenFix im Hilfe-Tab. */
+.ueber-zeichen { vertical-align: -5px; margin-right: 4px; }
+.ueber-links li { margin-bottom: 6px; }
+.ueber-links .feld-hilfe { display: block; }
+/* NK-175: Schalter mit Beschriftung in einer Zeile. */
+.schalter-zeile {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin: 0 0 12px;
+}
+
+/* NK-174/175: Fließtext in Hinweisdialogen, Zeilenumbrüche bleiben. */
+.modal-text {
+    margin-top: 0;
+    line-height: 1.5;
+    white-space: pre-line;
+}
+
 .karten-abschnitt {
     margin: var(--space-4, 16px) 0;
 }

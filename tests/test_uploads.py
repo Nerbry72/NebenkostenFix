@@ -211,11 +211,6 @@ def test_die_dateiauswahl_bietet_nur_erlaubte_typen():
     html = (Path(__file__).resolve().parents[1] / 'static' / 'index.html').read_text(
         encoding='utf-8')
     for feld in re.findall(r'<input[^>]*type="file"[^>]*>', html):
-        if 'id="lizenz-datei"' in feld:
-            # NK-080: die Lizenz ist kein Beleg. Der Browser liest sie und
-            # schickt sie als Text an /api/lizenz; abgelegt wird sie nie
-            # im Belegordner.
-            continue
         if 'id="import-datei"' in feld:
             # NK-161: eine Tabelle ist kein Beleg; sie wird gelesen und
             # verworfen (uploads.pruefe_tabelle), nie abgelegt.

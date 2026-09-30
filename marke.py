@@ -14,11 +14,30 @@ beide aus denselben Punkten unten.
 
 from __future__ import annotations
 
+from urllib.parse import urlencode
+
 PRODUKT = 'NebenkostenFix'
 # Ordnername älterer Installationen (bis 0.9, D-95): vorhandene Daten bleiben
 # dort, neue Installationen nehmen PRODUKT.
 ALTER_NAME = 'Nebenkostenabrechnung'
 ABBILD = 'ghcr.io/nerbry72/nebenkostenfix'
+# Projektseite und Spenden (NK-178, NK-179): App, PDF-Fuss, Update-Quelle und
+# README lesen die Adressen von hier.
+REPO_URL = 'https://github.com/Nerbry72/NebenkostenFix'
+KOFI_URL = 'https://ko-fi.com/nerbry72'
+NEUIGKEITEN_URL = f'{REPO_URL}/releases'
+LIZENZ_URL = f'{REPO_URL}/blob/main/LICENSE'
+
+
+def fehler_melden_url(version: str, weg: str, system: str) -> str:
+    """Neues Issue mit der Vorlage „Fehler melden“ (NK-179, NK-181).
+
+    Vorausgefüllt nur mit Version, Auslieferungsweg und Betriebssystem --
+    nie mit etwas aus der Datenbank. Die Schlüssel sind die ``id`` der
+    Felder in ``.github/ISSUE_TEMPLATE/fehler.yml``.
+    """
+    return f'{REPO_URL}/issues/new?' + urlencode(
+        {'template': 'fehler.yml', 'version': version, 'weg': weg, 'system': system})
 
 FARBE = '#4F46E5'          # --primary der Oberfläche
 FARBE_DUNKEL = '#4338CA'   # --primary-hover

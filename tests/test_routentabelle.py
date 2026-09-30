@@ -24,18 +24,22 @@ import pytest
 from auth import PUBLIC_ENDPOINTS
 
 
-# Stand vom 24.09.2026, 72 Routen (NK-145: CSV-Export; NK-129: /api/files -> /api/dateien; NK-131: Belege-Export). Aendert sich diese Menge, ist das kein
+# Stand vom 30.09.2026, 115 Routen (NK-174/175: Haftung, Update-Einstellung, Suche beim Start; NK-176: Lizenzrouten entfernt; NK-145: CSV-Export; NK-129: /api/files -> /api/dateien; NK-131: Belege-Export). Aendert sich diese Menge, ist das kein
 # Fehler im Test, sondern eine Entscheidung, die getroffen werden muss.
 ROUTEN_INVENTAR = frozenset({
     'belege_exportieren',
     'huelle_passwort',
-    'lizenz_anzeigen',
+    'haftung_anzeigen',
+    'haftung_bestaetigen',
+    'ueber_anzeigen',
+    'update_einstellung_anzeigen',
+    'update_einstellung_setzen',
+    'aktualisierung_automatisch',
     'vermieter_logo_zeigen',
     'vermieter_logo_hochladen',
     'vermieter_logo_loeschen',
     'aktualisierung_suchen',
     'aktualisierung_installieren',
-    'lizenz_hinterlegen',
     'get_billing_report_csv',
     'add_payment',
     'analytics_apartment',

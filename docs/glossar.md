@@ -139,8 +139,10 @@ Jede Schaltfläche beginnt mit einem dieser Verben — das Objekt folgt:
 | **wiederherstellen** | Eine vor der Abmeldung gesicherte Eingabe zurückholen | Eingabe wiederherstellen |
 | **zurück** | Im mehrstufigen Ablauf einen Schritt zurück (Gegenstück zu „weiter“) | Zurück |
 | **melden** | Der Anwendung einen Vorgang mitteilen, der außerhalb geschah | Zustellung melden |
-| **suchen** | Nachfragen, ob es etwas Neues gibt (nur auf Knopfdruck, NK-081) | Nach Updates suchen |
-| **installieren** | Eine neue Version der Anwendung einrichten (nur Windows-App, NK-081) | Update installieren |
+| **suchen** | Nachfragen, ob es etwas Neues gibt (auf Knopfdruck, NK-081; beim Start höchstens einmal am Tag, abschaltbar, NK-175) | Nach Updates suchen |
+| **installieren** | Eine neue Version der Anwendung einrichten (nur Windows-App, NK-081; sichert vorher, NK-175) | Update installieren |
+| **erinnern** | Einen Hinweis vertagen, er kommt beim nächsten Start wieder (NK-175) | Später erinnern |
+| **verstanden** | Einen Hinweis quittieren, der keine Wahl lässt (nur der Haftungshinweis „Bevor es losgeht“, NK-174) | Verstanden |
 
 Verworfen als alleiniger Knopftext: „OK“, „Los“, „Go“, „Hinzufügen“ (wo ein Verb steht kann
 es folgen: „Zahlung hinzufügen“ ist Teil von „erfassen“-Abläufen und bleibt zulässig als

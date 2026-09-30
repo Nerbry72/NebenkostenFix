@@ -45,7 +45,7 @@ TRENNLINIEN_JS = """() => [...document.querySelectorAll('.section-header-getrenn
 BEREICHE = ['dashboard', 'properties', 'tenants', 'meters', 'invoices',
             'billing', 'payments', 'reports', 'settings']
 BREITEN = [(1440, 900), (768, 1024), (390, 844)]
-EINSTELLUNGS_GRUPPEN = ['vermieter', 'sicherung', 'konto', 'lizenz', 'datenschutz']
+EINSTELLUNGS_GRUPPEN = ['vermieter', 'sicherung', 'konto', 'updates', 'datenschutz']
 # Dialoge, die ohne Auswahl aufgehen (Ausdruck in app.js).
 DIALOGE = {
     'immobilie': 'openAddPropertyModal()',
@@ -235,6 +235,15 @@ def rundgang(chromium: str | None, ausgabe: Path) -> list[str]:
                     seite.fill('#code', code)
                     seite.click('button[type=submit]')
                     seite.wait_for_timeout(1500)
+                    # NK-174: erst der Haftungshinweis, weiter nur mit „Verstanden“.
+                    gang.schritt = 'haftung'
+                    if seite.is_visible('#haftung-modal'):
+                        gang.aufnahme('haftung')
+                        gang.pruefen('haftung')
+                        seite.click('#haftung-modal button')
+                        seite.wait_for_timeout(500)
+                    else:
+                        befunde.append('haftung: der Hinweis erscheint nach der Einrichtung nicht')
                     for bereich in BEREICHE:
                         gang.bereich(bereich, 'leer')
                     seite.evaluate("() => beispielAnlegen(null)")
