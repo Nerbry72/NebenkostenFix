@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MSIX-Paket für den Microsoft Store (NK-173). Vorlage: msix.py setzt die
+  Version ein (x.y.z.0, der Store verlangt die Revision 0) und legt die
+  Logos dazu. Name, Publisher und PublisherDisplayName stammen aus dem
+  Partner Center (Produktidentität, Store-ID 9PJQSSQGBNZ8) und müssen
+  genau so bleiben, sonst lehnt der Store das Paket ab.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap3 desktop rescap">
+
+  <Identity
+    Name="NerbrY72.NebenkostenFix"
+    Publisher="CN=5A9DC20D-397B-41AF-807A-57E2A97CF70C"
+    Version="$VERSION$"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>NebenkostenFix</DisplayName>
+    <PublisherDisplayName>NerbrY72</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <Description>Nebenkostenabrechnung für private Vermieter</Description>
+  </Properties>
+
+  <Dependencies>
+    <!-- Windows 10 ab 1809, wie der Installer (README) -->
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="de-DE" />
+  </Resources>
+
+  <Applications>
+    <Application Id="NebenkostenFix" Executable="NebenkostenFix.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="NebenkostenFix"
+        Description="Nebenkostenabrechnung für private Vermieter"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png" />
+      <Extensions>
+        <!-- Startbar als "NebenkostenFix" (Ausführen-Dialog, Kommandozeile).
+             Die CI startet so den Selbsttest mit Paketidentität. -->
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="NebenkostenFix.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="NebenkostenFix.exe" />
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!-- Gepackte Win32-App (PyInstaller): lokaler Server auf 127.0.0.1,
+         Fenster über WebView2, Dateidialoge, Datenordner in "Dokumente". -->
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

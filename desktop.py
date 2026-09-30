@@ -45,6 +45,7 @@ import urllib.request
 from http.cookiejar import CookieJar
 from pathlib import Path
 
+from nebenkostenfix import aktualisierung
 from nebenkostenfix import marke
 from nebenkostenfix import windows_ordner
 
@@ -405,6 +406,7 @@ def selbsttest(datenordner: Path, bericht_datei: str | None = None) -> int:
           and abs(float(bericht['summe'] or 0) - 600.0) < 0.01 and bericht['pdf_ok'])
     bericht['ergebnis'] = 'bestanden' if ok else 'fehlgeschlagen'
     bericht['eingefroren'] = bool(getattr(sys, 'frozen', False))
+    bericht['paketmodus'] = aktualisierung.paketmodus()
     text = json.dumps(bericht, ensure_ascii=False)
     # Der Bericht ist die Ausgabe des Kommandos (wie bei einem CLI-Werkzeug),
     # kein Fehlerkanal; Fehler des Laufs stehen im Protokoll der Anwendung.
@@ -560,7 +562,11 @@ def main(argv: list[str] | None = None) -> int:
     _ausgaben_umleiten()
     if argumente.datenordner_zeigen:
         ordner = datenordner_bestimmen(fragen=False)
-        text = json.dumps({'datenordner': str(ordner)}, ensure_ascii=False)
+        text = json.dumps({'datenordner': str(ordner),
+                           'paketmodus': aktualisierung.paketmodus(),
+                           'einstellungen': str(windows_ordner.einstellungen_datei()),
+                           'ausweich': str(windows_ordner.lokaler_ausweich())},
+                          ensure_ascii=False)
         sys.stdout.write(text + '\n')
         if argumente.bericht:
             Path(argumente.bericht).write_text(text, encoding='utf-8')

@@ -104,7 +104,17 @@ def vorgabe_datenordner() -> Path:
 
 
 def lokaler_ausweich() -> Path:
-    """Angebot, wenn „Dokumente“ in OneDrive liegt."""
+    """Angebot, wenn „Dokumente“ in OneDrive liegt.
+
+    Als Store-Paket (MSIX) nicht unter %LOCALAPPDATA%: Windows leitet neue
+    Dateien dort in den Paketordner um und löscht sie bei der
+    Deinstallation mitsamt den Mieterdaten (F-111). Dann der Benutzerordner,
+    den OneDrive nicht synchronisiert.
+    """
+    from nebenkostenfix import aktualisierung
+
+    if aktualisierung.paketmodus():
+        return Path.home() / APP_NAME
     return lokaler_ordner() / 'Daten'
 
 
