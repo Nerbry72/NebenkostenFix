@@ -50,6 +50,7 @@ OBERFLAECHE = {
     'Property': {
         'name': 'id="prop-name"',
         'is_standalone': 'id="prop-standalone"',
+        'abrechnungsjahr_beginn': 'id="prop-jahresbeginn"',
     },
     'Apartment': {
         'property_id': 'property_id: currentPropertyId',

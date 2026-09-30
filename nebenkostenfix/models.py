@@ -33,7 +33,10 @@ class Property(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     is_standalone = db.Column(db.Boolean, default=False, nullable=False)
-    
+    # D-114: Tag, an dem das Abrechnungsjahr des Hauses beginnt, als 'MM-TT'.
+    # Leer heisst: aus den bisherigen Abrechnungen ableiten, sonst 01.01.
+    abrechnungsjahr_beginn = db.Column(db.String(5), nullable=True)
+
     apartments = db.relationship('Apartment', backref='property', lazy=True, cascade="all, delete-orphan")
     invoices = db.relationship('CostInvoice', backref='property', lazy=True)
     meters = db.relationship('Meter', backref='property', lazy=True)

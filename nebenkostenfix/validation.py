@@ -84,6 +84,7 @@ FELDNAMEN = {
     'is_official_invoice': 'Abrechnung des Versorgers',
     'is_recurring': 'wiederkehrende Zahlung',
     'is_standalone': 'Einzelobjekt',
+    'abrechnungsjahr_beginn': 'Abrechnungsjahr beginnt am',
     'last_billed_until': 'abgerechnet bis',
     'meter_id': 'Zähler',
     'meter_number': 'Zählernummer',

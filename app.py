@@ -787,13 +787,18 @@ else:
 # --- Property Routes ---
 @app.route('/api/properties', methods=['GET'])
 def get_properties():
+    from nebenkostenfix.zeitraumvorschlag import jahresbeginn, jahresbeginn_text
     properties = Property.query.all()
     result = []
     for p in properties:
+        monat, tag, quelle = jahresbeginn(p)
         result.append({
             'id': p.id,
             'name': p.name,
             'is_standalone': p.is_standalone,
+            # D-114: wirksamer Beginn des Abrechnungsjahres und woher er kommt.
+            'abrechnungsjahr_beginn': jahresbeginn_text(monat, tag),
+            'abrechnungsjahr_quelle': quelle,
             # NK-159: das Beispiel zählt in keiner Kennzahl der Übersicht.
             'ist_beispiel': beispielimmobilie.ist_beispiel(p),
         })
@@ -801,10 +806,12 @@ def get_properties():
 
 @app.route('/api/properties', methods=['POST'])
 def create_property():
+    from nebenkostenfix.zeitraumvorschlag import jahresbeginn_aus_text
     eingabe = Eingabe.aus_request()
     new_prop = Property(
         name=eingabe.text('name', pflicht=True, maxlaenge=200),
-        is_standalone=eingabe.wahrheit('is_standalone')
+        is_standalone=eingabe.wahrheit('is_standalone'),
+        abrechnungsjahr_beginn=jahresbeginn_aus_text(eingabe.text('abrechnungsjahr_beginn', maxlaenge=10)),
     )
     db.session.add(new_prop)
     db.session.commit()
@@ -812,6 +819,7 @@ def create_property():
 
 @app.route('/api/properties/<int:id>', methods=['PUT', 'DELETE'])
 def update_delete_property(id):
+    from nebenkostenfix.zeitraumvorschlag import jahresbeginn_aus_text
     prop = Property.query.get_or_404(id)
     if request.method == 'DELETE':
         db.session.delete(prop)
@@ -823,6 +831,9 @@ def update_delete_property(id):
         prop.name = eingabe.text('name', pflicht=True, maxlaenge=200)
     if eingabe.vorhanden('is_standalone'):
         prop.is_standalone = eingabe.wahrheit('is_standalone')
+    if eingabe.vorhanden('abrechnungsjahr_beginn'):
+        prop.abrechnungsjahr_beginn = jahresbeginn_aus_text(
+            eingabe.text('abrechnungsjahr_beginn', maxlaenge=10))
     db.session.commit()
     return jsonify({'message': 'Property updated'}), 200
 

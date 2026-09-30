@@ -1109,7 +1109,8 @@ async function saveProperty() {
         const response = await fetch(url, {
             method: method,
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ name: name, is_standalone: isStandalone })
+            body: JSON.stringify({ name: name, is_standalone: isStandalone,
+                abrechnungsjahr_beginn: document.getElementById('prop-jahresbeginn').value.trim() })
         });
         
         if (!response.ok) throw await serverFehler(response);
@@ -2071,11 +2072,13 @@ function openAddPropertyModal(prop = null) {
         editingPropertyId = prop.id;
         document.getElementById('prop-name').value = prop.name;
         document.getElementById('prop-standalone').checked = prop.is_standalone;
+        document.getElementById('prop-jahresbeginn').value = prop.abrechnungsjahr_beginn || '';
         propertyModal.querySelector('h2').textContent = 'Immobilie bearbeiten';
     } else {
         editingPropertyId = null;
         document.getElementById('prop-name').value = '';
         document.getElementById('prop-standalone').checked = false;
+        document.getElementById('prop-jahresbeginn').value = '';
         propertyModal.querySelector('h2').textContent = 'Neue Immobilie';
     }
     propertyModal.classList.add('active');

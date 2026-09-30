@@ -9,9 +9,11 @@ vorschlagen und den Vorschlag begründen.
 Die Regeln, in dieser Reihenfolge:
 
 1. **Beginn** -- der Tag nach der letzten Abrechnung, sonst der Einzug.
-2. **Ziel** -- das Ende des Kalenderjahres, in dem der Beginn liegt; zieht
-   der Mieter vorher aus, sein letzter Miettag. So bleibt der Zeitraum
-   innerhalb der zwölf Monate des § 556 Abs. 3 BGB.
+2. **Ziel** -- das Ende des Abrechnungsjahres des Hauses, in dem der Beginn
+   liegt (D-114: eingestellt am Haus, sonst wie die bisherigen Abrechnungen,
+   sonst das Kalenderjahr); zieht der Mieter vorher aus, sein letzter
+   Miettag. So bleibt der Zeitraum innerhalb der zwölf Monate des
+   § 556 Abs. 3 BGB.
 3. **Noch nicht vorbei** -- liegt das Ziel nach heute, gibt es keinen
    Vorschlag.
 4. **Rechnungen** -- fehlt für eine Kostenart ab einem Tag die Rechnung,
@@ -20,15 +22,21 @@ Die Regeln, in dieser Reihenfolge:
    Rechnung, im Zeitraum aber keine, sagt der Vorschlag es dazu. Er endet
    deshalb nicht früher: Ob die Rechnung noch kommt, weiß nur der Vermieter
    (auf 6061: der Schornsteinfeger von 2024).
+6. **Keine Rechnung** -- liegt für den Zeitraum gar keine Rechnung vor, gibt
+   es keinen Vorschlag (F-126: eine leere Menge hat keine Lücke, und der
+   Vorschlag sagte „decken den ganzen Zeitraum ab“).
 """
 
 from __future__ import annotations
 
+import re
+from collections import Counter
 from datetime import date, timedelta
 
 from nebenkostenfix.abrechnungsdaten import lade_vorgang
 from nebenkostenfix.frist import frist_ende
 from nebenkostenfix.rechenkern import abdeckungsluecken, abrechnungsart_von
+from nebenkostenfix.validation import EingabeFehler
 
 EIN_TAG = timedelta(days=1)
 
@@ -39,6 +47,60 @@ def _d(tag: date) -> str:
 
 def _ohne(gruende: list) -> dict:
     return {'beginn': None, 'ende': None, 'gruende': gruende}
+
+
+def jahresbeginn(prop) -> tuple[int, int, str]:
+    """(Monat, Tag, Quelle) des Abrechnungsjahres eines Hauses (D-114).
+
+    Quelle ``feld``: am Haus eingestellt. ``abrechnungen``: so endeten die
+    bisherigen Abrechnungen des Hauses, ein Auszug zählt nicht mit.
+    ``vorgabe``: der 01.01.
+    """
+    from nebenkostenfix.models import Apartment, Tenant, TenantBillingReport
+
+    if prop.abrechnungsjahr_beginn:
+        monat, tag = map(int, prop.abrechnungsjahr_beginn.split('-'))
+        return monat, tag, 'feld'
+    enden = (TenantBillingReport.query.join(Tenant).join(Apartment)
+             .filter(Apartment.property_id == prop.id)
+             .with_entities(TenantBillingReport.end_date, Tenant.move_out_date).all())
+    tage = [ende + EIN_TAG for ende, auszug in enden if ende != auszug]
+    if not tage:
+        return 1, 1, 'vorgabe'
+    anzahl = Counter((t.month, t.day) for t in tage)
+    # Der häufigste Beginn; bei Gleichstand der jüngste.
+    bester = max(tage, key=lambda t: (anzahl[(t.month, t.day)], t))
+    if (bester.month, bester.day) == (2, 29):
+        return 3, 1, 'abrechnungen'
+    return bester.month, bester.day, 'abrechnungen'
+
+
+def jahresbeginn_aus_text(text: str | None) -> str | None:
+    """'TT.MM.' aus dem Formular als 'MM-TT'; leer heißt: ableiten."""
+    if not text or not text.strip():
+        return None
+    treffer = re.fullmatch(r'\s*(\d{1,2})\.(\d{1,2})\.?\s*', text)
+    try:
+        # Ein Jahr ohne 29. Februar: das Abrechnungsjahr beginnt jedes Jahr am selben Tag.
+        tag = date(2025, int(treffer[2]), int(treffer[1])) if treffer else None
+    except ValueError:
+        tag = None
+    if tag is None:
+        raise EingabeFehler('Das Abrechnungsjahr beginnt an einem Tag wie 01.04. '
+                            '(Tag und Monat, der 29.02. geht nicht).', 'abrechnungsjahr_beginn')
+    return f'{tag.month:02d}-{tag.day:02d}'
+
+
+def jahresbeginn_text(monat: int, tag: int) -> str:
+    return f'{tag:02d}.{monat:02d}.'
+
+
+def _jahresende(beginn: date, monat: int, tag: int) -> date:
+    """Letzter Tag des Abrechnungsjahres, in dem ``beginn`` liegt."""
+    start = date(beginn.year, monat, tag)
+    if start > beginn:
+        start = date(beginn.year - 1, monat, tag)
+    return date(start.year + 1, monat, tag) - EIN_TAG
 
 
 def vorschlag(tenant_id: int, heute: date) -> dict:
@@ -64,14 +126,21 @@ def vorschlag(tenant_id: int, heute: date) -> dict:
     if auszug and auszug < beginn:
         return _ohne([f'Das Mietverhältnis ist bis zum Auszug am {_d(auszug)} abgerechnet.'])
 
-    jahresende = date(beginn.year, 12, 31)
+    monat, tag, quelle = jahresbeginn(t.apartment.property)
+    jahresende = _jahresende(beginn, monat, tag)
     if auszug and auszug <= jahresende:
         ziel = auszug
         gruende.append(f'Der letzte Miettag ist der {_d(auszug)}.')
     else:
         ziel = jahresende
-        gruende.append('Abgerechnet wird je Kalenderjahr, höchstens zwölf Monate '
-                       '(§ 556 Abs. 3 BGB).')
+        if (monat, tag) == (1, 1):
+            gruende.append('Abgerechnet wird je Kalenderjahr, höchstens zwölf Monate '
+                           '(§ 556 Abs. 3 BGB).')
+        else:
+            woher = {'feld': 'so eingestellt am Haus',
+                     'abrechnungen': 'wie die bisherigen Abrechnungen des Hauses'}[quelle]
+            gruende.append(f'Das Abrechnungsjahr beginnt am {jahresbeginn_text(monat, tag)} '
+                           f'({woher}), höchstens zwölf Monate (§ 556 Abs. 3 BGB).')
     if ziel > heute:
         return _ohne(gruende + [f'Der Zeitraum läuft noch bis {_d(ziel)}. '
                                 'Abrechnen lässt er sich erst danach.'])
@@ -95,6 +164,10 @@ def vorschlag(tenant_id: int, heute: date) -> dict:
     ohne_rechnung = sorted({r.category.name for r in vorjahr
                             if r.category.name not in im_zeitraum and zaehlt(r.category)})
 
+    if not rechnungen:
+        return _ohne(gruende + [f'Für {_d(beginn)}–{_d(ziel)} ist noch keine Rechnung erfasst. '
+                                'Erfassen Sie die Rechnungen, dann schlägt die App den '
+                                'Zeitraum vor.'])
     if fehlt_ab:
         erster = min(fehlt_ab.values())
         namen = ', '.join(f'„{n}“' for n in sorted(fehlt_ab) if fehlt_ab[n] == erster)
@@ -106,7 +179,9 @@ def vorschlag(tenant_id: int, heute: date) -> dict:
                        f'Deshalb endet der Vorschlag am {_d(ende)}.')
     else:
         ende = ziel
-        gruende.append('Die vorhandenen Rechnungen decken den ganzen Zeitraum ab.')
+        # F-126: neben dem Vorjahreshinweis wäre „decken ab“ ein Widerspruch.
+        gruende.append('Die vorhandenen Rechnungen decken den ganzen Zeitraum ab.' if not ohne_rechnung
+                       else 'Jede Kostenart mit Rechnung ist für den ganzen Zeitraum belegt.')
     if ohne_rechnung:
         gruende.append(f'Für {", ".join(f"„{n}“" for n in ohne_rechnung)} gab es im Jahr '
                        'davor eine Rechnung, für diesen Zeitraum noch nicht. Kommt sie noch, '
