@@ -91,7 +91,7 @@ def test_modul_haengt_an_nichts_als_geld():
     importiert = importierte_module(baum)
 
     assert importiert <= {
-        '__future__', 'decimal', 'typing', 'geld',
+        '__future__', 'calendar', 'datetime', 'decimal', 'fractions', 'typing', 'geld',
     }, f'heizung.py zieht fremde Module herein: {importiert}'
 
 

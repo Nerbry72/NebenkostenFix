@@ -26,6 +26,8 @@ Jede Zahl ist von Hand nachgerechnet und steht im Test.
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
 from nebenkostenfix import heizung
 from nebenkostenfix.heizung import ABLESUNG, ZWISCHENABLESUNG
 from nebenkostenfix.rechenkern import (
@@ -199,19 +201,20 @@ def test_ohne_zwischenablesung_wird_nichts_gemeldet():
 
 
 def test_die_gelesene_grenze_macht_aus_dem_schaetzwert_eine_zahl():
-    """1.000 gelesen statt 690,41 verteilt -- der Sinn der § 9b-Ablesung.
+    """1.000 gelesen statt 816,04 geschaetzt -- der Sinn der § 9b-Ablesung.
 
     Ohne Zwischenablesung liegen nur die beiden Jahresablesungen vor
-    (1.400 kWh in 365 Tagen), und der Auszug zum 30.06. bekommt sein Stueck
-    als Tagesmittel: 1.400 * 180/365 = 690,4110. Mit der Zwischenablesung
-    sind es die gelesenen 1.000 kWh -- exakt, ohne Interpolation.
+    (1.400 kWh im Jahr), und der Auszug zum 30.06. bekommt sein Stueck nach
+    Gradtagszahlen (D-115): 1.400 * 582,89 / 1.000 = 816,04 -- bis NK-189
+    als Tagesmittel 690,41. Mit der Zwischenablesung sind es die gelesenen
+    1.000 kWh -- exakt, ohne Interpolation.
     """
     ohne = waermezaehler(1, 1, (
         stand(JAHR_BEGINN, 0),
         stand(JAHR_GRENZE, 1400),
     ))
     auskunft_ohne = verbrauch_in(ohne, JAHR_BEGINN, WECHSEL)
-    assert auskunft_ohne['consumption'] == 690.4109589041096
+    assert auskunft_ohne['consumption'] == pytest.approx(816.0444444)
     assert auskunft_ohne['is_interpolated'] is True
 
     mit = waermezaehler(1, 1, DREI_STAENDE)

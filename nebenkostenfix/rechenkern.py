@@ -778,7 +778,7 @@ def leerer_verbrauch(zaehler_nummer: str = '', einheit: str = '') -> dict:
         'consumption': 0.0, 'ht': 0.0, 'nt': 0.0,
         'r_start': None, 'r_end': None, 'reading_span_days': 0,
         'target_days': 0, 'start_offset_days': 0, 'end_offset_days': 0,
-        'status': 'no_data', 'is_interpolated': True,
+        'status': 'no_data', 'is_interpolated': True, 'gradtage': False,
         'meter_number': zaehler_nummer, 'unit': einheit,
     }
 
@@ -908,8 +908,21 @@ def verbrauch_in(zaehler: Zaehler, von: date, bis: date) -> dict:
     Bei einem Dualtarifzaehler (NK-055) tragen ``ht`` und ``nt`` die Mengen
     getrennt, nach derselben Interpolation wie die Gesamtmenge; ihre Summe
     ist der Verbrauch. Ohne Niedertarif steht in ``nt`` die 0.
+
+    Ein **Heizwaermezaehler** ohne Stand am Stichtag wird nach
+    Gradtagszahlen geschaetzt, nicht nach Tagen (D-115, VDI 2067): der
+    Winteranteil eines Ablesejahrs traegt den Grossteil der Waerme. Die
+    Auskunft sagt es mit ``gradtage``. Wasser und Strom bleiben linear.
     """
     einheit = einheit_fuer(zaehler.kategorie_name, zaehler.kategorie_betrkv_nr)
+    heiz = ist_heizwaermezaehler(zaehler)
+
+    def wirksame_tage(a: date, b: date, basis_von: date, basis_bis: date) -> Decimal:
+        """Tage in ``[a, b)``, beim Heizwaermezaehler nach Gradtagen gewichtet."""
+        if not heiz:
+            return Decimal(str((b - a).days))
+        anteil = heizung.gradtage(a, b) / heizung.gradtage(basis_von, basis_bis)
+        return (Decimal((basis_bis - basis_von).days) * anteil.numerator) / anteil.denominator
     leer = leerer_verbrauch(zaehler.nummer or '', einheit)
 
     staende = sorted(zaehler.staende, key=lambda s: s.datum)
@@ -946,15 +959,16 @@ def verbrauch_in(zaehler: Zaehler, von: date, bis: date) -> dict:
         if overlap_days > 0:
             interval_consumption = s2.gesamt - s1.gesamt
             daily_rate = interval_consumption / Decimal(str(interval_days))
-            total_consumption += daily_rate * Decimal(str(overlap_days))
+            wirksam = wirksame_tage(overlap_start, overlap_end, s1.datum, s2.datum)
+            total_consumption += daily_rate * wirksam
             # Der Dualtarif braucht die Mengen getrennt (NK-055): dieselbe
             # Interpolation, zweimal -- einmal je Register. Die Differenzen
             # addieren sich wieder zum Gesamtbetrag, denn gesamt ist HT
             # plus NT.
             ht_rate = (dec(s2.wert) - dec(s1.wert)) / Decimal(str(interval_days))
             nt_rate = (dec(s2.wert_nt or 0) - dec(s1.wert_nt or 0)) / Decimal(str(interval_days))
-            total_ht += ht_rate * Decimal(str(overlap_days))
-            total_nt += nt_rate * Decimal(str(overlap_days))
+            total_ht += ht_rate * wirksam
+            total_nt += nt_rate * wirksam
             total_covered_days += overlap_days
 
             benutzt.add(i)
@@ -974,11 +988,18 @@ def verbrauch_in(zaehler: Zaehler, von: date, bis: date) -> dict:
         global_days = (letzter.datum - erster.datum).days
         if global_days > 0:
             global_rate = (letzter.gesamt - erster.gesamt) / Decimal(str(global_days))
-            total_consumption += global_rate * Decimal(str(missing_days))
+            # Die Luecken liegen vor der ersten und nach der letzten Ablesung.
+            fehlend = Decimal(str(missing_days))
+            if heiz:
+                fehlend = sum((wirksame_tage(a, b, erster.datum, letzter.datum)
+                               for a, b in ((von, min(bis, erster.datum)),
+                                            (max(von, letzter.datum), bis)) if a < b),
+                              Decimal(0))
+            total_consumption += global_rate * fehlend
             global_rate_ht = (dec(letzter.wert) - dec(erster.wert)) / Decimal(str(global_days))
             global_rate_nt = (dec(letzter.wert_nt or 0) - dec(erster.wert_nt or 0)) / Decimal(str(global_days))
-            total_ht += global_rate_ht * Decimal(str(missing_days))
-            total_nt += global_rate_nt * Decimal(str(missing_days))
+            total_ht += global_rate_ht * fehlend
+            total_nt += global_rate_nt * fehlend
             benutzt.add(0)
             benutzt.add(len(staende) - 1)
 
@@ -1038,6 +1059,7 @@ def verbrauch_in(zaehler: Zaehler, von: date, bis: date) -> dict:
         'end_offset_days': end_offset,
         'status': status,
         'is_interpolated': is_interpolated,
+        'gradtage': heiz and is_interpolated,
         'zwischenablesungen': zwischen,
         'meter_id': zaehler.id,
         'meter_number': zaehler.nummer or '',
@@ -1473,6 +1495,22 @@ def _vermieterverbrauchsanteil(vorgang: Vorgang, kategorie_name: str,
 # Zeile mit zwei Unterposten ausgewiesen (D-47). Eine Zeile je Rechnung waere
 # eine Aufteilung, die das Gesetz nicht kennt: der Verbrauchsanteil bezieht
 # sich auf die Masse, nicht auf den Brennstoff allein.
+
+
+def ist_heizwaermezaehler(zaehler) -> bool:
+    """Ob dieser Zaehler Raumwaerme misst, deren Verbrauch dem Wetter folgt (D-115).
+
+    Heizung (Nr. 4) und verbundene Anlage (Nr. 6), jeder Zaehler einer
+    Heizungsanlage, ohne Katalog der Name -- aber nie das Warmwasser in
+    Kubikmetern, das fliesst im Sommer wie im Winter.
+    """
+    if ist_warmwasserzaehler(zaehler):
+        return False
+    if zaehler.kategorie_betrkv_nr in (4, 6) or zaehler.heizungsanlage_id is not None:
+        return True
+    name = (zaehler.kategorie_name or '').lower()
+    return zaehler.kategorie_betrkv_nr is None and any(
+        x in name for x in ('heiz', 'wärme', 'waerme'))
 
 
 def ist_warmwasserzaehler(zaehler) -> bool:

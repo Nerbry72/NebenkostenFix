@@ -25,6 +25,10 @@ Die Regeln, in dieser Reihenfolge:
 6. **Keine Rechnung** -- liegt für den Zeitraum gar keine Rechnung vor, gibt
    es keinen Vorschlag (F-126: eine leere Menge hat keine Lücke, und der
    Vorschlag sagte „decken den ganzen Zeitraum ab“).
+7. **Heizungsstand** -- hat ein Wärmezähler der Wohnung oder des Hauses
+   keinen Stand innerhalb einer Woche um das Ende, nennt der Vorschlag die
+   nächste Ablesung. Abrechnen geht trotzdem; die App schätzt dann nach
+   Gradtagszahlen (D-115).
 """
 
 from __future__ import annotations
@@ -35,10 +39,13 @@ from datetime import date, timedelta
 
 from nebenkostenfix.abrechnungsdaten import lade_vorgang
 from nebenkostenfix.frist import frist_ende
-from nebenkostenfix.rechenkern import abdeckungsluecken, abrechnungsart_von
+from nebenkostenfix.rechenkern import (abdeckungsluecken, abrechnungsart_von,
+                                       ist_heizwaermezaehler)
 from nebenkostenfix.validation import EingabeFehler
 
 EIN_TAG = timedelta(days=1)
+#: So weit darf die Ablesung vom Stichtag liegen, ohne dass der Vorschlag es sagt.
+NAHE = 7
 
 
 def _d(tag: date) -> str:
@@ -186,6 +193,17 @@ def vorschlag(tenant_id: int, heute: date) -> dict:
         gruende.append(f'Für {", ".join(f"„{n}“" for n in ohne_rechnung)} gab es im Jahr '
                        'davor eine Rechnung, für diesen Zeitraum noch nicht. Kommt sie noch, '
                        'warten Sie mit der Abrechnung; sonst fehlen diese Kosten.')
+
+    for z in sorted(vorgang.zaehler, key=lambda z: z.nummer or ''):
+        if not (ist_heizwaermezaehler(z) and z.staende
+                and (z.wohnung_id == vorgang.wohnung.id or z.ist_hauptzaehler)):
+            continue
+        naechste = min((s.datum for s in z.staende), key=lambda d: (abs((d - ende).days), d))
+        if abs((naechste - ende).days) > NAHE:
+            gruende.append(f'Der Wärmezähler {z.nummer} hat um den {_d(ende)} keinen Stand, '
+                           f'die nächste Ablesung ist vom {_d(naechste)}. Lesen Sie zum '
+                           f'{_d(ende)} ab, dann rechnet die Abrechnung genau; sonst schätzt '
+                           'sie nach Gradtagszahlen.')
 
     rest_bis = auszug if auszug and auszug > ende else None
     if rest_bis:

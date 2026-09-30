@@ -17,6 +17,14 @@ from nebenkostenfix import marke
 from nebenkostenfix.abrechnung_version import SOFTWARE_VERSION, REGEL_VERSION
 
 
+
+def stichtag_hinweis(detail: dict) -> str:
+    """Wie der fehlende Stand am Stichtag geschaetzt wurde (D-115)."""
+    if detail.get('gradtage'):
+        return ("Stichtagswert nach Gradtagszahlen geschätzt (VDI 2067, § 9b HeizkostenV): "
+                "Wintertage tragen mehr Wärme als Sommertage.")
+    return "Stichtagswert wurde interpoliert."
+
 def _zeichen_malen(canvas, x, y, kante):
     """Das Zeichen aus ``marke`` als Vektor, linke untere Ecke bei x, y.
     Das Raster zählt von oben, die PDF-Seite von unten."""
@@ -785,7 +793,7 @@ class PDFGenerator:
                             if off_msg: off_msg += "<br/>"
                             off_msg += dt_offset("Ende", tm['end_offset_days'], tm['reading_span_days'])
                         if off_msg:
-                            box_data.append([Paragraph(f"<i>Hinweis: Stichtagswert wurde interpoliert.<br/>{off_msg}</i>", self.styles['SubTableCell']), ''])
+                            box_data.append([Paragraph(f"<i>Hinweis: {stichtag_hinweis(tm)}<br/>{off_msg}</i>", self.styles['SubTableCell']), ''])
                             box_style.append(('SPAN', (0, row_idx+3), (-1, row_idx+3)))
                             row_idx += 1
                         
@@ -817,7 +825,7 @@ class PDFGenerator:
                             if off_msg: off_msg += "<br/>"
                             off_msg += dt_offset("Ende", mm['end_offset_days'], mm['reading_span_days'])
                         if off_msg:
-                            box_data.append([Paragraph(f"<i>Hinweis Hauptzähler: Stichtagswert wurde interpoliert.<br/>{off_msg}</i>", self.styles['SubTableCell']), ''])
+                            box_data.append([Paragraph(f"<i>Hinweis Hauptzähler: {stichtag_hinweis(mm)}<br/>{off_msg}</i>", self.styles['SubTableCell']), ''])
                             box_style.append(('SPAN', (0, row_idx+4), (-1, row_idx+4)))
                             row_idx += 1
                         
