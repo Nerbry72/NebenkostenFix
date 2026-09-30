@@ -89,7 +89,7 @@ def test_ueberschneidung_ist_seitenverkehrt_gleich():
     assert ueberschneidung(*a, *b) == ueberschneidung(*b, *a)
 
 
-# --- Das Auszugsdatum ist schon eine Grenze --------------------------------
+# --- ``Mieter.auszug`` ist schon eine Grenze --------------------------------
 
 
 def test_mietende_verschiebt_den_auszug_nicht():

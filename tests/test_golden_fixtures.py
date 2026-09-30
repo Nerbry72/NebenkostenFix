@@ -197,7 +197,7 @@ GOLDEN_VORTEIL: tuple = (
         bilanz='600.00'),
 
     # Anna zieht zum 30.06.2024 aus. Ihr Fenster [01.01., 30.06.) hat 181
-    # Tage (Schaltjahr, der Auszugstag zaehlt nicht, R-NUM-03): 600,00 *
+    # Tage (Schaltjahr; ``auszug`` ist im Kern die Grenze, R-NUM-03): 600,00 *
     # 181/366 * 50/100 = 148,36. Berts Sicht sieht das ganze Jahr und den
     # Vermieterrest der ab 30.06. leeren Wohnung 1: 300,00 * 185/366 =
     # 151,64. Zusammen 600,00.

@@ -25,10 +25,10 @@ sehen gleich aus:
     man sie abziehen kann.
 
 ``mietende(auszug, ...)``
-    Ein **Auszugsdatum**. Der Auszugstag zaehlt nicht mit, also ist er
-    bereits die Grenze und wird **nicht** verschoben. Genau hier lag der
-    Fehler: der Lader stutzt das Zeitraumende auf das Auszugsdatum, und
-    danach sah ein Auszugsdatum aus wie ein Zeitraumende.
+    Die Grenze eines **Mietverhaeltnisses** (``Mieter.auszug`` im Kern). Sie
+    wird **nicht** verschoben -- sie ist schon der Tag nach dem letzten
+    Miettag. Das eingegebene Auszugsdatum ist der letzte Miettag (F-118);
+    der Lader macht daraus mit ``grenze()`` die Grenze, genau einmal.
 
 Wer eine Tageszahl braucht, nimmt ``tage()`` oder ``ueberschneidung()`` und
 uebergibt Grenzen -- keine letzten Tage. Ein ``+ 1`` steht in diesem Programm
@@ -61,9 +61,9 @@ __all__ = [
 HINWEIS_TAGESKONVENTION = (
     '<b>Zu den Tagesangaben:</b> Gezählt wird vom ersten bis zum letzten Tag '
     'des angegebenen Zeitraums, beide Tage eingeschlossen. Der Einzugstag wird '
-    'also mitberechnet. Endet ein Mietverhältnis, zählt der Auszugstag nicht '
-    'mehr mit – er ist bereits der erste Tag des nachfolgenden '
-    'Mietverhältnisses. So wird kein Tag zweimal abgerechnet.'
+    'also mitberechnet. Endet ein Mietverhältnis, zählt der Auszugstag als '
+    'letzter Miettag mit – das nachfolgende Mietverhältnis beginnt am Tag '
+    'danach. So wird kein Tag zweimal abgerechnet.'
 )
 
 
@@ -117,9 +117,10 @@ def ueberschneidung(a_von: date, a_bis: date, b_von: date, b_bis: date) -> int:
 def mietende(auszug, wenn_offen: date) -> date:
     """Die obere Grenze eines Mietverhaeltnisses.
 
-    Ein gesetztes Auszugsdatum geht **unveraendert** durch: der Auszugstag
-    zaehlt nach R-NUM-03 nicht mit und ist damit schon die Grenze. Wer hier
-    ``grenze()`` anwendet, berechnet den Wechseltag zweimal.
+    Ein gesetztes ``auszug`` geht **unveraendert** durch: es ist schon die
+    Grenze (R-NUM-03), der Lader hat den letzten Miettag bereits mit
+    ``grenze()`` umgerechnet (F-118). Wer hier noch einmal ``grenze()``
+    anwendet, berechnet den Wechseltag zweimal.
 
     ``wenn_offen`` ist die Grenze, die gilt, solange niemand ausgezogen ist --
     in aller Regel das Ende des Abrechnungs- oder Rechnungszeitraums.

@@ -417,7 +417,7 @@ class Vorgang:
     jeder Stichprobenfall es nachbauen.
 
     Genau dieses Stutzen macht ``ende`` zweideutig: mal ist es das Ende des
-    Abrechnungszeitraums, mal das Auszugsdatum des Mieters. Gerechnet wird
+    Abrechnungszeitraums, mal der letzte Miettag des Mieters. Gerechnet wird
     deshalb nie mit ``ende``, sondern mit ``ende_grenze`` -- das Feld bleibt
     fuer die Anzeige, die Grenze fuer die Tage.
     """
@@ -451,9 +451,10 @@ class Vorgang:
 
         Hier loest sich die Zweideutigkeit von ``ende`` auf, und zwar an der
         einzigen Stelle, an der die noetige Auskunft vorliegt: am Mieter.
-        Steht ein Auszugsdatum und hat der Lader darauf gestutzt, dann ist
-        ``ende`` bereits die Grenze -- der Auszugstag zaehlt nicht mit. Sonst
-        ist es ein Zeitraumende und die Grenze liegt einen Tag weiter.
+        ``Mieter.auszug`` ist schon die Grenze, der Tag nach dem letzten
+        Miettag (der Lader rechnet um, F-118). Liegt sie im Zeitraum, gilt
+        sie. Sonst ist ``ende`` ein Zeitraumende und die Grenze liegt einen
+        Tag weiter.
 
         Ohne diese Unterscheidung bekommt der Wechseltag zwei Rechnungen: bei
         einem Auszug am 30.06. zahlten Vor- und Nachmieter zusammen 367 von
@@ -624,9 +625,9 @@ def ueberschneidungstage(d1_start: date, d1_end: date, d2_start: date, d2_end: d
     werden dafuer nach ``zeitraum.grenze()`` verschoben -- das ``+ 1`` steht
     nicht mehr hier (NK-041, R-NUM-03).
 
-    **Nicht fuer Mietverhaeltnisse.** Ein Auszugsdatum ist kein letzter Tag,
-    sondern schon die Grenze; wer es hier hineingibt, berechnet den Auszugstag
-    mit. Dafuer gibt es ``Vorgang.ende_grenze``.
+    **Nicht fuer Mietverhaeltnisse.** ``Mieter.auszug`` ist kein letzter Tag,
+    sondern schon die Grenze; wer es hier hineingibt, berechnet einen Tag zu
+    viel. Dafuer gibt es ``Vorgang.ende_grenze``.
     """
     return ueberschneidung(d1_start, grenze(d1_end), d2_start, grenze(d2_end))
 
@@ -891,8 +892,9 @@ def verbrauch_in(zaehler: Zaehler, von: date, bis: date) -> dict:
     """Verbrauch in ``[von, bis)`` -- der erste Tag zaehlt, der letzte nicht.
 
     Die halboffene Form ist die, in der der Kern rechnet (R-NUM-03). Sie ist
-    hier noetig, weil ein auf das Mietverhaeltnis gestutzter Zeitraum am
-    Auszugsdatum endet, und das ist bereits eine Grenze und kein letzter Tag.
+    hier noetig, weil ein auf das Mietverhaeltnis gestutzter Zeitraum an
+    ``Mieter.auszug`` endet, und das ist bereits eine Grenze und kein letzter
+    Tag.
 
     Liegt eine **Zwischenablesung** (NK-051, R-HK-04) genau auf einer der
     beiden Grenzen, dann misst sie diese Grenze: liegt ein Ablesungspaar an
@@ -1076,8 +1078,8 @@ def _personentage_des_mieters(mieter: Mieter, von: date, bis: date) -> int:
 
     Erst wird die Mietzeit mit dem Zeitraum geschnitten, dann zaehlt jeder Tag
     so oft, wie an ihm Personen im Haushalt lebten (R-NUM-04). Der Einzugstag
-    zaehlt, der Auszugstag nicht -- das Auszugsdatum ist schon die Grenze
-    (R-NUM-03).
+    zaehlt und der letzte Miettag auch -- ``Mieter.auszug`` ist der Tag
+    danach, die Grenze (R-NUM-03, F-118).
     """
     m_von = max(von, mieter.einzug)
     m_bis = min(bis, mietende(mieter.auszug, bis))
@@ -2370,7 +2372,7 @@ def rechne(vorgang: Vorgang) -> dict:
 
         # Halboffen (R-NUM-03): der erste Tag zaehlt, der letzte nicht.
         # ``ende_grenze`` entscheidet dabei, ob das Ende ein Zeitraumende ist
-        # -- dann liegt die Grenze einen Tag weiter -- oder ein Auszugsdatum,
+        # -- dann liegt die Grenze einen Tag weiter -- oder ein Mietende,
         # das schon die Grenze ist. Der Lader stutzt beides in dasselbe Feld.
         invoice_days = tage(inv.beginn, inv.ende_grenze)
         overlap_von = max(inv.beginn, vorgang.beginn)
