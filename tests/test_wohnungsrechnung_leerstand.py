@@ -70,3 +70,27 @@ def test_vormieter_zahlt_den_rest():
     vormieter = replace(vorgang, mieter=vorgang.mieter_der_immobilie[1],
                         beginn=BEGINN, ende=date(2025, 3, 31))
     assert rechne(vormieter)['line_items'][0]['tenant_cost'] == Decimal('300.00')
+
+
+def _nachbar(mit_zaehler=True):
+    """Wohnung 1 steht das ganze Jahr leer; abgerechnet wird der Mieter von Wohnung 2."""
+    vorgang = _vorgang(mit_zaehler)
+    zwei = Wohnung(id=2, name='Wohnung 2', qm=70.0)
+    nachbar = Mieter(id=3, name='Mieter 3', einzug=BEGINN, auszug=None, wohnung_id=2)
+    return replace(vorgang, mieter=nachbar, wohnung=zwei, beginn=BEGINN,
+                   wohnungen=(vorgang.wohnung, zwei), mieter_der_immobilie=(nachbar,))
+
+
+def test_leere_wohnung_steht_in_jeder_abrechnung_des_hauses():
+    """Die Rechnung der leeren Wohnung trägt niemand als der Vermieter.
+
+    Vorher stand sie in keiner Abrechnung: die Abrechnung der Wohnung gab es
+    nicht, und jede andere übersprang die Rechnung samt Vermieteranteil.
+    """
+    ergebnis = rechne(_nachbar())
+    assert not ergebnis['line_items']
+    assert ergebnis['landlord_share']['total_amount'] == Decimal('1200.00')
+
+
+def test_leere_wohnung_ohne_zaehler():
+    assert rechne(_nachbar(mit_zaehler=False))['landlord_share']['total_amount'] == Decimal('1200.00')

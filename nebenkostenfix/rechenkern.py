@@ -488,10 +488,12 @@ def hauptzaehler(vorgang: Vorgang, kategorie_id: int) -> Optional[Zaehler]:
     return None
 
 
-def wohnungszaehler(vorgang: Vorgang, kategorie_id: int) -> Optional[Zaehler]:
-    """Der Zaehler dieser Wohnung fuer diese Kategorie, oder None."""
+def wohnungszaehler(vorgang: Vorgang, kategorie_id: int,
+                    wohnung_id: Optional[int] = None) -> Optional[Zaehler]:
+    """Der Zaehler dieser (oder der genannten) Wohnung fuer diese Kategorie, oder None."""
+    wohnung_id = wohnung_id or vorgang.wohnung.id
     for z in _nach_id(vorgang.zaehler):
-        if z.wohnung_id == vorgang.wohnung.id and z.kategorie_id == kategorie_id and not z.ist_hauptzaehler:
+        if z.wohnung_id == wohnung_id and z.kategorie_id == kategorie_id and not z.ist_hauptzaehler:
             return z
     return None
 
@@ -2454,6 +2456,26 @@ def rechne(vorgang: Vorgang) -> dict:
         rechenweg: list = []
 
         if inv.wohnung_id:
+            # F-123: was die Wohnung verbraucht, waehrend niemand dort wohnt,
+            # zahlt kein Mieter. Es bleibt beim Vermieter und steht, wie jeder
+            # Vermieteranteil, in jeder Abrechnung des Hauses -- auch wenn die
+            # Wohnung die ganze Zeit leer stand und es ihre eigene nicht gibt.
+            # Gemessen am Zaehler der Wohnung, ohne Zaehler nach Tagen.
+            leer_zaehler = wohnungszaehler(vorgang, cat.id, inv.wohnung_id)
+            if leer_zaehler:
+                anteil = _vermieterverbrauchsanteil(
+                    vorgang, cat.name, inv, inv.betrag,
+                    verbrauch(leer_zaehler, inv.beginn, inv.ende),
+                    {inv.wohnung_id: leer_zaehler},
+                    einheit_fuer(cat.name, cat.betrkv_nr), {inv.wohnung_id},
+                    gemessen=True)
+            else:
+                qm = next((w.qm for w in vorgang.wohnungen if w.id == inv.wohnung_id), None)
+                anteil = qm and _vermieteranteil(
+                    vorgang, cat.name, inv, inv.betrag, qm,
+                    inv.beginn, inv.ende_grenze, nur={inv.wohnung_id})
+            if anteil:
+                vermieter_positionen.append(anteil)
             if vorgang.wohnung.id != inv.wohnung_id:
                 continue  # Not for this apartment
             tenant_cost = prorated_invoice_amount
@@ -2483,22 +2505,6 @@ def rechne(vorgang: Vorgang) -> dict:
                             f"{euro_text(inv.betrag)} Rechnungsbetrag × "
                             f"{zahl_text(round(tenant_consumption, 1))} / {zahl_text(round(gesamt, 1))} {unit} "
                             f"= {euro_text(runde(tenant_cost))}")
-
-            # F-123: was die Wohnung verbraucht, waehrend niemand dort wohnt,
-            # zahlt kein Mieter. Es bleibt beim Vermieter und steht dort --
-            # gemessen am Zaehler der Wohnung, ohne Zaehler nach Tagen.
-            if tenant_meter:
-                anteil = _vermieterverbrauchsanteil(
-                    vorgang, cat.name, inv, inv.betrag,
-                    verbrauch(tenant_meter, inv.beginn, inv.ende),
-                    {inv.wohnung_id: tenant_meter}, unit, {inv.wohnung_id},
-                    gemessen=True)
-            else:
-                anteil = _vermieteranteil(
-                    vorgang, cat.name, inv, inv.betrag, vorgang.wohnung.qm,
-                    inv.beginn, inv.ende_grenze, nur={inv.wohnung_id})
-            if anteil:
-                vermieter_positionen.append(anteil)
 
         elif billing_type == 'qm':
             # Erst hier abbrechen, nicht schon oben: eine Abrechnung ohne
