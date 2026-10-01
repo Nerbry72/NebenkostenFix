@@ -217,11 +217,17 @@ jobs:
       VERSION: ${{ needs.version.outputs.wert }}
       MSSTORE_OUTPUT_STREAM: stdout
     steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
       - uses: actions/download-artifact@v8
         with:
           name: nebenkostenfix-msix
           path: msix
       - uses: microsoft/microsoft-store-apppublisher@v1.4
+        with:
+          version: v0.4.3
       - name: Zugang einrichten
         shell: pwsh
         run: >-
@@ -230,9 +236,20 @@ jobs:
           --sellerId "${{ secrets.PARTNER_CENTER_SELLER_ID }}"
           --clientId "${{ secrets.PARTNER_CENTER_CLIENT_ID }}"
           --clientSecret "${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}"
-      - name: MSIX einreichen
+      # publish uebernaehme die Neuerungen der letzten Fassung. Deshalb erst
+      # ein Entwurf (einen alten offenen loescht msstore selbst), dann die
+      # Neuerungen aus eintrag-de.md, dann einreichen. Scheitert ein Schritt
+      # danach, liegt der Entwurf im Partner Center: dort pruefen, einreichen.
+      - name: Entwurf anlegen
         shell: pwsh
         run: |
-          msstore publish "msix\NebenkostenFix-$env:VERSION.msix" -id 9PJQSSQGBNZ8
+          msstore publish "msix\NebenkostenFix-$env:VERSION.msix" -id 9PJQSSQGBNZ8 --noCommit
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Neuerungen setzen
+        run: python scripts/store_neuerungen.py 9PJQSSQGBNZ8
+      - name: Einreichen
+        shell: pwsh
+        run: |
+          msstore submission publish 9PJQSSQGBNZ8
           if ($LASTEXITCODE -ne 0) { exit 1 }
           "- Microsoft Store: NebenkostenFix-$env:VERSION.msix eingereicht, Zertifizierung laeuft" >> $env:GITHUB_STEP_SUMMARY

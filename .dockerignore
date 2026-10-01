@@ -79,6 +79,8 @@ scripts/hilfe_begriffe.py
 scripts/praxisprobe.py
 # NK-187: Datenwaechter, sucht echte Werte in einem Diff.
 scripts/datenwaechter.py
+# Store-Release: setzt die Neuerungen im Microsoft Store (release.yml).
+scripts/store_neuerungen.py
 
 # Entwicklung. Im Abbild laeuft weder pytest noch der Dev-Stapel.
 tests/

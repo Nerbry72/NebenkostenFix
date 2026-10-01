@@ -244,4 +244,10 @@ def test_release_reicht_das_msix_im_store_ein():
     assert release.count('PARTNER_CENTER_') == store.count('PARTNER_CENTER_') == 4
     # Dasselbe Artefakt, das windows.yml hochlaedt, fuer dasselbe Produkt.
     assert 'name: nebenkostenfix-msix' in store
-    assert 'msstore publish "msix\\NebenkostenFix-$env:VERSION.msix" -id 9PJQSSQGBNZ8' in store
+    # publish uebernaehme die Neuerungen der letzten Fassung. Deshalb erst
+    # Entwurf, dann Neuerungen aus eintrag-de.md, dann einreichen.
+    assert 'version: v0.4.3' in store
+    entwurf = 'msstore publish "msix\\NebenkostenFix-$env:VERSION.msix" -id 9PJQSSQGBNZ8 --noCommit'
+    neuerungen = 'python scripts/store_neuerungen.py 9PJQSSQGBNZ8'
+    einreichen = 'msstore submission publish 9PJQSSQGBNZ8'
+    assert store.index(entwurf) < store.index(neuerungen) < store.index(einreichen)

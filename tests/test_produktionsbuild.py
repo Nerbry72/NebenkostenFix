@@ -200,6 +200,8 @@ NUR_ENTWICKLUNG = frozenset({
     'scripts/praxisprobe.py',
     # NK-187: Datenwaechter, liest ebenfalls eine Kopie der echten Datenbank.
     'scripts/datenwaechter.py',
+    # Store-Release: setzt die Neuerungen im Microsoft Store (release.yml).
+    'scripts/store_neuerungen.py',
 })
 GEHOERT_INS_ABBILD = frozenset({
     'scripts/kostenarten.py',
