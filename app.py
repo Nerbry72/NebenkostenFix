@@ -2072,7 +2072,8 @@ def billing_suggestions():
         has_invoices = False
         min_start = None
         max_end = None
-        
+        global_billed = abgerechnet_bis(t)  # gilt fuer alle Kostenarten des Mieters
+
         for cat in all_categories:
             cost_profile = TenantCostProfile.query.filter_by(tenant_id=t.id, category_id=cat.id).first()
             if cost_profile and cost_profile.billing_type == 'ignoriert':
@@ -2085,7 +2086,6 @@ def billing_suggestions():
             
             billed_until = last_cat_report.end_date if last_cat_report else None
             
-            global_billed = abgerechnet_bis(t)
             if global_billed:
                 if not billed_until or global_billed > billed_until:
                     billed_until = global_billed

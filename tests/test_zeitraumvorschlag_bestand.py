@@ -203,6 +203,22 @@ def test_feld_ueber_die_api(auth_client):
     assert gelesen()['abrechnungsjahr_quelle'] == 'abrechnungen'
 
 
+
+def test_vorschlagsliste_fragt_abgerechnet_bis_einmal_je_mieter(auth_client, monkeypatch):
+    """Copilot-Review zu PR #25: nicht einmal je Mieter und Kostenart."""
+    from nebenkostenfix import zeitraumvorschlag
+    prop = f.house('Zaehlhaus')
+    mieter = _mieter(prop, 'Mieter 11', date(2020, 1, 1))
+    for name in ('Müllabfuhr', 'Grundsteuer', 'Wasser'):
+        f.profile(mieter, f.category(name), 'qm')
+    aufrufe = []
+    echt = zeitraumvorschlag.abgerechnet_bis
+    monkeypatch.setattr(zeitraumvorschlag, 'abgerechnet_bis',
+                        lambda t: aufrufe.append(t.id) or echt(t))
+
+    assert auth_client.get('/api/billing/suggestions').status_code == 200
+    assert aufrufe == [mieter.id]
+
 @pytest.mark.skipif(shutil.which('node') is None, reason='node fehlt')
 def test_bearbeiten_macht_den_abgeleiteten_beginn_nicht_zum_feld():
     """PR #25 (Copilot): der Dialog trug den abgeleiteten Wert ins Feld ein.
