@@ -106,6 +106,24 @@ def test_auszug_bestimmt_den_rhythmus_nicht(app_ctx):
                                '(§ 556 Abs. 3 BGB).')
 
 
+@pytest.mark.parametrize('vorjahr', [False, True])
+def test_kurze_abrechnung_bestimmt_den_rhythmus_nicht(app_ctx, vorjahr):
+    """Copilot-Review zu PR #25: 01.01.–31.03. abgerechnet, weil die Rechnungen
+    endeten. Vorher begann das Abrechnungsjahr danach am 01.04."""
+    prop = f.house('Kalenderhaus')
+    mieter = _mieter(prop, 'Mieter 12', date(2020, 1, 1))
+    if vorjahr:
+        _abgerechnet(mieter, date(2024, 1, 1), date(2024, 12, 31))
+    _abgerechnet(mieter, date(2025, 1, 1), date(2025, 3, 31))
+    _muell(prop, mieter, (date(2025, 1, 1), date(2025, 12, 31)),
+           (date(2026, 1, 1), date(2026, 12, 31)))
+
+    v = vorschlag(mieter.id, HEUTE)
+
+    assert (v['beginn'], v['ende']) == ('2025-04-01', '2025-12-31')
+    assert v['gruende'][1].startswith('Abgerechnet wird je Kalenderjahr')
+
+
 def test_auszug_am_monatsletzten_vor_dem_jahresende(app_ctx):
     prop = f.house('Aprilhaus')
     prop.abrechnungsjahr_beginn = APRIL

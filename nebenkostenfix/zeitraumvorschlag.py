@@ -56,11 +56,19 @@ def _ohne(gruende: list) -> dict:
     return {'beginn': None, 'ende': None, 'gruende': gruende}
 
 
+def _ein_jahr(start: date, danach: date) -> bool:
+    """Liegen genau zwölf Monate zwischen ``start`` und ``danach``?"""
+    return (danach.year - start.year) * 12 + danach.month - start.month == 12 \
+        and danach.day == start.day
+
+
 def jahresbeginn(prop) -> tuple[int, int, str]:
     """(Monat, Tag, Quelle) des Abrechnungsjahres eines Hauses (D-114).
 
     Quelle ``feld``: am Haus eingestellt. ``abrechnungen``: so endeten die
-    bisherigen Abrechnungen des Hauses, ein Auszug zählt nicht mit.
+    bisherigen Abrechnungen des Hauses über genau zwölf Monate, ein Auszug
+    zählt nicht mit. Eine kürzere Abrechnung sagt über den Takt nichts: Sie
+    endet etwa früher, weil die Rechnungen fehlten (Copilot-Review zu PR #25).
     ``vorgabe``: der 01.01.
     """
     from nebenkostenfix.models import Apartment, Tenant, TenantBillingReport
@@ -68,10 +76,12 @@ def jahresbeginn(prop) -> tuple[int, int, str]:
     if prop.abrechnungsjahr_beginn:
         monat, tag = map(int, prop.abrechnungsjahr_beginn.split('-'))
         return monat, tag, 'feld'
-    enden = (TenantBillingReport.query.join(Tenant).join(Apartment)
-             .filter(Apartment.property_id == prop.id)
-             .with_entities(TenantBillingReport.end_date, Tenant.move_out_date).all())
-    tage = [ende + EIN_TAG for ende, auszug in enden if ende != auszug]
+    zeitraeume = (TenantBillingReport.query.join(Tenant).join(Apartment)
+                  .filter(Apartment.property_id == prop.id)
+                  .with_entities(TenantBillingReport.start_date, TenantBillingReport.end_date,
+                                 Tenant.move_out_date).all())
+    tage = [ende + EIN_TAG for start, ende, auszug in zeitraeume
+            if ende != auszug and _ein_jahr(start, ende + EIN_TAG)]
     if not tage:
         return 1, 1, 'vorgabe'
     anzahl = Counter((t.month, t.day) for t in tage)
