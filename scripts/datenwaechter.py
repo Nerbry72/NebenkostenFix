@@ -65,9 +65,12 @@ def werte(db: sqlite3.Connection) -> dict[str, set]:
         namen |= {w.casefold() for w in WORT.findall(str(text))} - ALLTAG
         if any(c.isdigit() for c in str(text)) and len(str(text)) >= 5:
             namen.add(str(text).casefold())  # Zaehler- und Rechnungsnummern ganz
+    # grundpreis gibt es erst seit e3c5a7f9b1d2; aeltere Kopien haben ihn nicht.
+    grundpreis = any(r[1] == 'grundpreis' for r in db.execute('PRAGMA table_info(cost_invoices)'))
     betraege = {_zahl(b).quantize(Decimal('0.01')) for b in spalte(
         'SELECT amount FROM cost_invoices UNION ALL SELECT co2_kosten FROM cost_invoices '
-        'UNION ALL SELECT amount FROM payments')}
+        + ('UNION ALL SELECT grundpreis FROM cost_invoices ' if grundpreis else '')
+        + 'UNION ALL SELECT amount FROM payments')}
     betraege = {b for b in betraege if b % 1}
     staende = {Decimal(repr(float(s))).normalize() for s in spalte(
         'SELECT value FROM meter_readings UNION ALL SELECT value_nt FROM meter_readings')}
