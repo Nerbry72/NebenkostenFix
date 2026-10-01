@@ -439,14 +439,16 @@ def _lauf(a, ordner: Path) -> int:
                            capture_output=True, text=True).stdout.strip() or 'unbekannt'
     import app as anwendung
     with anwendung.app.app_context():
-        k = katalog(anmelden(anwendung.app), date.today())
-        anonym = Anonym(a.klarname)
-        text = anonym.text(bericht(k, stand))
-        if a.json:
-            a.json.write_text(anonym.text(json.dumps(k, ensure_ascii=False, indent=1)),
-                              encoding='utf-8')
-        anwendung.db.session.remove()
-        anwendung.db.engine.dispose()  # sonst haelt Windows die Kopie fest
+        try:
+            k = katalog(anmelden(anwendung.app), date.today())
+            anonym = Anonym(a.klarname)
+            text = anonym.text(bericht(k, stand))
+            if a.json:
+                a.json.write_text(anonym.text(json.dumps(k, ensure_ascii=False, indent=1)),
+                                  encoding='utf-8')
+        finally:  # auch bei Fehlern, sonst haelt Windows die Kopie fest
+            anwendung.db.session.remove()
+            anwendung.db.engine.dispose()
     if a.aus:
         a.aus.parent.mkdir(parents=True, exist_ok=True)
         a.aus.write_text(text, encoding='utf-8')

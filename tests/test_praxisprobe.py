@@ -79,9 +79,12 @@ def test_kopie_des_bestands_bleibt_nicht_liegen(tmp_path):
 
 
 @pytest.mark.skipif(not Path('/proc/self/fd').is_dir(), reason='braucht /proc')
-def test_lauf_schliesst_die_kopie(tmp_path):
+@pytest.mark.parametrize('json_ziel', [None, 'fehlt/k.json'], ids=['erfolg', 'fehler'])
+def test_lauf_schliesst_die_kopie(tmp_path, json_ziel):
     """PR #25 (Windows-CI): Die Session hielt die Kopie offen, das Wegräumen
-    scheiterte unter Windows still. Unter Linux zeigt /proc, was noch offen ist."""
+    scheiterte unter Windows still. Unter Linux zeigt /proc, was noch offen ist.
+    Copilot-Review, zweite Runde: auch dann, wenn der Lauf mit einem Fehler endet
+    (hier: Ordner für das JSON fehlt)."""
     import subprocess
     import sys
 
@@ -93,8 +96,14 @@ os.environ.pop('DATABASE_URL', None)
 import praxisprobe
 o = Path({str(tmp_path / 'o')!r}); o.mkdir()
 sqlite3.connect({str(tmp_path / 'leer.db')!r}).close()
-praxisprobe._lauf(argparse.Namespace(db=Path({str(tmp_path / 'leer.db')!r}), code=Path({str(WURZEL)!r}),
-                  aus=Path({str(tmp_path / 'b.md')!r}), json=None, klarname=[]), o)
+json_ziel = {str(tmp_path / json_ziel) if json_ziel else None!r}
+try:
+    praxisprobe._lauf(argparse.Namespace(db=Path({str(tmp_path / 'leer.db')!r}), code=Path({str(WURZEL)!r}),
+                      aus=Path({str(tmp_path / 'b.md')!r}), json=json_ziel and Path(json_ziel), klarname=[]), o)
+except FileNotFoundError:
+    assert json_ziel
+else:
+    assert not json_ziel
 def ziel(f):
     try:
         return os.readlink(f'/proc/self/fd/{{f}}')
