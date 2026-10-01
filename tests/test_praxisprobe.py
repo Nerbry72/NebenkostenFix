@@ -10,6 +10,8 @@ import importlib.util
 from datetime import date
 from pathlib import Path
 
+import pytest
+
 from tests import billing_factories as f
 
 WURZEL = Path(__file__).resolve().parents[1]
@@ -74,3 +76,32 @@ def test_kopie_des_bestands_bleibt_nicht_liegen(tmp_path):
     assert lauf.returncode == 0, lauf.stderr[-2000:]
     assert (tmp_path / 'bericht.md').is_file()
     assert not list(temp.glob('praxisprobe-*'))
+
+
+@pytest.mark.skipif(not Path('/proc/self/fd').is_dir(), reason='braucht /proc')
+def test_lauf_schliesst_die_kopie(tmp_path):
+    """PR #25 (Windows-CI): Die Session hielt die Kopie offen, das Wegräumen
+    scheiterte unter Windows still. Unter Linux zeigt /proc, was noch offen ist."""
+    import subprocess
+    import sys
+
+    skript = f'''
+import argparse, os, sqlite3, sys
+from pathlib import Path
+sys.path[:0] = [{str(WURZEL / 'scripts')!r}, {str(WURZEL)!r}]
+os.environ.pop('DATABASE_URL', None)
+import praxisprobe
+o = Path({str(tmp_path / 'o')!r}); o.mkdir()
+sqlite3.connect({str(tmp_path / 'leer.db')!r}).close()
+praxisprobe._lauf(argparse.Namespace(db=Path({str(tmp_path / 'leer.db')!r}), code=Path({str(WURZEL)!r}),
+                  aus=Path({str(tmp_path / 'b.md')!r}), json=None, klarname=[]), o)
+def ziel(f):
+    try:
+        return os.readlink(f'/proc/self/fd/{{f}}')
+    except OSError:
+        return ''
+print('OFFEN', [z for z in map(ziel, os.listdir('/proc/self/fd')) if z.startswith(str(o))])
+'''
+    lauf = subprocess.run([sys.executable, '-c', skript], capture_output=True, text=True, timeout=120)
+    assert lauf.returncode == 0, lauf.stderr[-2000:]
+    assert lauf.stdout.splitlines()[-1] == 'OFFEN []'

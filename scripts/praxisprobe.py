@@ -445,6 +445,7 @@ def _lauf(a, ordner: Path) -> int:
         if a.json:
             a.json.write_text(anonym.text(json.dumps(k, ensure_ascii=False, indent=1)),
                               encoding='utf-8')
+        anwendung.db.session.remove()
         anwendung.db.engine.dispose()  # sonst haelt Windows die Kopie fest
     if a.aus:
         a.aus.parent.mkdir(parents=True, exist_ok=True)
