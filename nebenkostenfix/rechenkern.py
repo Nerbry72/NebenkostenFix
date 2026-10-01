@@ -2749,13 +2749,22 @@ def rechne(vorgang: Vorgang) -> dict:
             # F-137: der Grundpreis faellt auch im Leerstand an, unabhaengig
             # vom Verbrauch. Er folgt den Tagen, nur der Rest dem Zaehler.
             grundpreis = inv.grundpreis if leer_zaehler else None
+            # PR #25: beim Dualtarif kostet jedes Register seinen Preis, in
+            # der Mieterzeile wie im Leerstand -- wie beim Hauszaehler.
+            preise = None
             if leer_zaehler:
+                ganz = verbrauch_in(leer_zaehler, inv.beginn, inv.ende_grenze)
+                preis_ht_eff, preis_nt_eff = tarifpreise(
+                    inv.betrag - (grundpreis or NULL), dec(ganz['ht']), dec(ganz['nt']),
+                    inv.preis_ht, inv.preis_nt)
+                if preis_ht_eff is not None:
+                    preise = (preis_ht_eff, preis_nt_eff)
                 anteil = _vermieterverbrauchsanteil(
                     vorgang, cat.name, inv, inv.betrag - (grundpreis or NULL),
                     verbrauch(leer_zaehler, inv.beginn, inv.ende),
                     {inv.wohnung_id: leer_zaehler},
                     einheit_fuer(cat.name, cat.betrkv_nr), {inv.wohnung_id},
-                    gemessen=True, fenster=(overlap_von, overlap_bis))
+                    gemessen=True, fenster=(overlap_von, overlap_bis), preise=preise)
                 if grundpreis:
                     grundanteil = qm and _vermieteranteil(
                         vorgang, cat.name, inv, grundpreis * time_fraction, qm,
@@ -2803,7 +2812,12 @@ def rechne(vorgang: Vorgang) -> dict:
                     if overlap_days < invoice_days and gesamt > 0:
                         anteil = min(max(dec(tenant_consumption) / dec(gesamt), NULL), dec(1))
                         verbrauchsteil = inv.betrag - (grundpreis or NULL)
-                        tenant_cost = verbrauchsteil * anteil
+                        if preise:
+                            verbrauchskosten = (dec(tenant_detail['ht']) * preise[0]
+                                                + dec(tenant_detail['nt']) * preise[1])
+                        else:
+                            verbrauchskosten = verbrauchsteil * anteil
+                        tenant_cost = verbrauchskosten
                         description = (f"Direkt zugewiesen, nach Verbrauch: "
                                        f"{zahl_text(round(tenant_consumption, 1))} von "
                                        f"{zahl_text(round(gesamt, 1))} {unit} der Rechnung")
@@ -2816,11 +2830,19 @@ def rechne(vorgang: Vorgang) -> dict:
                                 f"{euro_text(grundpreis)} Grundpreis/Zählermiete, anteilig "
                                 f"{overlap_days} von {invoice_days} Tagen = "
                                 f"{euro_text(runde(grund_kosten))}")
-                        rechenweg.append(
-                            f"{euro_text(verbrauchsteil)} "
-                            f"{'übriger Betrag' if grundpreis else 'Rechnungsbetrag'} × "
-                            f"{zahl_text(round(tenant_consumption, 1))} / {zahl_text(round(gesamt, 1))} {unit} "
-                            f"= {euro_text(runde(verbrauchsteil * anteil))}")
+                        if preise:
+                            rechenweg.append(
+                                f"{zahl_text(round(tenant_detail['ht'], 1))} {unit} HT × "
+                                f"{zahl_text(runde_einheitspreis(preise[0]))} €/{unit} + "
+                                f"{zahl_text(round(tenant_detail['nt'], 1))} {unit} NT × "
+                                f"{zahl_text(runde_einheitspreis(preise[1]))} €/{unit} "
+                                f"= {euro_text(runde(verbrauchskosten))}")
+                        else:
+                            rechenweg.append(
+                                f"{euro_text(verbrauchsteil)} "
+                                f"{'übriger Betrag' if grundpreis else 'Rechnungsbetrag'} × "
+                                f"{zahl_text(round(tenant_consumption, 1))} / {zahl_text(round(gesamt, 1))} {unit} "
+                                f"= {euro_text(runde(verbrauchskosten))}")
 
         elif billing_type == 'qm':
             # Erst hier abbrechen, nicht schon oben: eine Abrechnung ohne

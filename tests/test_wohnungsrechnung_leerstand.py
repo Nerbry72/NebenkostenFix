@@ -102,3 +102,30 @@ def test_leere_wohnung_steht_in_jeder_abrechnung_des_hauses():
 
 def test_leere_wohnung_ohne_zaehler():
     assert rechne(_nachbar(mit_zaehler=False))['landlord_share']['total_amount'] == Decimal('1200.00')
+
+
+def test_dualtarif_rechnet_je_register():
+    """PR #25 (Copilot, fünfte Runde): auch bei einer Wohnungsrechnung kostet
+    der Verbrauch beim Dualtarif HT- und NT-Preis, in der Mieterzeile wie im
+    Leerstand (wie die Hauszähler seit der vierten Runde).
+
+    HT 0,40 EUR, NT 0,10 EUR, 300,00 EUR. Bis zum Einzug misst der Zähler
+    300 kWh NT = 30 EUR, danach 600 HT + 300 NT = 270 EUR.
+    Vorher mit dem Mischpreis 300 EUR / 1200 kWh: 225 und 75 EUR.
+    """
+    strom = Kategorie(id=6, name='Strom', braucht_zaehler=True)
+    zaehler = Zaehler(id=10, nummer='Z-10', kategorie_id=6, kategorie_name='Strom',
+                      ist_hauptzaehler=False, immobilie_id=1, wohnung_id=1,
+                      staende=(Stand(BEGINN, 0.0, 0.0), Stand(EINZUG, 0.0, 300.0),
+                               Stand(GRENZE, 600.0, 600.0)))
+    rechnung = Rechnung(id=1, kategorie=strom, betrag=Decimal('300.00'),
+                        beginn=BEGINN, ende=ENDE, wohnung_id=1,
+                        preis_ht=Decimal('0.40'), preis_nt=Decimal('0.10'))
+
+    def mit_strom(vorgang):
+        return replace(vorgang, profile={strom.id: 'direkt'}, rechnungen=(rechnung,),
+                       zaehler=(zaehler,))
+
+    mieter = rechne(mit_strom(_vorgang()))['line_items'][0]['tenant_cost']
+    leer = rechne(mit_strom(_nachbar(mit_einzug=True)))['landlord_share']['total_amount']
+    assert (mieter, leer) == (Decimal('270.00'), Decimal('30.00'))
