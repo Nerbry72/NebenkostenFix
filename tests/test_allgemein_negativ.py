@@ -167,3 +167,19 @@ def test_dualtarif_warnt_auch_fuer_ein_einzelnes_register():
     assert len(warnungen) == 1
     assert 'im Hochtarif' in warnungen[0]
     assert '-10,0 kWh' in warnungen[0]
+
+
+def test_gleiche_ursache_fuer_wasser_und_entwaesserung_ist_eine_meldung():
+    """F-132: Wasserversorgung und Entwässerung lesen denselben Hauptzähler.
+    Die Abrechnung meldete dieselbe Ursache zweimal; jetzt ist es eine
+    Meldung, die beide Kostenarten nennt. Andere Meldungen bleiben getrennt."""
+    from nebenkostenfix.rechenkern import HINWEIS_ALLGEMEIN_NEGATIV, meldungen_buendeln
+    werte = dict(zaehler='WA-1', beginn='01.01.2025', ende='31.12.2025',
+                 register='', menge='-1,3', einheit='m³')
+    wasser = HINWEIS_ALLGEMEIN_NEGATIV.format(kategorie='Wasserversorgung', **werte)
+    abwasser = HINWEIS_ALLGEMEIN_NEGATIV.format(kategorie='Entwässerung', **werte)
+    anders = HINWEIS_ALLGEMEIN_NEGATIV.format(kategorie='Strom', **{**werte, 'menge': '-4,0'})
+    gebuendelt = meldungen_buendeln([wasser, abwasser, anders, wasser])
+    assert len(gebuendelt) == 2
+    assert 'Für „Wasserversorgung“ und „Entwässerung“ zeigen' in gebuendelt[0]
+    assert gebuendelt[1] == anders

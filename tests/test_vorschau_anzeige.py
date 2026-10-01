@@ -56,12 +56,31 @@ def test_gleiche_warnungen_werden_gebuendelt_und_gekuerzt():
     assert ergebnis == [
         {'kurz': 'Für „Entwässerung“ und „Wasserversorgung“ zeigen die Wohnungszähler '
                  'mehr Verbrauch als der Hauptzähler: -1,3 m³.',
+         'tun': '',
          'rest': 'Andere Kostenarten bleiben unberührt.',
          'kennung': 'W-ZAEHLER-ALLGEMEIN-NEGATIV'},
         {'kurz': 'Der Zeitraum ist länger als ein Jahr.',
+         'tun': '',
          'rest': 'Nach § 556 Abs. 3 BGB wird jährlich abgerechnet.',
          'kennung': ''},
     ]
+
+
+@pytest.mark.skipif(shutil.which('node') is None, reason='node fehlt')
+def test_was_tun_steht_sichtbar_vor_dem_aufklappen():
+    """F-132: Die Handlung („Lesen Sie …“) stand unter „Mehr“ versteckt.
+    Jetzt steht sie sichtbar; nur die Begründung klappt auf. „bzw.“ beendet
+    keinen Satz."""
+    warnung = ('W-ZAEHLER-ALLGEMEIN-NEGATIV · Für „Wasserversorgung“ zeigen die '
+               'Wohnungszähler mehr Verbrauch als der Hauptzähler: -1,3 m³. '
+               'Angesetzt wird nichts. Lesen Sie alle Zähler am selben Tag ab — am '
+               'Einzugs- bzw. Auszugstag — und erstellen Sie die Abrechnung erneut.')
+    html = _node(''.join(_funktionsrumpf(n) for n in ('escapeHtml', 'warnungenBuendeln', 'warnungenHtml'))
+                 + f'console.log(JSON.stringify(warnungenHtml({json.dumps([warnung])})));')
+    sichtbar, _, aufgeklappt = html.partition('<details>')
+    assert '<strong>Was tun:</strong> Lesen Sie alle Zähler am selben Tag ab — am Einzugs- bzw. ' \
+           'Auszugstag — und erstellen Sie die Abrechnung erneut.' in sichtbar
+    assert 'Angesetzt wird nichts.' in aufgeklappt and 'Lesen Sie' not in aufgeklappt
 
 
 @pytest.mark.skipif(shutil.which('node') is None, reason='node fehlt')

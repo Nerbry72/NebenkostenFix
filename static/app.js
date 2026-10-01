@@ -4682,9 +4682,16 @@ function warnungenBuendeln(warnungen) {
         const text = g.kats.length > 1
             ? g.text.replace(g.kats[0], () => g.kats.slice(0, -1).join(', ') + ' und ' + g.kats[g.kats.length - 1])
             : g.text;
-        const satzende = text.match(/(\S{2})\.\s+(?=[A-ZÄÖÜ„])/);
-        const schnitt = satzende ? satzende.index + satzende[1].length + 1 : text.length;
-        return { kurz: text.slice(0, schnitt), rest: text.slice(schnitt).trim(), kennung: g.kennung };
+        // Satzende: Punkt nach zwei Zeichen, nicht nach „bzw.“ und Co.
+        const ende = /(?<=\S{2}\.)(?<!\b(?:bzw|ggf|Abs|Nr|vgl|ca|usw|inkl|evtl|z\.\s?B)\.)\s+(?=[A-ZÄÖÜ„])/;
+        const satzende = text.match(ende);
+        const schnitt = satzende ? satzende.index : text.length;
+        // F-132: was zu tun ist, steht sichtbar -- die Sätze in der
+        // Sie-Form („Lesen Sie …“). Nur die Begründung klappt auf.
+        const saetze = text.slice(schnitt).trim().split(new RegExp(ende, 'g')).filter(Boolean);
+        const istTun = satz => /^[A-ZÄÖÜ][a-zäöüß]+ Sie\b/.test(satz);
+        return { kurz: text.slice(0, schnitt), tun: saetze.filter(istTun).join(' '),
+                 rest: saetze.filter(satz => !istTun(satz)).join(' '), kennung: g.kennung };
     });
 }
 
@@ -4692,6 +4699,7 @@ function warnungenBuendeln(warnungen) {
 function warnungenHtml(warnungen) {
     const zeilen = warnungenBuendeln(warnungen).map(w =>
         `<li title="${escapeHtml(w.kennung)}">${escapeHtml(w.kurz)}`
+        + (w.tun ? ` <strong>Was tun:</strong> ${escapeHtml(w.tun)}` : '')
         + (w.rest ? ` <details><summary>Mehr</summary>${escapeHtml(w.rest)}</details>` : '')
         + '</li>');
     if (zeilen.length <= 3) return zeilen.join('');

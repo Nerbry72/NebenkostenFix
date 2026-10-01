@@ -140,6 +140,7 @@ und die Anzeige im Bericht haengen an genau diesen Feldern.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
@@ -813,6 +814,26 @@ def _zaehlername(nummer: Optional[str]) -> str:
     """Die Nummer ohne vorangestelltes „Zähler“ -- der Satz bringt es selbst (F-125)."""
     name = nummer or '?'
     return name[7:].lstrip() if name.lower().startswith('zähler ') else name
+
+
+def meldungen_buendeln(meldungen: Sequence[str]) -> list[str]:
+    """Jede Meldung nur einmal; gleiche Meldungen, die sich nur in der
+    Kostenart („…“) unterscheiden, werden zu einer (F-132). Wasserversorgung
+    und Entwässerung lesen meist denselben Hauptzähler -- eine Ursache, eine
+    Meldung: „Für „Wasserversorgung“ und „Entwässerung“ …“."""
+    gruppen: dict[str, list] = {}
+    for text in meldungen:
+        kat = re.search(r'„[^“]*“', text)
+        schluessel = text.replace(kat.group(0), '„…“', 1) if kat else text
+        gruppe = gruppen.setdefault(schluessel, [text, []])
+        if kat and kat.group(0) not in gruppe[1]:
+            gruppe[1].append(kat.group(0))
+    ergebnis = []
+    for text, kats in gruppen.values():
+        if len(kats) > 1:
+            text = text.replace(kats[0], ', '.join(kats[:-1]) + ' und ' + kats[-1], 1)
+        ergebnis.append(text)
+    return ergebnis
 
 
 def _zeitraeume(spannen: list[str]) -> str:
@@ -3178,7 +3199,7 @@ def rechne(vorgang: Vorgang) -> dict:
         # Der Satz fuers PDF, wenn Rechnungen im Zeitraum fehlen (F-115).
         'vorbehalt': abdeckungs_vorbehalt(luecken),
         # D-116: dieselbe Meldung nur einmal, in der Reihenfolge des Auftretens.
-        'warnings': list(dict.fromkeys(warnings))
+        'warnings': meldungen_buendeln(warnings)
     }
 
 

@@ -136,7 +136,7 @@ def test_kern_importiert_kein_orm():
     importiert = importierte_module(baum)
 
     assert importiert <= {
-        '__future__', 'os', 'dataclasses', 'datetime', 'decimal', 'typing',
+        '__future__', 'os', 're', 'dataclasses', 'datetime', 'decimal', 'typing',
         # Die eigenen Bausteine haengen selbst an nichts als der
         # Standardbibliothek -- sie duerfen mit herein, ein ORM nicht.
         'abrechnungsart', 'betrkv', 'co2', 'geld', 'haushalt', 'heizung', 'leerstand',
