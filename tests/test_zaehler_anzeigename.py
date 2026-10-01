@@ -5,8 +5,9 @@ BetrKV Nr. 11 "Beleuchtung (Allgemeinstrom)", weil der Allgemeinstrom aus
 ihnen gerechnet wird (Hauptzaehler minus Wohnungszaehler). Die Zaehlerliste
 bot deshalb nur "Beleuchtung (Allgemeinstrom)" an -- fuer einen
 Wohnungszaehler falsch. Eine neue Kostenart gibt es dafuer nicht (Entscheidung vom
-30.09.2026); die Zaehleransicht zeigt einen Alltagsnamen, Kostenart,
-Rechnungen und PDF behalten den Namen aus der BetrKV.
+30.09.2026); die Zaehleransicht zeigt einen Alltagsnamen, Kostenarten
+und PDF behalten den Namen aus der BetrKV. Seit F-136 zeigt auch der
+Rechnungen-Tab den Alltagsnamen.
 
 *Haette den Befund gefunden:* ``test_zaehlerstellen_zeigen_den_alltagsnamen``.
 """
@@ -52,6 +53,16 @@ def test_zaehlerstellen_zeigen_den_alltagsnamen():
     assert '(${zaehlerArtName(meter.category_name)})' in _funktionsrumpf('openHistoryModal')
 
 
-def test_kostenart_behaelt_den_betrkv_namen():
-    """Rechnungen buchen auf die Kostenart -- dort bleibt der BetrKV-Name."""
-    assert 'escapeHtml(c.name)' in _funktionsrumpf('openAddInvoiceModal')
+def test_rechnungen_zeigen_den_alltagsnamen():
+    """F-136: Der Rechnungen-Tab zeigte bei der Stromrechnung noch
+    "Beleuchtung (Allgemeinstrom)" -- Ueberschrift, Filter und Dialog nennen
+    sie jetzt wie die Zaehler "Strom". Gebucht wird weiter auf die Kostenart
+    (Wert ist die id bzw. der Originalname), PDF und Kostenarten behalten den
+    BetrKV-Namen."""
+    liste = _funktionsrumpf('renderInvoices')
+    assert '<span>${escapeHtml(zaehlerArtName(catName))}</span>' in liste
+    assert 'opt.textContent = zaehlerArtName(c)' in liste
+    assert 'opt.value = c;' in liste
+    dialog = _funktionsrumpf('openAddInvoiceModal')
+    assert 'escapeHtml(zaehlerArtName(c.name))' in dialog
+    assert 'escapeHtml(c.name)' not in dialog

@@ -2368,7 +2368,8 @@ function renderInvoiceZeitleiste(daten, ziel) {
 // Wohnungszaehler fuer Strom haengen an BetrKV Nr. 11 „Beleuchtung
 // (Allgemeinstrom)“, weil der Allgemeinstrom daraus gerechnet wird (Haupt-
 // zaehler minus Wohnungszaehler). Am Zaehler selbst ist das schlicht Strom.
-// Kostenart, Rechnungen und PDF behalten den Namen aus der BetrKV.
+// Der Rechnungen-Tab nennt die Stromrechnung ebenso (F-136). Kostenarten und
+// PDF behalten den Namen aus der BetrKV.
 const ZAEHLER_ANZEIGENAMEN = { 'Beleuchtung (Allgemeinstrom)': 'Strom' };
 
 function zaehlerArtName(name) {
@@ -2571,7 +2572,7 @@ function renderInvoices() {
         uniqueCats.forEach(c => {
             const opt = document.createElement('option');
             opt.value = c;
-            opt.textContent = c;
+            opt.textContent = zaehlerArtName(c);
             catSelect.appendChild(opt);
         });
     }
@@ -2662,7 +2663,7 @@ function renderInvoices() {
                 <div class="accordion-header" onclick="toggleAccordion('${accId}')">
                     <div class="accordion-header-left">
                         <i class="ph ${icon} accordion-icon"></i>
-                        <span>${escapeHtml(catName)}</span>
+                        <span>${escapeHtml(zaehlerArtName(catName))}</span>
                         <span class="accordion-badge">${catInvoices.length} Einträge</span>
                     </div>
                     <i class="ph ph-caret-down accordion-chevron"></i>
@@ -3353,7 +3354,7 @@ async function openAddInvoiceModal(editInvoiceId = null) {
     const catSelect = document.getElementById('invoice-category');
     catSelect.replaceChildren();
     categories.forEach(c => {
-        catSelect.insertAdjacentHTML('beforeend', `<option value="${c.id}">${escapeHtml(c.name)}</option>`);
+        catSelect.insertAdjacentHTML('beforeend', `<option value="${c.id}">${escapeHtml(zaehlerArtName(c.name))}</option>`);
     });
     
     const propSelect = document.getElementById('invoice-property');
