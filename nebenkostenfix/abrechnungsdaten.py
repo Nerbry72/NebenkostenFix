@@ -272,10 +272,14 @@ def lade_vorgang(tenant_id, start_date, end_date, category_ids=None) -> Vorgang:
         if wohnungs_ids else []
     )
 
-    # ponytail: Auszugstage der ganzen Immobilie, nicht je Wohnung -- eine
-    # Zwischenablesung faellt kaum zufaellig auf den Auszug nebenan.
-    auszugstage = frozenset(t.move_out_date for t in mieter_der_immobilie
-                            if t.move_out_date)
+    # Auszugstage je Wohnung: der Auszug nebenan verschiebt die Ablesung
+    # dieser Wohnung nicht. Haus- und Hauptzaehler messen jeden Wechsel im
+    # Haus (F-122) und bekommen alle Auszugstage.
+    auszugstage: dict = {}
+    for t in mieter_der_immobilie:
+        if t.move_out_date:
+            auszugstage.setdefault(t.apartment_id, set()).add(t.move_out_date)
+    alle_auszugstage = frozenset().union(*auszugstage.values())
 
     rechnungen = CostInvoice.query.filter(
         CostInvoice.property_id == prop.id,
@@ -321,7 +325,9 @@ def lade_vorgang(tenant_id, start_date, end_date, category_ids=None) -> Vorgang:
         mieter_der_immobilie=tuple(_mieter(t) for t in mieter_der_immobilie),
         profile={p.category_id: p.billing_type for p in tenant.cost_profiles},
         rechnungen=tuple(_rechnung(i) for i in rechnungen),
-        zaehler=tuple(_zaehler(m, staende_je_zaehler.get(m.id, []), auszugstage)
+        zaehler=tuple(_zaehler(m, staende_je_zaehler.get(m.id, []),
+                               auszugstage.get(m.apartment_id, frozenset())
+                               if m.apartment_id else alle_auszugstage)
                       for m in meters),
         zahlungen=tuple(Zahlung(datum=z.payment_date, betrag=z.amount) for z in zahlungen),
         heizungsanlagen=tuple(_heizungsanlage(a) for a in anlagen),

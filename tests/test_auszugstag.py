@@ -68,3 +68,30 @@ def test_uebergabe_ablesung_am_letzten_miettag_misst_die_grenze(app_ctx):
         (date(2025, 10, 1), ZWISCHENABLESUNG),   # Uebergabe -> Grenze
         (date(2025, 10, 15), ZWISCHENABLESUNG),  # kein Auszugstag: bleibt
     ]
+
+
+def test_auszug_nebenan_verschiebt_die_ablesung_nicht(app_ctx):
+    """PR #25 (Copilot): die Auszugstage galten fuer die ganze Immobilie.
+
+    Wohnung A: Auszug am 30.09. Wohnung B: Zwischenablesung am 30.09., dort
+    zieht niemand aus. Bs Stand bleibt am 30.09. Der Hauptzaehler misst
+    jeden Wechsel im Haus und rueckt weiter an die Grenze.
+    """
+    prop = f.house('Doppelhaus')
+    a, b = f.apt(prop, 'A', 50.0), f.apt(prop, 'B', 50.0)
+    f.tenant(a, 'Mieter A', move_in=date(2020, 1, 1), move_out=date(2025, 9, 30))
+    mieter_b = f.tenant(b, 'Mieter B', move_in=date(2020, 1, 1))
+    kat = f.category('Wasserversorgung')
+    zaehler_b = f.meter(prop, kat, 'W-B', is_main=False, apartment=b)
+    haupt = f.meter(prop, kat, 'W-H', is_main=True)
+    for z in (zaehler_b, haupt):
+        f.reading(z, JAHR_BEGINN, 0.0)
+        f.reading(z, date(2025, 9, 30), 100.0).ablesungsart = ZWISCHENABLESUNG
+        f.reading(z, JAHR_ENDE, 150.0)
+    db.session.commit()
+
+    zaehler = {z.nummer: z for z in lade_vorgang(mieter_b.id, JAHR_BEGINN, JAHR_ENDE).zaehler}
+    def zwischen(nummer):
+        return [s.datum for s in zaehler[nummer].staende if s.art == ZWISCHENABLESUNG]
+    assert zwischen('W-B') == [date(2025, 9, 30)]
+    assert zwischen('W-H') == [date(2025, 10, 1)]
