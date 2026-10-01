@@ -422,7 +422,12 @@ def main(argv=None) -> int:
                      help='Mietername, der im Klartext bleiben darf (mehrfach möglich)')
     a = auf.parse_args(argv)
 
-    ordner = Path(tempfile.mkdtemp(prefix='praxisprobe-'))
+    # Die Kopie traegt Namen und Zugangsdaten: sie verschwindet mit dem Lauf.
+    with tempfile.TemporaryDirectory(prefix='praxisprobe-', ignore_cleanup_errors=True) as tmp:
+        return _lauf(a, Path(tmp))
+
+
+def _lauf(a, ordner: Path) -> int:
     kopiere(a.db.resolve(), ordner / 'nebenkosten.db')
     os.environ.update(DATA_DIR=str(ordner), DATABASE_URL=f'sqlite:///{ordner}/nebenkosten.db',
                       SECRET_KEY=secrets.token_hex(32), LOGIN_VERZOEGERUNG_S='0')
@@ -440,6 +445,7 @@ def main(argv=None) -> int:
         if a.json:
             a.json.write_text(anonym.text(json.dumps(k, ensure_ascii=False, indent=1)),
                               encoding='utf-8')
+        anwendung.db.engine.dispose()  # sonst haelt Windows die Kopie fest
     if a.aus:
         a.aus.parent.mkdir(parents=True, exist_ok=True)
         a.aus.write_text(text, encoding='utf-8')

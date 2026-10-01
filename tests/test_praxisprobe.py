@@ -54,3 +54,23 @@ def test_klarname_bleibt_stehen(app_ctx):
     _bestand()
     text = probe.Anonym(['Heinemann']).text('Bruno Heinemann und Anna Kowalski')
     assert text == 'Heinemann und Mieter 1'
+
+
+def test_kopie_des_bestands_bleibt_nicht_liegen(tmp_path):
+    """PR #25 (Copilot): die Kopie samt Zugangsdaten blieb im Temp-Ordner."""
+    import os
+    import sqlite3
+    import subprocess
+    import sys
+
+    sqlite3.connect(tmp_path / 'leer.db').close()
+    temp = tmp_path / 'temp'
+    temp.mkdir()
+    env = {k: v for k, v in os.environ.items() if k not in ('DATABASE_URL', 'DATA_DIR')}
+    env.update(TMPDIR=str(temp), TEMP=str(temp), TMP=str(temp))
+    lauf = subprocess.run([sys.executable, str(WURZEL / 'scripts' / 'praxisprobe.py'),
+                           str(tmp_path / 'leer.db'), '--aus', str(tmp_path / 'bericht.md')],
+                          env=env, capture_output=True, text=True, timeout=120)
+    assert lauf.returncode == 0, lauf.stderr[-2000:]
+    assert (tmp_path / 'bericht.md').is_file()
+    assert not list(temp.glob('praxisprobe-*'))
