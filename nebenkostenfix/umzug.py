@@ -158,6 +158,9 @@ def _teil(app, kennung: str) -> tuple[Path, Path]:
 
 _letzter_stempel = 0
 _stempel_sperre = threading.Lock()  # Waitress bedient Uploads parallel
+# ponytail: Sperre je Prozess. Reicht, solange Docker mit einem Worker und die
+# Windows-App mit einem Prozess laufen; bei mehreren Workern eine Dateisperre.
+_beginn_sperre = threading.Lock()
 
 
 def _stempel() -> int:
@@ -183,24 +186,25 @@ def hochladen_beginnen(app, groesse: int, name: str) -> dict:
         raise UmzugsFehler(
             f'Das Paket ist größer als erlaubt ({backup.lesbare_groesse(backup.zip_max_gesamt())}, '
             'Einstellung UMZUG_MAX_GB).')
-    aufraeumen(app)
-    ordner = arbeitsordner(app)
-    offen = sorted(ordner.glob('*.json'), key=_begonnen)
-    for alt in offen[:max(0, len(offen) - HOECHSTENS_OFFEN + 1)]:
-        alt.with_suffix('.teil').unlink(missing_ok=True)
-        alt.unlink(missing_ok=True)
-    frei = shutil.disk_usage(ordner).free
-    # Paket + entpackter Inhalt + Sicherung des Ist-Stands: grob das Dreifache.
-    if frei < groesse * 3:
-        raise UmzugsFehler(
-            f'Auf dem Datenträger ist zu wenig Platz: frei {backup.lesbare_groesse(frei)}, '
-            f'nötig etwa {backup.lesbare_groesse(groesse * 3)}.')
-    kennung = secrets.token_hex(16)
-    teil, info = _teil(app, kennung)
-    teil.write_bytes(b'')
-    info.write_text(json.dumps({'groesse': groesse, 'name': str(name or '')[:200],
-                                'begonnen': _stempel()}),
-                    encoding='utf-8')
+    with _beginn_sperre:  # Zählen und Anlegen in einem Zug, sonst hält die Grenze nicht
+        aufraeumen(app)
+        ordner = arbeitsordner(app)
+        offen = sorted(ordner.glob('*.json'), key=_begonnen)
+        for alt in offen[:max(0, len(offen) - HOECHSTENS_OFFEN + 1)]:
+            alt.with_suffix('.teil').unlink(missing_ok=True)
+            alt.unlink(missing_ok=True)
+        frei = shutil.disk_usage(ordner).free
+        # Paket + entpackter Inhalt + Sicherung des Ist-Stands: grob das Dreifache.
+        if frei < groesse * 3:
+            raise UmzugsFehler(
+                f'Auf dem Datenträger ist zu wenig Platz: frei {backup.lesbare_groesse(frei)}, '
+                f'nötig etwa {backup.lesbare_groesse(groesse * 3)}.')
+        kennung = secrets.token_hex(16)
+        teil, info = _teil(app, kennung)
+        teil.write_bytes(b'')
+        info.write_text(json.dumps({'groesse': groesse, 'name': str(name or '')[:200],
+                                    'begonnen': _stempel()}),
+                        encoding='utf-8')
     stueck = min(STUECK, max(64 * 1024, (app.config.get('MAX_CONTENT_LENGTH') or STUECK)
                              - 64 * 1024))
     return {'id': kennung, 'stueck': stueck, 'empfangen': 0, 'groesse': groesse}

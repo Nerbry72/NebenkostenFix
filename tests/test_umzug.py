@@ -455,6 +455,36 @@ def test_der_aelteste_upload_faellt_auch_bei_gleicher_dateizeit(bestand):
     assert set(kennungen[1:]) <= offen
 
 
+def test_parallele_starts_halten_die_grenze(bestand, monkeypatch):
+    """PR #25 (Copilot, zweite Runde): Aufräumen, Zählen und Anlegen müssen
+    unter einer Sperre laufen. Sonst zählen parallele Starts dieselben offenen
+    Uploads, und danach legt jeder einen neuen an."""
+    import shutil
+    import threading
+    import time
+
+    echt = shutil.disk_usage
+
+    def langsam(pfad):  # zwischen Zählen und Anlegen gibt jeder Thread ab
+        time.sleep(0.02)
+        return echt(pfad)
+
+    monkeypatch.setattr(umzug.shutil, 'disk_usage', langsam)
+    start = threading.Barrier(8)
+
+    def beginnen():
+        start.wait()
+        umzug.hochladen_beginnen(bestand.app, 4, 'paket.zip')
+
+    threads = [threading.Thread(target=beginnen) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    offen = list(umzug.arbeitsordner(bestand.app).glob('*.json'))
+    assert len(offen) == umzug.HOECHSTENS_OFFEN
+
+
 # --- Windows-App: Pfade nur aus dem Dialog der Hülle ----------------------------
 
 def test_pfad_nur_in_der_app_und_nur_freigegeben(bestand, tmp_path, monkeypatch):
