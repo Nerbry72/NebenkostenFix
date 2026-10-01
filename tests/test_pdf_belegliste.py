@@ -239,6 +239,20 @@ def test_eine_heizzeile_listet_jede_ihrer_rechnungen(unkomprimiert, detailliert)
     assert 'Krause' in geklebt
 
 
+def test_heizung_nach_verbrauch_zeigt_keinen_tagesanteil(unkomprimiert):
+    """Nach Verbrauch verteilt passt der Tagesanteil nicht zum angesetzten
+    Betrag. Die Spalte sagt dann den Weg statt einer falschen Zahl."""
+    posten = _heizposten()
+    erste, zweite = posten['heizung_details']['rechnungen']
+    erste['prorated_amount'] = Decimal('123.45')
+    erste['nach_verbrauch'] = True
+    geklebt = _geklebt(_pdf(True, [posten]))
+    assert '123,45' not in geklebt
+    assert 'nachZähler' in geklebt
+    # Ohne erfassten Verbrauch (ganz nach Flaeche) bleibt der Tagesanteil.
+    assert '200,00' in geklebt
+
+
 def test_eine_heizzeile_mit_mehreren_rechnungen_verweist_nicht_in_der_zeile():
     """Der Verweis in der Zeile gilt nur fuer Positionen aus einer Rechnung.
 

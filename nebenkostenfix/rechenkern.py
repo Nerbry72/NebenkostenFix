@@ -2017,6 +2017,11 @@ def _verteilzeile(vorgang: Vorgang, anlage, rechnungen: Sequence[Rechnung],
             'amount': runde(betrag),
             'rechnungsbetrag': inv.betrag,
             'prorated_amount': runde(betrag * time_fraction),
+            # Mit erfasstem Verbrauch ist ``prorated_amount`` nur der Tagesanteil
+            # der Rechnung -- angesetzt wird aber der Verbrauch am Zaehler (am
+            # Stichtag nach Gradtagen geschaetzt). Die Belegliste darf den
+            # Tagesbetrag dann nicht als angesetzt ausweisen.
+            'nach_verbrauch': erfasst,
             'grundteil': runde(grundteil * time_fraction),
             'verbrauchsteil': runde(verbrauchsteil),
             # § 6 CO2KostAufG (NK-053): der Teil der Rechnung, der vor der

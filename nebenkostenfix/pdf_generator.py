@@ -183,7 +183,10 @@ class PDFGenerator:
                         'anbieter': r.get('provider_name') or '-',
                         'dokument': r.get('doc_name') or None,
                         'rechnungsbetrag': r.get('rechnungsbetrag'),
-                        'zeitanteilig': r.get('prorated_amount'),
+                        # Nach Verbrauch verteilt passt der Tagesanteil nicht
+                        # zum angesetzten Betrag -- dann steht der Weg da.
+                        'zeitanteilig': (None if r.get('nach_verbrauch')
+                                         else r.get('prorated_amount')),
                         'tage': None,
                     })
                 continue
@@ -196,7 +199,11 @@ class PDFGenerator:
                 'anbieter': item.get('provider_name') or '-',
                 'dokument': item.get('doc_name') or None,
                 'rechnungsbetrag': item.get('invoice_total_amount'),
-                'zeitanteilig': item.get('prorated_amount'),
+                # Nach Zaehler gerechnet ist der Tagesanteil nicht der
+                # angesetzte Betrag (bei Heizung am Stichtag nach Gradtagen
+                # geschaetzt) -- die Spalte nennt dann den Weg.
+                'zeitanteilig': (None if item.get('meter_details')
+                                 else item.get('prorated_amount')),
                 'tage': (item.get('overlap_days'), item.get('invoice_days')),
             })
 
@@ -226,8 +233,11 @@ class PDFGenerator:
                 Paragraph(z['dokument'] or '—', self.styles['TableCell']),
             ]
             if mit_betraegen:
-                zeitanteilig = f"{z['zeitanteilig']:.2f}".replace('.', ',')
-                if z['tage'] and z['tage'][0] and z['tage'][1] \
+                if z['zeitanteilig'] is None:
+                    zeitanteilig = 'nach Zähler'
+                else:
+                    zeitanteilig = f"{z['zeitanteilig']:.2f}".replace('.', ',')
+                if z['zeitanteilig'] is not None and z['tage'] and z['tage'][0] and z['tage'][1] \
                         and z['tage'][0] < z['tage'][1]:
                     zeitanteilig += f" ({z['tage'][0]}/{z['tage'][1]} Tage)"
                 row += [

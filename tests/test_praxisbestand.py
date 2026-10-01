@@ -172,3 +172,27 @@ def test_ohne_profil_und_rechnung_kein_vorschlag(praxis):
     v = client.get(f"/api/tenants/{ids['Mieter 4']}/zeitraumvorschlag").get_json()
     assert (v['beginn'], v['ende']) == (None, None)
     assert v['gruende']
+
+
+
+def test_belegliste_zeigt_bei_zaehlern_keinen_tagesanteil(praxis):
+    """Mieter 1 zahlt die Heizung nach Wärmezähler, am Stichtag nach
+    Gradtagen geschätzt. Der lineare Tagesanteil der Rechnung ist nicht, was
+    angesetzt wurde -- die ausführliche Belegliste sagt „nach Zähler“."""
+    from decimal import Decimal
+    from nebenkostenfix.pdf_generator import PDFGenerator
+    client, ids = praxis
+    mid = ids['Mieter 1']
+    v = client.get(f'/api/tenants/{mid}/zeitraumvorschlag').get_json()
+    import json
+    e = json.loads(client.post('/api/billing/generate', json={
+        'tenant_id': mid, 'start_date': v['beginn'], 'end_date': v['ende']}).data,
+        parse_float=Decimal)
+    heizung = next(z for z in e['line_items'] if z['category'] == 'Heizung')
+    linear = f"{heizung['prorated_amount']:.2f}".replace('.', ',')
+    pdf = PDFGenerator(property_name='Haus', apartment_name='EG', tenant_name='Mieter 1',
+                       start_date=v['beginn'], end_date=v['ende'], detailliert=True,
+                       ).generate(e['line_items'], e['total_amount'], Decimal('0'))
+    text = _pdftext(pdf).replace(' ', '')  # die schmale Spalte bricht um
+    assert 'nachZähler' in text
+    assert linear not in text, linear
