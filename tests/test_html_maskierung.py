@@ -34,6 +34,8 @@ AUSNAHMEN = {
     'knopf': 'Knopf aus Code-Konstanten',
     'marke': 'Symbol aus Code-Konstanten',
     'hinweis': 'feste Zeichenkette',
+    'weitere': 'Zahl aus der Laenge der Liste (D-116)',
+    "zeilen.slice(3).join('')": 'Zeilen, deren Texte einzeln maskiert werden (D-116)',
     'iconImKnopf': 'Symbolklasse aus Code-Konstanten',
     'icon': 'Symbolklasse oder -HTML aus Code-Konstanten',
     'getIcon(group.category)': 'liefert ein Emoji aus einer festen Tabelle',

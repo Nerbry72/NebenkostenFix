@@ -799,15 +799,27 @@ def _stand_angabe(stand: Stand) -> dict:
 
 #: Kennung der Warnung zum Preisfuss. Sie steht im Text, damit Oberflaeche
 #: und PDF die Warnung wiederfinden, ohne den Satz zu parsen (dieselbe
-#: Konvention wie W-HKV-KUERZUNG-15 und W-FRIST-30TAGE).
+#: Konvention wie W-HKV-KUERZUNG-15 und W-FRIST-30TAGE). Eine Warnung je
+#: Zaehler, nicht je Rechnung (F-125): {zeitraeume} zaehlt alle Rechnungen auf.
 HINWEIS_PREIS_HOCHGERECHNET = (
-    "W-ZAEHLER-PREIS-HOCHGERECHNET · Der Einheitspreis für „{kategorie}“ "
-    "(Zähler {zaehler}) beruht auf hochgerechnetem Verbrauch: Die Ablesungen "
-    "({ablesungen}) decken den Rechnungszeitraum ({beginn} – {ende}) nicht "
-    "ab. Die Kosten werden trotzdem verteilt, aber der Preis je Einheit ist "
-    "ein Schätzwert. Tragen Sie die fehlenden Ablesungen nach und erzeuge die "
-    "Abrechnung erneut."
+    "W-ZAEHLER-PREIS-HOCHGERECHNET · Der Einheitspreis für „{kategorie}“ ist "
+    "geschätzt: Die Ablesungen von Zähler {zaehler} decken {zeitraeume} nicht "
+    "ab. Tragen Sie Ablesungen zu Beginn und Ende der {rechnungen} nach und "
+    "erstellen Sie die Abrechnung erneut."
 )
+
+
+def _zaehlername(nummer: Optional[str]) -> str:
+    """Die Nummer ohne vorangestelltes „Zähler“ -- der Satz bringt es selbst (F-125)."""
+    name = nummer or '?'
+    return name[7:].lstrip() if name.lower().startswith('zähler ') else name
+
+
+def _zeitraeume(spannen: list[str]) -> str:
+    """„den Rechnungszeitraum X“ oder „die Rechnungszeiträume X, Y und Z“."""
+    if len(spannen) == 1:
+        return f"den Rechnungszeitraum {spannen[0]}"
+    return f"die Rechnungszeiträume {', '.join(spannen[:-1])} und {spannen[-1]}"
 
 #: Kennung der Warnung zur negativen Allgemeinmenge (NK-115). Im
 #: Abrechnungszeitraum wird jeder Zaehler zwischen seinen Ablesungen linear
@@ -2456,6 +2468,8 @@ def rechne(vorgang: Vorgang) -> dict:
         if status == 'warning':
             warnings.append(msg)
 
+    # F-125: geschaetzter Preisfuss je (Kostenart, Zaehler) -> Rechnungszeitraeume
+    preis_geschaetzt: dict[tuple[str, str], list[str]] = {}
     for inv in invoices:
         cat = inv.kategorie
         billing_type = abrechnungsart_von(profiles, cat)
@@ -2716,7 +2730,7 @@ def rechne(vorgang: Vorgang) -> dict:
                     if roh_menge < 0:
                         warnings.append(HINWEIS_ALLGEMEIN_NEGATIV.format(
                             kategorie=cat.name,
-                            zaehler=main_meter.nummer or '?',
+                            zaehler=_zaehlername(main_meter.nummer),
                             beginn=overlap_von.strftime('%d.%m.%Y'),
                             ende=(overlap_bis - timedelta(days=1)).strftime('%d.%m.%Y'),
                             register=register,
@@ -2741,17 +2755,11 @@ def rechne(vorgang: Vorgang) -> dict:
                     rechnung_main_detail = verbrauch_detail(main_meter, inv.beginn, inv.ende)
                     rechnung_main_consumption = rechnung_main_detail['consumption']
                     if rechnung_main_detail['status'] == 'warning':
-                        warn_ablesungen = rechnung_main_detail['basis_readings']
-                        warn_spanne = (
-                            f"{warn_ablesungen[0]['date']} – "
-                            f"{warn_ablesungen[-1]['date']}"
-                            if warn_ablesungen else 'keine Ablesungen im Zeitraum')
-                        warnings.append(HINWEIS_PREIS_HOCHGERECHNET.format(
-                            kategorie=cat.name,
-                            zaehler=main_meter.nummer or '?',
-                            ablesungen=warn_spanne,
-                            beginn=inv.beginn.strftime('%d.%m.%Y'),
-                            ende=inv.ende.strftime('%d.%m.%Y')))
+                        spannen = preis_geschaetzt.setdefault(
+                            (cat.name, _zaehlername(main_meter.nummer)), [])
+                        spanne = f"{_d(inv.beginn)}–{_d(inv.ende)}"
+                        if spanne not in spannen:
+                            spannen.append(spanne)
 
                     # Beim Dualtarif (NK-055) werden HT und NT getrennt
                     # gerechnet: der Betrag wird nach Wertanteil auf die
@@ -3036,6 +3044,11 @@ def rechne(vorgang: Vorgang) -> dict:
             })
             total_amount += runde(tenant_cost)
 
+    for (kategorie, zaehler), spannen in preis_geschaetzt.items():
+        warnings.append(HINWEIS_PREIS_HOCHGERECHNET.format(
+            kategorie=kategorie, zaehler=zaehler, zeitraeume=_zeitraeume(spannen),
+            rechnungen='Rechnungen' if len(spannen) > 1 else 'Rechnung'))
+
     # Und jetzt die Heizkosten -- eine Zeile je Anlage, in der Reihenfolge,
     # in der die Anlagen am Vorgang haengen, damit zwei Laeufe dasselbe Blatt
     # ergeben.
@@ -3149,7 +3162,8 @@ def rechne(vorgang: Vorgang) -> dict:
         'co2': co2_ausweis,
         # Der Satz fuers PDF, wenn Rechnungen im Zeitraum fehlen (F-115).
         'vorbehalt': abdeckungs_vorbehalt(luecken),
-        'warnings': warnings
+        # D-116: dieselbe Meldung nur einmal, in der Reihenfolge des Auftretens.
+        'warnings': list(dict.fromkeys(warnings))
     }
 
 

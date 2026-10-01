@@ -265,7 +265,8 @@ HINWEIS_KUERZUNG_15 = (
     "HeizkostenV in Höhe von 15 % möglich: Für die Heizungsanlage "
     "„{anlage}“ wurde der {verbrauch} nicht oder nicht ausschließlich nach "
     "erfasstem Verbrauch verteilt. Der Mieter kann seinen Anteil an diesen "
-    "Kosten um 15 vom Hundert kürzen."
+    "Kosten um 15 vom Hundert kürzen. Erfassen Sie den Verbrauch aller "
+    "Nutzer, dann entfällt das Kürzungsrecht."
 )
 
 

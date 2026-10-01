@@ -4688,11 +4688,17 @@ function warnungenBuendeln(warnungen) {
     });
 }
 
+// D-116: höchstens drei Meldungen sichtbar, der Rest aufklappbar.
 function warnungenHtml(warnungen) {
-    return warnungenBuendeln(warnungen).map(w =>
+    const zeilen = warnungenBuendeln(warnungen).map(w =>
         `<li title="${escapeHtml(w.kennung)}">${escapeHtml(w.kurz)}`
         + (w.rest ? ` <details><summary>Mehr</summary>${escapeHtml(w.rest)}</details>` : '')
-        + '</li>').join('');
+        + '</li>');
+    if (zeilen.length <= 3) return zeilen.join('');
+    const weitere = zeilen.length - 3;
+    return zeilen.slice(0, 3).join('')
+        + `<li class="weitere-hinweise-zeile"><details class="weitere-hinweise"><summary>${weitere} weitere${weitere === 1 ? 'r Hinweis' : ' Hinweise'}</summary>`
+        + `<ul>${zeilen.slice(3).join('')}</ul></details></li>`;
 }
 
 async function oeffneJahrAssistent() {

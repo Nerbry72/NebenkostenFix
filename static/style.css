@@ -2302,6 +2302,10 @@ td .btn-icon,
 
 .jahr-warnungen { color: #B45309; }
 
+/* D-116: ab der vierten Meldung aufklappbar, ohne eigenen Listenpunkt. */
+.weitere-hinweise-zeile { list-style: none; }
+.weitere-hinweise > ul { margin: 4px 0 0 20px; padding: 0; }
+
 /* Die Rückfrage wechselt ihren Hauptknopf zwischen btn-primary und
    btn-gefahr; ohne das blendete „Löschen“ beim Öffnen von Violett nach Rot. */
 #frage-ja {
