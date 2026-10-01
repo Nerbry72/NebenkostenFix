@@ -858,7 +858,10 @@ HINWEIS_ALLGEMEIN_NEGATIV = (
     "meist, wenn Haupt- und Wohnungszähler an verschiedenen Tagen abgelesen "
     "wurden und der Verbrauch dazwischen geschätzt wird. Lesen Sie alle "
     "Zähler am selben Tag ab — beim Mieterwechsel am Einzugs- bzw. "
-    "Auszugstag — und erstellen Sie die Abrechnung erneut."
+    "Auszugstag — und erstellen Sie die Abrechnung erneut. Zeigt der "
+    "Hauptzähler auch dann weniger, ist ein Stand falsch erfasst oder ein "
+    "Wohnungszähler dem falschen Hauptzähler zugeordnet. Prüfen Sie die "
+    "Stände und die Zuordnung der Zähler."
 )
 
 
@@ -2456,6 +2459,36 @@ def ueberschneidende_rechnungen(vorgang: Vorgang, rechnungen: Sequence[Rechnung]
     return meldungen
 
 
+HINWEIS_STAND_FAELLT = (
+    "W-ZAEHLER-STAND-FAELLT · Zähler {zaehler} fällt vom {d1} ({w1}) auf den "
+    "{d2} ({w2}). Ein Zähler zählt nur vorwärts; gerechnet wird damit ein "
+    "negativer Verbrauch. Prüfen Sie beide Stände auf Tippfehler und "
+    "korrigieren Sie den falschen. Wurde der Zähler getauscht, legen Sie den "
+    "neuen Zähler an und tragen Sie seine Stände dort ein."
+)
+
+
+def fallende_staende(vorgang: Vorgang, rechnungen: Sequence[Rechnung]) -> list:
+    """Zaehlerstaende, die rueckwaerts laufen (Punkt 3 aus dem Vergleich).
+
+    Ein fallendes Paar rechnet still einen negativen Verbrauch. Korrigiert
+    wird nichts -- welcher der beiden Staende falsch ist, weiss nur der
+    Vermieter. Gemeldet wird jedes Paar, dessen Intervall den Zeitraum der
+    Abrechnung oder einer ihrer Rechnungen beruehrt.
+    """
+    von = min([vorgang.beginn, *(r.beginn for r in rechnungen)])
+    bis = max([vorgang.ende_grenze, *(r.ende_grenze for r in rechnungen)])
+    meldungen = []
+    for z in vorgang.zaehler:
+        staende = sorted(z.staende, key=lambda s: s.datum)
+        for s1, s2 in zip(staende, staende[1:]):
+            if s2.datum > s1.datum and s2.gesamt < s1.gesamt and s1.datum < bis and s2.datum > von:
+                meldungen.append(HINWEIS_STAND_FAELLT.format(
+                    zaehler=_zaehlername(z.nummer), d1=_d(s1.datum), w1=zahl_text(s1.gesamt),
+                    d2=_d(s2.datum), w2=zahl_text(s2.gesamt)))
+    return meldungen
+
+
 def rechne(vorgang: Vorgang) -> dict:
     """Die Abrechnung fuer einen Mieter. Rein: gleiche Eingabe, gleiches Bild.
 
@@ -2498,6 +2531,7 @@ def rechne(vorgang: Vorgang) -> dict:
     if luecken:
         warnings.append(abdeckungs_warnung(vorgang, luecken))
     warnings.extend(ueberschneidende_rechnungen(vorgang, invoices))
+    warnings.extend(fallende_staende(vorgang, invoices))
 
     # Die Heizkosten gehen ihren eigenen Weg (R-HK-01, D-46/D-47): sie
     # laufen nicht durch die Fallunterscheidung darunter, sondern werden je
@@ -3429,6 +3463,7 @@ def pruefe(vorgang: Vorgang) -> dict:
         vorgang, abdeckungsluecken(vorgang, invoices)))]
     hinweise += [('Rechnungen', 'Überschneidung', m)
                  for m in ueberschneidende_rechnungen(vorgang, invoices)]
+    hinweise += [('Zähler', 'Stand', m) for m in fallende_staende(vorgang, invoices)]
     for kategorie, art_text, message in hinweise:
         if message:
             checks.append({
