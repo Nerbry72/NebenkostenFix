@@ -5469,11 +5469,15 @@ function zeitraumVorschlagHtml(v) {
 async function zeitraumVorschlagen(tenantId, boxId, beginnFeld, endeFeld, sofort) {
     const box = document.getElementById(boxId);
     box.hidden = true;
+    // Wer schnell den Mieter wechselt, bekommt die Antworten nicht der Reihe
+    // nach. Nur die Antwort auf die letzte Anfrage darf die Felder fuellen.
+    const anfrage = box.dataset.anfrage = String((+box.dataset.anfrage || 0) + 1);
     if (!tenantId) return;
     try {
         const res = await fetch(`/api/tenants/${tenantId}/zeitraumvorschlag`);
-        if (!res.ok) return;
+        if (!res.ok || box.dataset.anfrage !== anfrage) return;
         const v = await res.json();
+        if (box.dataset.anfrage !== anfrage) return;
         box.innerHTML = zeitraumVorschlagHtml(v);
         box.hidden = false;
         if (!v.beginn) return;

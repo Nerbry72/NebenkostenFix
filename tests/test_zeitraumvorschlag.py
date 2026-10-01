@@ -147,3 +147,27 @@ def test_beide_dialoge_holen_den_vorschlag():
         _funktionsrumpf('openFreieAbrechnung')
     assert "zeitraumVorschlagen(suggestion.tenant_id, 'billing-zeitraumvorschlag'" in \
         _funktionsrumpf('openBillingSelectionModal')
+
+
+@pytest.mark.skipif(shutil.which('node') is None, reason='node fehlt')
+def test_spaete_antwort_des_vorigen_mieters_ueberschreibt_nichts():
+    """Copilot-Review zu PR #25: Mieter 1 gewählt, gleich danach Mieter 2.
+    Kommt die Antwort für Mieter 1 zuletzt, bleibt der Vorschlag für Mieter 2 stehen."""
+    code = '''
+const box = {dataset: {}, hidden: true, innerHTML: '', querySelector: () => ({})};
+globalThis.document = {getElementById: () => box};
+const feld = () => ({value: '', dispatchEvent() {}});
+const beginn = feld(), ende = feld();
+const antworten = {1: ['2024-01-01', 30], 2: ['2025-01-01', 0]};
+globalThis.fetch = url => {
+    const [b, ms] = antworten[url.split('/')[3]];
+    return new Promise(r => setTimeout(() => r({ok: true,
+        json: async () => ({beginn: b, ende: b, gruende: []})}), ms));
+};
+function zeitraumVorschlagHtml(v) { return v.beginn; }
+''' + _funktionsrumpf('zeitraumVorschlagen') + '''
+Promise.all([zeitraumVorschlagen(1, 'box', beginn, ende, () => true),
+             zeitraumVorschlagen(2, 'box', beginn, ende, () => true)])
+    .then(() => console.log(JSON.stringify([beginn.value, box.innerHTML])));
+'''
+    assert _node(code) == ['2025-01-01', '2025-01-01']
