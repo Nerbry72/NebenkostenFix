@@ -2485,6 +2485,37 @@ def ueberschneidende_rechnungen(vorgang: Vorgang, rechnungen: Sequence[Rechnung]
     return meldungen
 
 
+
+def ueberschneidende_mietverhaeltnisse(vorgang: Vorgang) -> list:
+    """Mietverhaeltnisse dieser Wohnung, die sich am Rand ueberlappen.
+
+    Seit F-118 ist das Auszugsdatum der letzte Miettag. Im Altbestand steht
+    beim Vormieter oft der Einzugstag des Nachmieters; dieser Tag zaehlt
+    jetzt bei beiden. Umgeschrieben wird nichts -- welches Datum gemeint
+    war, weiss nur der Vermieter. Laengere Ueberlappungen bleiben still,
+    zwei Vertraege fuer eine Wohnung (WG) sind echt.
+    """
+    meldungen = []
+    eigene = sorted((m for m in vorgang.mieter_der_immobilie
+                     if m.wohnung_id == vorgang.wohnung.id), key=lambda m: m.einzug)
+    for i, m1 in enumerate(eigene):
+        if m1.auszug is None:
+            continue
+        for m2 in eigene[i + 1:]:
+            a = max(m2.einzug, vorgang.beginn)
+            b = min(m1.auszug, mietende(m2.auszug, vorgang.ende_grenze), vorgang.ende_grenze)
+            doppelt = tage(a, b)
+            if 0 < doppelt <= UEBERSCHNEIDUNG_MAX_TAGE:
+                tage_text = (f'am {_d(a)}' if doppelt == 1
+                             else f'vom {_d(a)} bis {_d(letzter_tag(b))}')
+                meldungen.append(
+                    f'Zwei Mietverhältnisse in {vorgang.wohnung.name} überschneiden '
+                    f'sich {tage_text}: Das eine endet am {_d(letzter_tag(m1.auszug))}, '
+                    f'das nächste beginnt am {_d(m2.einzug)}. Diese Tage zählen bei '
+                    'beiden. Das Auszugsdatum ist der letzte Miettag; tragen Sie beim '
+                    'Vormieter den Tag vor dem Einzug ein.')
+    return meldungen
+
 HINWEIS_STAND_FAELLT = (
     "W-ZAEHLER-STAND-FAELLT · Zähler {zaehler} fällt vom {d1} ({w1}) auf den "
     "{d2} ({w2}). Ein Zähler zählt nur vorwärts; gerechnet wird damit ein "
@@ -2599,6 +2630,7 @@ def rechne(vorgang: Vorgang) -> dict:
     if luecken:
         warnings.append(abdeckungs_warnung(vorgang, luecken))
     warnings.extend(ueberschneidende_rechnungen(vorgang, invoices))
+    warnings.extend(ueberschneidende_mietverhaeltnisse(vorgang))
     warnings.extend(fallende_staende(vorgang, invoices))
     warnings.extend(leerstand_der_einzigen_wohnung(vorgang, invoices))
 
@@ -3565,6 +3597,8 @@ def pruefe(vorgang: Vorgang) -> dict:
         vorgang, abdeckungsluecken(vorgang, invoices)))]
     hinweise += [('Rechnungen', 'Überschneidung', m)
                  for m in ueberschneidende_rechnungen(vorgang, invoices)]
+    hinweise += [('Mieter', 'Überschneidung', m)
+                 for m in ueberschneidende_mietverhaeltnisse(vorgang)]
     hinweise += [('Zähler', 'Stand', m) for m in fallende_staende(vorgang, invoices)]
     for kategorie, art_text, message in hinweise:
         if message:

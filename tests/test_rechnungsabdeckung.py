@@ -20,6 +20,7 @@ Die Daten sind synthetisch; jede Zahl ist von Hand nachgerechnet.
 """
 
 import zlib
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
@@ -37,6 +38,7 @@ from nebenkostenfix.rechenkern import (
     pruefe,
     rechne,
 )
+from nebenkostenfix.zeitraum import grenze
 
 STROM = Kategorie(id=5, name='Strom', braucht_zaehler=False)
 VERSICHERUNG = Kategorie(id=7, name='Versicherung', braucht_zaehler=False)
@@ -160,6 +162,41 @@ def test_angrenzende_und_parallele_rechnungen_bleiben_still():
     ])
     for v in (angrenzend, parallel):
         assert not [w for w in rechne(v)['warnings'] if 'überschneiden' in w]
+
+
+def _wechsel(auszug_vormieter, einzug_nachmieter):
+    """EG links: Anna zieht aus, Carl zieht ein. Der Lader liefert ``auszug``
+    schon als Grenze (F-118), deshalb hier ``grenze()`` auf den letzten Miettag."""
+    v = _vorgang([_r(1, VERSICHERUNG, date(2025, 1, 1), date(2025, 12, 31))])
+    anna = Mieter(id=1, name='Anna', einzug=date(2020, 1, 1),
+                  auszug=grenze(auszug_vormieter), wohnung_id=1)
+    carl = Mieter(id=3, name='Carl', einzug=einzug_nachmieter, auszug=None, wohnung_id=1)
+    return replace(v, mieter=anna, mieter_der_immobilie=(anna, carl, v.mieter_der_immobilie[1]))
+
+
+def test_auszug_am_einzugstag_des_nachmieters_wird_gemeldet():
+    """Altbestand vor F-118: Auszug 30.09. hiess „bis zum 29.09.“. Seit das
+    Auszugsdatum der letzte Miettag ist, zaehlt der 30.09. doppelt."""
+    v = _wechsel(date(2025, 9, 30), date(2025, 9, 30))
+    meldungen = [w for w in rechne(v)['warnings'] if 'Mietverhältnisse' in w]
+    assert meldungen == [
+        'Zwei Mietverhältnisse in EG links überschneiden sich am 30.09.2025: Das '
+        'eine endet am 30.09.2025, das nächste beginnt am 30.09.2025. Diese Tage '
+        'zählen bei beiden. Das Auszugsdatum ist der letzte Miettag; tragen Sie '
+        'beim Vormieter den Tag vor dem Einzug ein.']
+    assert [c['category'] for c in pruefe(v)['checks']
+            if 'Mietverhältnisse' in c['message']] == ['Mieter']
+
+
+def test_lueckenloser_wechsel_und_andere_wohnung_bleiben_still():
+    nahtlos = _wechsel(date(2025, 9, 30), date(2025, 10, 1))
+    # Bert in EG rechts zieht am selben Tag ein, an dem Anna in EG links auszieht.
+    v = _wechsel(date(2025, 9, 30), date(2025, 10, 1))
+    bert = replace(v.mieter_der_immobilie[2], einzug=date(2025, 9, 30))
+    nebenan = replace(v, mieter_der_immobilie=v.mieter_der_immobilie[:2] + (bert,))
+    for fall in (nahtlos, nebenan):
+        assert not [w for w in rechne(fall)['warnings'] if 'Mietverhältnisse' in w]
+        assert not [c for c in pruefe(fall)['checks'] if 'Mietverhältnisse' in c['message']]
 
 
 # --- F-114: Direktrechnung mit Zaehler ueber den Zeitraum hinaus ----------------
