@@ -2489,6 +2489,48 @@ def fallende_staende(vorgang: Vorgang, rechnungen: Sequence[Rechnung]) -> list:
     return meldungen
 
 
+HINWEIS_LEERSTAND_EINZIGE_WOHNUNG = (
+    "W-LEERSTAND-OHNE-ABRECHNUNG · „{wohnung}“ ist die einzige Wohnung im Haus "
+    "und war an {tage} nicht vermietet, über die Rechnungen dieser "
+    "Abrechnung auch laufen ({spannen}). Die Kosten dieser Tage trägt der "
+    "Vermieter. Sie stehen in keiner Abrechnung, weil kein anderer Mieter sie "
+    "als Vermieteranteil ausweist. Vermerken Sie sie bei Bedarf selbst, etwa für "
+    "die Steuer."
+)
+
+
+def _tage_text(n: int) -> str:
+    return '1 Tag' if n == 1 else f'{n} Tagen'
+
+
+def leerstand_der_einzigen_wohnung(vorgang: Vorgang, rechnungen: Sequence[Rechnung]) -> list:
+    """Leerstand, den keine Abrechnung zeigt (Punkt 2 aus dem Vergleich).
+
+    Im Haus mit mehreren Wohnungen steht der Leerstand einer Wohnung als
+    Vermieteranteil in den Abrechnungen der anderen. Hat das Haus nur eine
+    Wohnung, faellt er in keinen Abrechnungszeitraum: er blieb richtig beim
+    Vermieter, aber unsichtbar. Gemeldet werden die unvermieteten Tage der
+    Rechnungen dieser Abrechnung ausserhalb ihres Zeitraums.
+    """
+    aktiv = [w for w in vorgang.wohnungen if w.ist_aktiv]
+    rechnungen = _fuer_die_wohnung(vorgang, rechnungen)
+    if len(aktiv) != 1 or not rechnungen:
+        return []
+    von = min(r.beginn for r in rechnungen)
+    bis = max(r.ende_grenze for r in rechnungen)
+    stuecke = []
+    for a, b in ((von, vorgang.beginn), (vorgang.ende_grenze, bis)):
+        if a < b:
+            leer = sum(x.unbelegt for x in _leerstandsbilanz(vorgang, a, b))
+            if leer:
+                stuecke.append((leer, f'{_d(a)}–{_d(letzter_tag(b))}'))
+    if not stuecke:
+        return []
+    return [HINWEIS_LEERSTAND_EINZIGE_WOHNUNG.format(
+        wohnung=aktiv[0].name, tage=_tage_text(sum(t for t, _ in stuecke)),
+        spannen=' und '.join(f'{t} von {s}' for t, s in stuecke))]
+
+
 def rechne(vorgang: Vorgang) -> dict:
     """Die Abrechnung fuer einen Mieter. Rein: gleiche Eingabe, gleiches Bild.
 
@@ -2532,6 +2574,7 @@ def rechne(vorgang: Vorgang) -> dict:
         warnings.append(abdeckungs_warnung(vorgang, luecken))
     warnings.extend(ueberschneidende_rechnungen(vorgang, invoices))
     warnings.extend(fallende_staende(vorgang, invoices))
+    warnings.extend(leerstand_der_einzigen_wohnung(vorgang, invoices))
 
     # Die Heizkosten gehen ihren eigenen Weg (R-HK-01, D-46/D-47): sie
     # laufen nicht durch die Fallunterscheidung darunter, sondern werden je
