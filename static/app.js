@@ -3405,6 +3405,7 @@ async function openAddInvoiceModal(editInvoiceId = null) {
             // NK-124: die Tarifpreise (NK-055) gehoeren zusammen.
             document.getElementById('invoice-preis-ht').value = i.preis_ht ?? '';
             document.getElementById('invoice-preis-nt').value = i.preis_nt ?? '';
+            document.getElementById('invoice-grundpreis').value = i.grundpreis ?? '';
             document.getElementById('invoice-pages').value = i.document_pages || '';
             // NK-125: Anlage, Posten und CO2-Angaben des Belegs.
             await populateInvoiceHeizung(i.heizungsanlage_id || null);
@@ -3435,6 +3436,7 @@ async function openAddInvoiceModal(editInvoiceId = null) {
         document.getElementById('invoice-rechnungsdatum').value = '';
         document.getElementById('invoice-preis-ht').value = '';
         document.getElementById('invoice-preis-nt').value = '';
+        document.getElementById('invoice-grundpreis').value = '';
         document.getElementById('invoice-pages').value = '';
         if (provSelect) provSelect.value = '';
         docSelect.value = '';
@@ -3674,6 +3676,9 @@ async function saveInvoice() {
     }
     if (preisHt !== '') formData.append('preis_ht', preisHt);
     if (preisNt !== '') formData.append('preis_nt', preisNt);
+    // F-137: leer heisst keine Angabe, der Server rechnet dann wie bisher.
+    const grundpreis = document.getElementById('invoice-grundpreis').value;
+    if (grundpreis !== '') formData.append('grundpreis', grundpreis);
     // NK-125: Anlage und Posten gehoeren zusammen (D-44); die CO2-Angaben
     // des Belegs kommen dazu, sobald eine Anlage gewaehlt ist.
     const heizungsanlageId = document.getElementById('invoice-heizungsanlage').value;

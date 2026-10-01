@@ -131,6 +131,7 @@ def _rechnung(invoice: CostInvoice) -> Rechnung:
         co2_emission_kg=invoice.co2_emission_kg,
         preis_ht=invoice.preis_ht,
         preis_nt=invoice.preis_nt,
+        grundpreis=invoice.grundpreis,
     )
 
 

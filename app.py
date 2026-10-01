@@ -1870,10 +1870,20 @@ def _rechnungsfelder(eingabe):
     co2_emission_kg = (None if emission_roh is None
                        else Decimal(str(emission_roh)))
 
+    # F-137: der Grundpreis ist ein Teil des Betrags (derselbe CHECK steht
+    # in der Datenbank).
+    amount = eingabe.geldbetrag('amount', pflicht=True)
+    grundpreis = eingabe.geldbetrag('grundpreis', min_wert=0)
+    if grundpreis is not None and grundpreis > amount:
+        raise EingabeFehler(
+            'Der Grundpreis ist ein Teil des Rechnungsbetrags und kann nicht '
+            'größer sein als er.', 'grundpreis')
+
     return {
         'category_id': eingabe.ganzzahl('category_id', pflicht=True),
         'property_id': eingabe.ganzzahl('property_id', pflicht=True),
-        'amount': eingabe.geldbetrag('amount', pflicht=True),
+        'amount': amount,
+        'grundpreis': grundpreis,
         'invoice_number': eingabe.text('invoice_number', standard='', maxlaenge=100),
         'provider_id': eingabe.ganzzahl('provider_id'),
         'start_date': eingabe.datum('start_date', pflicht=True),
@@ -1924,6 +1934,7 @@ def get_invoices():
             'apartment_id': i.apartment_id,
             'preis_ht': i.preis_ht,
             'preis_nt': i.preis_nt,
+            'grundpreis': i.grundpreis,
             # Die Heizkosten-Felder (NK-125, D-44): Anlage und Posten des
             # § 7 Abs. 2 stehen an der Rechnung; die CO2-Angaben kommen
             # vom Lieferantenbeleg (D-54, uebernehmen statt rechnen).
@@ -1977,6 +1988,7 @@ def create_invoice():
         apartment_id=felder['apartment_id'],
         preis_ht=felder['preis_ht'],
         preis_nt=felder['preis_nt'],
+        grundpreis=felder['grundpreis'],
         heizungsanlage_id=felder['heizungsanlage_id'],
         heizkostenart=felder['heizkostenart'],
         co2_kosten=felder['co2_kosten'],
@@ -2029,6 +2041,7 @@ def update_invoice(id):
     invoice.apartment_id = felder['apartment_id']
     invoice.preis_ht = felder['preis_ht']
     invoice.preis_nt = felder['preis_nt']
+    invoice.grundpreis = felder['grundpreis']
     invoice.heizungsanlage_id = felder['heizungsanlage_id']
     invoice.heizkostenart = felder['heizkostenart']
     invoice.co2_kosten = felder['co2_kosten']

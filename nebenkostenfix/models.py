@@ -373,6 +373,13 @@ class CostInvoice(db.Model):
     preis_ht = db.Column(Einheitspreis, nullable=True)
     preis_nt = db.Column(Einheitspreis, nullable=True)
 
+    # Der verbrauchsunabhaengige Teil des Betrags (F-137): Grundpreis bzw.
+    # Zaehlermiete, wie der Beleg ihn ausweist. Er faellt auch in Leermonaten
+    # an und wird deshalb nach Tagen geteilt, nur der Rest nach Zaehler --
+    # sonst laege der Grundpreis des Leerstands beim Mieter (§ 556 Abs. 3
+    # BGB). NULL heisst keine Angabe: dann wie bisher alles nach Zaehler.
+    grundpreis = db.Column(Geld, nullable=True)
+
     __table_args__ = (
         db.CheckConstraint(
             'heizkostenart IS NULL OR heizkostenart IN (%s)' % ', '.join(
@@ -409,6 +416,10 @@ class CostInvoice(db.Model):
             '(preis_ht IS NULL OR preis_ht >= 0) AND '
             '(preis_nt IS NULL OR preis_nt >= 0)',
             name='ck_cost_invoices_dualtarif_nichtnegativ'),
+        # Der Grundpreis ist ein Teil des Betrags, nie mehr und nie negativ.
+        db.CheckConstraint(
+            'grundpreis IS NULL OR (grundpreis >= 0 AND grundpreis <= amount)',
+            name='ck_cost_invoices_grundpreis_im_betrag'),
     )
 
 class InvoiceDocument(db.Model):

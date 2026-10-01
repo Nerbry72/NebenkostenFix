@@ -93,6 +93,7 @@ OBERFLAECHE = {
         'invoice_document_id': 'id="invoice-document-id"',
         'preis_ht': 'id="invoice-preis-ht"',
         'preis_nt': 'id="invoice-preis-nt"',
+        'grundpreis': 'id="invoice-grundpreis"',
         'heizungsanlage_id': 'id="invoice-heizungsanlage"',
         'heizkostenart': 'id="invoice-heizkostenart"',
         'co2_kosten': 'id="invoice-co2-kosten"',

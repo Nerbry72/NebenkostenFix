@@ -319,6 +319,10 @@ class Rechnung:
     # bestimmen nur, wie er zwischen HT und NT gesplitet wird.
     preis_ht: Optional[Decimal] = None
     preis_nt: Optional[Decimal] = None
+    # Der verbrauchsunabhaengige Teil des Betrags (F-137). Bei einer
+    # Wohnungsrechnung mit Zaehler folgt er den Tagen, nur der Rest dem
+    # Zaehler. ``None`` heisst keine Angabe: alles nach Zaehler wie bisher.
+    grundpreis: Optional[Decimal] = None
 
     @property
     def ende_grenze(self) -> date:
@@ -862,6 +866,19 @@ HINWEIS_ALLGEMEIN_NEGATIV = (
     "Hauptzähler auch dann weniger, ist ein Stand falsch erfasst oder ein "
     "Wohnungszähler dem falschen Hauptzähler zugeordnet. Prüfen Sie die "
     "Stände und die Zuordnung der Zähler."
+)
+
+#: F-137: eine Wohnungsrechnung mit Zaehler wird nach Verbrauch geteilt. Ein
+#: Grundpreis faellt aber auch im Leerstand an; ohne die Angabe, wie viel
+#: davon Grundpreis ist, traegt der Mieter mehr als seine Tage.
+HINWEIS_GRUNDPREIS_LEERSTAND = (
+    "W-GRUNDPREIS-LEERSTAND · Die Rechnung „{kategorie}“ für {wohnung} "
+    "({beginn} – {ende}) wird nach dem Zähler der Wohnung verteilt, und die "
+    "Wohnung war darin {tage} Tage nicht vermietet. Ein Grundpreis oder eine "
+    "Zählermiete fällt auch dann an. Nach Verbrauch geteilt trägt der Mieter "
+    "davon mehr, als auf seine Tage entfällt. Tragen Sie bei der Rechnung "
+    "„davon Grundpreis/Zählermiete“ ein, dann teilt die App ihn nach Tagen "
+    "und gibt den Anteil der leeren Tage an den Vermieter."
 )
 
 
@@ -2669,15 +2686,36 @@ def rechne(vorgang: Vorgang) -> dict:
             # Wohnung die ganze Zeit leer stand und es ihre eigene nicht gibt.
             # Gemessen am Zaehler der Wohnung, ohne Zaehler nach Tagen.
             leer_zaehler = wohnungszaehler(vorgang, cat.id, inv.wohnung_id)
+            qm = next((w.qm for w in vorgang.wohnungen if w.id == inv.wohnung_id), None)
+            # F-137: der Grundpreis faellt auch im Leerstand an, unabhaengig
+            # vom Verbrauch. Er folgt den Tagen, nur der Rest dem Zaehler.
+            grundpreis = inv.grundpreis if leer_zaehler else None
             if leer_zaehler:
                 anteil = _vermieterverbrauchsanteil(
-                    vorgang, cat.name, inv, inv.betrag,
+                    vorgang, cat.name, inv, inv.betrag - (grundpreis or NULL),
                     verbrauch(leer_zaehler, inv.beginn, inv.ende),
                     {inv.wohnung_id: leer_zaehler},
                     einheit_fuer(cat.name, cat.betrkv_nr), {inv.wohnung_id},
                     gemessen=True, fenster=(overlap_von, overlap_bis))
+                if grundpreis:
+                    grundanteil = qm and _vermieteranteil(
+                        vorgang, cat.name, inv, grundpreis * time_fraction, qm,
+                        overlap_von, overlap_bis, nur={inv.wohnung_id})
+                    if grundanteil:
+                        grundanteil['description'] = (
+                            'Grundpreis/Zählermiete nach Tagen. ' + grundanteil['description'])
+                        vermieter_positionen.append(grundanteil)
+                elif vorgang.wohnung.id == inv.wohnung_id:
+                    leertage = sum(
+                        b.unbelegt for b in _leerstandsbilanz(
+                            vorgang, inv.beginn, inv.ende_grenze, {inv.wohnung_id})
+                        if b.traegt_der_vermieter)
+                    if leertage > 0:
+                        warnings.append(HINWEIS_GRUNDPREIS_LEERSTAND.format(
+                            kategorie=cat.name, wohnung=vorgang.wohnung.name,
+                            beginn=inv.beginn.strftime('%d.%m.%Y'),
+                            ende=inv.ende.strftime('%d.%m.%Y'), tage=leertage))
             else:
-                qm = next((w.qm for w in vorgang.wohnungen if w.id == inv.wohnung_id), None)
                 # F-128: nur der Leerstand im Zeitraum dieser Abrechnung.
                 anteil = qm and _vermieteranteil(
                     vorgang, cat.name, inv, prorated_invoice_amount, qm,
@@ -2705,14 +2743,25 @@ def rechne(vorgang: Vorgang) -> dict:
                     gesamt = verbrauch_in(tenant_meter, inv.beginn, inv.ende_grenze)['consumption']
                     if overlap_days < invoice_days and gesamt > 0:
                         anteil = min(max(dec(tenant_consumption) / dec(gesamt), NULL), dec(1))
-                        tenant_cost = inv.betrag * anteil
+                        verbrauchsteil = inv.betrag - (grundpreis or NULL)
+                        tenant_cost = verbrauchsteil * anteil
                         description = (f"Direkt zugewiesen, nach Verbrauch: "
                                        f"{zahl_text(round(tenant_consumption, 1))} von "
                                        f"{zahl_text(round(gesamt, 1))} {unit} der Rechnung")
+                        if grundpreis:
+                            # F-137: der Grundpreis nach Tagen, der Rest nach Zaehler.
+                            grund_kosten = grundpreis * time_fraction
+                            tenant_cost += grund_kosten
+                            description += ", Grundpreis/Zählermiete nach Tagen"
+                            rechenweg.append(
+                                f"{euro_text(grundpreis)} Grundpreis/Zählermiete, anteilig "
+                                f"{overlap_days} von {invoice_days} Tagen = "
+                                f"{euro_text(runde(grund_kosten))}")
                         rechenweg.append(
-                            f"{euro_text(inv.betrag)} Rechnungsbetrag × "
+                            f"{euro_text(verbrauchsteil)} "
+                            f"{'übriger Betrag' if grundpreis else 'Rechnungsbetrag'} × "
                             f"{zahl_text(round(tenant_consumption, 1))} / {zahl_text(round(gesamt, 1))} {unit} "
-                            f"= {euro_text(runde(tenant_cost))}")
+                            f"= {euro_text(runde(verbrauchsteil * anteil))}")
 
         elif billing_type == 'qm':
             # Erst hier abbrechen, nicht schon oben: eine Abrechnung ohne
