@@ -1435,7 +1435,7 @@ def _vermieterpersonenanteil(vorgang, kategorie_name, rechnung, bilanz,
 
 def _belegte_verbrauchsmenge(vorgang: Vorgang, zaehler: Zaehler,
                              rechnung: Rechnung, gemessen: bool = False,
-                             fenster=None) -> float:
+                             fenster=None, register: str = 'consumption') -> float:
     """Wie viel der Menge eines Zaehlers auf Mietverhaeltnisse entfaellt.
 
     Fuer jede Wohnung zaehlt dasselbe, was auch ihre Zeile als
@@ -1451,6 +1451,8 @@ def _belegte_verbrauchsmenge(vorgang: Vorgang, zaehler: Zaehler,
     verbleibt, ergibt zusammen den Verbrauchsteil der Rechnung.
 
     ``fenster`` (``(von, bis)``) zaehlt nur die Mietzeit darin (F-128).
+    ``register`` ('ht' oder 'nt') zaehlt beim Dualtarif nur dieses Register;
+    gilt nur gemessen.
     """
     von = rechnung.beginn
     bis = rechnung.ende_grenze
@@ -1479,7 +1481,7 @@ def _belegte_verbrauchsmenge(vorgang: Vorgang, zaehler: Zaehler,
             menge += volle_menge * (tage(fenster_von, fenster_bis) / laenge)
         else:
             # Gemessen -- eine Zwischenablesung an jedem Mietrand.
-            menge += verbrauch_in(zaehler, fenster_von, fenster_bis)['consumption']
+            menge += verbrauch_in(zaehler, fenster_von, fenster_bis)[register]
     return menge
 
 
@@ -1488,7 +1490,7 @@ def _vermieterverbrauchsanteil(vorgang: Vorgang, kategorie_name: str,
                                summe_zaehler: float, zaehler: dict,
                                einheit: str, ids: set,
                                gemessen: bool = False,
-                               fenster=None) -> Optional[dict]:
+                               fenster=None, preise=None) -> Optional[dict]:
     """Was vom Verbrauchsteil einer Rechnung beim Vermieter bleibt.
 
     Eine leer stehende oder eigengenutzte Wohnung verbraucht dennoch Waerme
@@ -1504,6 +1506,10 @@ def _vermieterverbrauchsanteil(vorgang: Vorgang, kategorie_name: str,
     Abrechnung) misst nur den Rest darin (F-128): keine Abrechnung zeigt
     Leerstand ausserhalb ihres Zeitraums, und ueber alle Zeitraeume ergibt
     sich der Rest der ganzen Rechnung.
+
+    ``preise`` (``(ht, nt)``, die effektiven Tarifpreise) rechnet den Rest
+    beim Dualtarif je Register wie die Mieterzeile; nur mit ``gemessen``
+    und ``fenster``.
     """
     if verbrauchsteil is None or summe_zaehler <= 0:
         return None
@@ -1517,6 +1523,7 @@ def _vermieterverbrauchsanteil(vorgang: Vorgang, kategorie_name: str,
         if fenster and not gemessen else None)
     einheiten = []
     mengen = {LEERSTAND: 0.0, EIGENNUTZUNG: 0.0}
+    betraege = {LEERSTAND: NULL, EIGENNUTZUNG: NULL}
     for b in bilanz:
         if not b.traegt_der_vermieter:
             continue
@@ -1527,6 +1534,14 @@ def _vermieterverbrauchsanteil(vorgang: Vorgang, kategorie_name: str,
             ganz = (verbrauch(z, rechnung.beginn, rechnung.ende)
                     - _belegte_verbrauchsmenge(vorgang, z, rechnung))
             rest = ganz * b.unbelegt / leertage[b.wohnung_id]
+        elif preise:
+            gesamt = verbrauch_in(z, von, bis)
+            rest_ht, rest_nt = (
+                gesamt[r] - _belegte_verbrauchsmenge(vorgang, z, rechnung, True, fenster, r)
+                for r in ('ht', 'nt'))
+            rest = rest_ht + rest_nt
+            if rest > 0:
+                betraege[b.grund] += dec(rest_ht) * preise[0] + dec(rest_nt) * preise[1]
         else:
             menge = (verbrauch_in(z, von, bis)['consumption'] if fenster
                      else verbrauch(z, rechnung.beginn, rechnung.ende))
@@ -1545,10 +1560,13 @@ def _vermieterverbrauchsanteil(vorgang: Vorgang, kategorie_name: str,
     if not einheiten:
         return None
     rest_menge = mengen[LEERSTAND] + mengen[EIGENNUTZUNG]
-    leer_betrag = runde(
-        dec(verbrauchsteil) * dec(mengen[LEERSTAND]) / dec(summe_zaehler))
-    eigen_betrag = runde(
-        dec(verbrauchsteil) * dec(mengen[EIGENNUTZUNG]) / dec(summe_zaehler))
+    if preise:
+        leer_betrag, eigen_betrag = runde(betraege[LEERSTAND]), runde(betraege[EIGENNUTZUNG])
+    else:
+        leer_betrag = runde(
+            dec(verbrauchsteil) * dec(mengen[LEERSTAND]) / dec(summe_zaehler))
+        eigen_betrag = runde(
+            dec(verbrauchsteil) * dec(mengen[EIGENNUTZUNG]) / dec(summe_zaehler))
 
     namen = {
         LEERSTAND: [e['apartment'] for e in einheiten if e['reason'] == LEERSTAND],
@@ -3061,15 +3079,15 @@ def rechne(vorgang: Vorgang) -> dict:
                     # eigengenutzten Wohnung misst, zahlt kein Mieter. Es
                     # bleibt beim Vermieter -- ausgewiesen wie bei der Heizung.
                     # Gemessen wird wie in der Mieterzeile (verbrauch_in), damit
-                    # die Rechnung aufgeht.
-                    # ponytail: beim Dualtarif mit dem Mischpreis der Rechnung,
-                    # getrennte Register erst, wenn es jemand braucht.
+                    # die Rechnung aufgeht -- beim Dualtarif je Register.
                     if billing_type == 'direkt':
                         anteil = _vermieterverbrauchsanteil(
                             vorgang, f"{cat.name} (Verbrauch der Wohnung)", inv,
                             inv.betrag, rechnung_main_consumption,
                             {m.wohnung_id: m for m in all_sub_meters}, unit, None,
-                            gemessen=True, fenster=(overlap_von, overlap_bis))
+                            gemessen=True, fenster=(overlap_von, overlap_bis),
+                            preise=((preis_ht_eff, preis_nt_eff)
+                                    if preis_ht_eff is not None else None))
                         if anteil:
                             vermieter_positionen.append(anteil)
 

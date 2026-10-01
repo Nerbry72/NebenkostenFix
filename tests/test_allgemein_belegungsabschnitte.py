@@ -161,3 +161,41 @@ def test_dualtarif_gewichtet_die_abschnitte_nach_geld():
     mieter = [e['line_items'][0]['tenant_cost'] for e in ergebnisse]
     assert mieter == [Decimal('50.00'), Decimal('50.00'), Decimal('25.00')]  # eigen 10/10/5
     assert sum(mieter) + ergebnisse[0]['landlord_share']['total_amount'] == Decimal('145.00')
+
+
+def test_dualtarif_leerstand_rechnet_je_register():
+    """PR #25 (Copilot, vierte Runde): der Verbrauch einer leeren Wohnung
+    kostet beim Dualtarif HT- und NT-Preis wie die Mieterzeile.
+
+    HT 0,40 EUR, NT 0,10 EUR, kein Allgemeinverbrauch. Wohnung 3 steht im
+    ersten Halbjahr leer und verbraucht 100 kWh NT = 10 EUR. Mieter 1 und 2
+    je 20 HT + 20 NT = 10 EUR, Mieter 3 10 HT + 10 NT = 5 EUR. Summe 35 EUR.
+    Vorher mit dem Mischpreis 35/200 kWh: Vermieter 17,50 EUR.
+    """
+    strom = Kategorie(id=3, name='Allgemeinstrom', braucht_zaehler=True)
+
+    def zaehler(id, staende, wohnung_id=None):
+        return Zaehler(id=id, nummer=f'Z-{id}', kategorie_id=3, kategorie_name='Allgemeinstrom',
+                       ist_hauptzaehler=wohnung_id is None, immobilie_id=1,
+                       wohnung_id=wohnung_id,
+                       staende=tuple(Stand(d, ht, nt) for d, (ht, nt)
+                                     in zip((BEGINN, MITTE, GRENZE), staende)))
+
+    def welt(wer):
+        return replace(
+            _welt(wer), profile={strom.id: 'direkt'},
+            rechnungen=(Rechnung(id=1, kategorie=strom, betrag=Decimal('35.00'),
+                                 beginn=BEGINN, ende=ENDE,
+                                 preis_ht=Decimal('0.40'), preis_nt=Decimal('0.10')),),
+            zaehler=(zaehler(10, ((0.0, 0.0), (20.0, 120.0), (50.0, 150.0))),
+                     zaehler(11, ((0.0, 0.0), (10.0, 10.0), (20.0, 20.0)), 1),
+                     zaehler(12, ((0.0, 0.0), (10.0, 10.0), (20.0, 20.0)), 2),
+                     zaehler(13, ((0.0, 0.0), (0.0, 100.0), (10.0, 110.0)), 3)))
+
+    ergebnisse = [rechne(welt(wer)) for wer in (1, 2, 3)]
+    vermieter = [p['amount'] for p in ergebnisse[0]['landlord_share']['positions']
+                 if 'Verbrauch der Wohnung' in p['category']]
+    assert vermieter == [Decimal('10.00')]
+    mieter = [e['line_items'][0]['tenant_cost'] for e in ergebnisse]
+    assert mieter == [Decimal('10.00'), Decimal('10.00'), Decimal('5.00')]
+    assert sum(mieter) + ergebnisse[0]['landlord_share']['total_amount'] == Decimal('35.00')
