@@ -3655,7 +3655,7 @@ def analytics_building(property_id):
         
     active_tenants = Tenant.query.join(Apartment).filter(
         Apartment.property_id == property_id,
-        db.or_(Tenant.move_out_date == None, Tenant.move_out_date > today)
+        db.or_(Tenant.move_out_date == None, Tenant.move_out_date >= today)
     ).all()
     
     open_tasks = 0

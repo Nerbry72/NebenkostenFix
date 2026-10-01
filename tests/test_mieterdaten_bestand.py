@@ -65,6 +65,19 @@ def test_uebersicht_zaehlt_abgerechnete_mieter_nicht_als_offen(auth_client, app_
     assert kpis['open_tasks'] == 0
 
 
+def test_uebersicht_zaehlt_den_auszugstag_noch_mit(auth_client, app_ctx):
+    """F-118: Das Auszugsdatum ist der letzte Miettag, der Mieter wohnt heute noch."""
+    heute = date.today()
+    haus = f.house()
+    mieter = f.tenant(f.apt(haus, 'EG', 50), 'Mieter 1', move_in=heute - timedelta(days=2000))
+    mieter.move_out_date = heute
+    db.session.commit()
+
+    kpis = auth_client.get(f'/api/analytics/building/{haus.id}').get_json()['kpis']
+
+    assert kpis['open_tasks'] == 1
+
+
 # --- H8: ohne Kostenprofil, ohne Rechnungen -----------------------------------------
 
 def test_ohne_kostenprofil_wird_nach_flaeche_umgelegt(app_ctx):
