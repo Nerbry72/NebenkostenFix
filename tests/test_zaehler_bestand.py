@@ -14,6 +14,7 @@ from datetime import date
 import pytest
 
 from nebenkostenfix import heizung
+from nebenkostenfix.billing_engine import BillingEngine
 from nebenkostenfix.pdf_generator import stichtag_hinweis
 from nebenkostenfix.rechenkern import Stand, Zaehler, verbrauch_in
 from nebenkostenfix.zeitraumvorschlag import vorschlag
@@ -117,9 +118,28 @@ def test_vorschlag_nennt_die_naechste_ablesung(app_ctx):
 
     gruende = vorschlag(mieter.id, date(2026, 9, 30))['gruende']
 
-    assert ('Der Wärmezähler WZ-1 hat um den 31.12.2025 keinen Stand, die nächste Ablesung '
-            'ist vom 01.04.2026. Lesen Sie zum 31.12.2025 ab, dann rechnet die Abrechnung '
-            'genau; sonst schätzt sie nach Gradtagszahlen.') in gruende
+    assert ('Der Wärmezähler WZ-1 hat um den 31.12.2025 keine Ablesung, die letzte davor ist '
+            'vom 01.04.2025, die erste danach vom 01.04.2026. Lesen Sie zum 31.12.2025 ab, dann '
+            'rechnet die Abrechnung genau; sonst schätzt sie nach Gradtagszahlen.') in gruende
+
+
+def test_vorschlag_nennt_keine_fruehere_ablesung_als_naechste(app_ctx):
+    """Praxisbestand: Die nächstgelegene Ablesung lag vor dem Stichtag und hieß „die nächste“."""
+    prop = f.house('Wärmehaus')
+    wohnung = f.apt(prop, 'EG', 60.0)
+    mieter = f.tenant(wohnung, 'Mieter 1', move_in=date(2025, 10, 1))
+    kat = f.category('Heizung')
+    kat.betrkv_nr = 4
+    f.profile(mieter, kat, 'direkt')
+    f.invoice(prop, kat, 1200.0, start=JAN, end=date(2025, 12, 31), invoice_number='H-1')
+    z = f.meter(prop, kat, 'WZ-1', is_main=False, apartment=wohnung)
+    f.reading(z, date(2025, 10, 17), 100)
+    f.reading(z, date(2026, 7, 31), 900)
+
+    [hinweis] = [g for g in vorschlag(mieter.id, date(2026, 9, 30))['gruende'] if 'WZ-1' in g]
+
+    assert 'die letzte davor ist vom 17.10.2025, die erste danach vom 31.07.2026' in hinweis
+    assert 'nächste' not in hinweis
 
 
 def test_vorschlag_schweigt_bei_ablesung_am_jahresende(app_ctx):
@@ -139,3 +159,31 @@ def test_vorschlag_schweigt_bei_ablesung_am_jahresende(app_ctx):
 
     assert (v['beginn'], v['ende']) == ('2025-01-01', '2025-12-31')
     assert not any('Wärmezähler' in g for g in v['gruende'])
+
+
+# --- Das einfache PDF sagt, dass der Stichtag geschätzt ist ---------------------------
+
+def _heizposten(*ablesungen):
+    prop = f.house('Wärmehaus')
+    wohnung = f.apt(prop, 'EG', 60.0)
+    mieter = f.tenant(wohnung, 'Mieter 1', move_in=date(2020, 1, 1))
+    kat = f.category('Heizung')
+    kat.betrkv_nr = 4
+    f.profile(mieter, kat, 'direkt')
+    f.invoice(prop, kat, 1200.0, start=JAN, end=date(2025, 12, 31), invoice_number='H-1')
+    z = f.meter(prop, kat, 'WZ-1', is_main=False, apartment=wohnung)
+    for tag, stand in ablesungen:
+        f.reading(z, tag, stand)
+    [zeile] = BillingEngine(mieter.id, '2025-01-01', '2025-12-31').calculate_bill()['line_items']
+    return next(s['description'] for s in zeile['sub_items'] if s['type'] == 'eigenverbrauch')
+
+
+def test_einfaches_pdf_nennt_geschaetzten_stichtag(app_ctx):
+    """Praxisbestand: Nur das detaillierte PDF sagte „nach Gradtagszahlen geschätzt“."""
+    text = _heizposten((date(2024, 4, 1), 100), (APRIL, 1100), (date(2026, 4, 1), 2100))
+    assert text.endswith(', Stichtag nach Gradtagszahlen geschätzt)')
+
+
+def test_einfaches_pdf_schweigt_bei_ablesung_am_stichtag(app_ctx):
+    text = _heizposten((date(2024, 12, 31), 100), (date(2025, 12, 31), 1100))
+    assert text == 'Eigenverbrauch (1000.0 kWh)'

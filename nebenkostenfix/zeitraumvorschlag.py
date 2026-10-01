@@ -209,12 +209,16 @@ def vorschlag(tenant_id: int, heute: date) -> dict:
         if not (ist_heizwaermezaehler(z) and z.staende
                 and (z.wohnung_id == vorgang.wohnung.id or z.ist_hauptzaehler)):
             continue
-        naechste = min((s.datum for s in z.staende), key=lambda d: (abs((d - ende).days), d))
-        if abs((naechste - ende).days) > NAHE:
-            gruende.append(f'Der Wärmezähler {z.nummer} hat um den {_d(ende)} keinen Stand, '
-                           f'die nächste Ablesung ist vom {_d(naechste)}. Lesen Sie zum '
-                           f'{_d(ende)} ab, dann rechnet die Abrechnung genau; sonst schätzt '
-                           'sie nach Gradtagszahlen.')
+        tage = [s.datum for s in z.staende]
+        if min(abs((d - ende).days) for d in tage) > NAHE:
+            # „nächste“ läse sich als „folgende“, auch wenn die nächstgelegene davor liegt.
+            davor = max((d for d in tage if d <= ende), default=None)
+            danach = min((d for d in tage if d > ende), default=None)
+            stand = ', '.join(t for t in (davor and f'die letzte davor ist vom {_d(davor)}',
+                                          danach and f'die erste danach vom {_d(danach)}') if t)
+            gruende.append(f'Der Wärmezähler {z.nummer} hat um den {_d(ende)} keine Ablesung, '
+                           f'{stand}. Lesen Sie zum {_d(ende)} ab, dann rechnet die Abrechnung '
+                           'genau; sonst schätzt sie nach Gradtagszahlen.')
 
     rest_bis = auszug if auszug and auszug > ende else None
     if rest_bis:

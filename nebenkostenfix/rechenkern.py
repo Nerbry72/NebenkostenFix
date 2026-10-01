@@ -902,6 +902,16 @@ def verbrauch_detail(zaehler: Zaehler, start_date: date, end_date: date) -> dict
     return verbrauch_in(zaehler, start_date, grenze(end_date))
 
 
+def eigenverbrauch_text(menge, unit: str, detail: dict | None) -> str:
+    """Der Unterposten Eigenverbrauch. Ein nach Gradtagszahlen geschaetzter
+    Stichtag steht auch im einfachen PDF dabei, nicht nur im detaillierten (D-115);
+    die Schwelle von 7 Tagen ist dieselbe wie dort."""
+    text = f"Eigenverbrauch ({menge:.1f} {unit}"
+    if detail and detail.get('gradtage') and max(detail['start_offset_days'], detail['end_offset_days']) > 7:
+        text += ", Stichtag nach Gradtagszahlen geschätzt"
+    return text + ")"
+
+
 def verbrauch_in(zaehler: Zaehler, von: date, bis: date) -> dict:
     """Verbrauch in ``[von, bis)`` -- der erste Tag zaehlt, der letzte nicht.
 
@@ -2918,7 +2928,7 @@ def rechne(vorgang: Vorgang) -> dict:
             if is_apartment_direct:
                 desc = "Direkt zugewiesen (100 % der Rechnung)"
                 if tenant_consumption and tenant_consumption > 0:
-                    desc = f"Eigenverbrauch ({tenant_consumption:.1f} {unit})"
+                    desc = eigenverbrauch_text(tenant_consumption, unit, tenant_detail)
                 sub_items.append({
                     'type': 'eigenverbrauch',
                     'description': desc,
@@ -2928,13 +2938,13 @@ def rechne(vorgang: Vorgang) -> dict:
                 if 'Hauptzähler' in description:
                     sub_items.append({
                         'type': 'eigenverbrauch',
-                        'description': f"Eigenverbrauch ({tenant_consumption:.1f} {unit})",
+                        'description': eigenverbrauch_text(tenant_consumption, unit, tenant_detail),
                         'cost': runde(tenant_direct_cost)
                     })
                 else:
                     sub_items.append({
                         'type': 'eigenverbrauch',
-                        'description': f"Eigenverbrauch ({tenant_consumption:.1f} {unit})",
+                        'description': eigenverbrauch_text(tenant_consumption, unit, tenant_detail),
                         'cost': runde(tenant_direct_cost)
                     })
                     sub_desc = f"Anteil Allgemein (Haus gesamt: {allgemein_consumption:.1f} {unit}, Anteil: {this_tenant_days} von {total_person_days} Personentagen{abschnitte_text})"
