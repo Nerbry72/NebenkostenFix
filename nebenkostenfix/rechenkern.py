@@ -1201,7 +1201,7 @@ def _personentage_im_haus(vorgang: Vorgang, von: date, bis: date):
 
 
 def _allgemeinquoten(vorgang: Vorgang, haupt: Zaehler, unter, von: date, bis: date,
-                     fenster_von: date, fenster_bis: date):
+                     fenster_von: date, fenster_bis: date, preise=None):
     """``(Mieter, Vermieter)``: die Anteile am Allgemeinverbrauch der Rechnung ``[von, bis)``.
 
     F-122: die Rechnung zerfaellt an jedem Einzug, Auszug und jeder Aenderung
@@ -1212,6 +1212,9 @@ def _allgemeinquoten(vorgang: Vorgang, haupt: Zaehler, unter, von: date, bis: da
     F-128). Mal dem Allgemeinbetrag der ganzen Rechnung ergeben die Anteile
     aller Mieter plus der Vermieteranteile aller Zeitraeume die Rechnung --
     auch wenn der Verbrauch uebers Jahr ungleich liegt.
+
+    ``preise`` (HT, NT) beim Dualtarif: dann wiegt jeder Abschnitt mit seinem
+    Betrag statt seiner Menge, je Register nie negativ wie ``allgemein_voll``.
 
     D-73 je Abschnitt: misst ein Abschnitt negativen Allgemeinverbrauch, zaehlt
     er als null. Niemand bekommt eine Gutschrift, und die positiven Abschnitte
@@ -1232,8 +1235,14 @@ def _allgemeinquoten(vorgang: Vorgang, haupt: Zaehler, unter, von: date, bis: da
 
     summe = mieter = vermieter = NULL
     for a, e in zip(grenzen, grenzen[1:]):
-        allgemein = dec(verbrauch_in(haupt, a, e)['consumption']) - sum(
-            dec(verbrauch_in(z, a, e)['consumption']) for z in unter)
+        h = verbrauch_in(haupt, a, e)
+        u = [verbrauch_in(z, a, e) for z in unter]
+        if preise:
+            allgemein = sum(
+                max(NULL, dec(h[r]) - sum(dec(d[r]) for d in u)) * preis
+                for r, preis in zip(('ht', 'nt'), preise))
+        else:
+            allgemein = dec(h['consumption']) - sum(dec(d['consumption']) for d in u)
         if allgemein <= 0:
             continue
         eigene, alle, _ = _personentage_im_haus(vorgang, a, e)
@@ -2994,7 +3003,8 @@ def rechne(vorgang: Vorgang) -> dict:
                     # Abschnitt gemessen -- sonst die Quote der Personentage.
                     quoten = _allgemeinquoten(
                         vorgang, main_meter, all_sub_meters, inv.beginn, inv.ende_grenze,
-                        overlap_von, overlap_bis)
+                        overlap_von, overlap_bis,
+                        (preis_ht_eff, preis_nt_eff) if preis_ht_eff is not None else None)
                     if quoten:
                         tenant_allgemein_share_prorated = allgemein_voll * quoten[0]
                         abschnitte_text = ', gemessen je Belegungsabschnitt'
