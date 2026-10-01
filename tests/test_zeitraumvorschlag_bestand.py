@@ -9,6 +9,7 @@ liest der Vermieter.
 
 from __future__ import annotations
 
+import shutil
 from datetime import date
 
 import pytest
@@ -200,3 +201,25 @@ def test_feld_ueber_die_api(auth_client):
     assert auth_client.put(f'/api/properties/{prop.id}',
                            json={'abrechnungsjahr_beginn': ''}).status_code == 200
     assert gelesen()['abrechnungsjahr_quelle'] == 'abrechnungen'
+
+
+@pytest.mark.skipif(shutil.which('node') is None, reason='node fehlt')
+def test_bearbeiten_macht_den_abgeleiteten_beginn_nicht_zum_feld():
+    """PR #25 (Copilot): der Dialog trug den abgeleiteten Wert ins Feld ein.
+
+    Wer danach nur den Namen aendert, speichert ihn als Feld -- spaetere
+    Abrechnungen verschieben das Abrechnungsjahr dann nicht mehr. Der
+    abgeleitete Wert steht nur als Platzhalter da.
+    """
+    from tests.test_vorschau_anzeige import _funktionsrumpf, _node
+    code = ('const felder = {}; const document = {getElementById: id => '
+            '(felder[id] = felder[id] || {value: "?", placeholder: "01.01."})};'
+            'const propertyModal = {querySelector: () => ({}), classList: {add() {}}};'
+            'let editingPropertyId; const zeige = prop => { openAddPropertyModal(prop);'
+            'const f = felder["prop-jahresbeginn"]; return [f.value, f.placeholder]; };'
+            + _funktionsrumpf('openAddPropertyModal')
+            + 'console.log(JSON.stringify(['
+            'zeige({id: 1, name: "A", abrechnungsjahr_beginn: "01.07.", abrechnungsjahr_quelle: "abrechnungen"}),'
+            'zeige({id: 2, name: "B", abrechnungsjahr_beginn: "01.04.", abrechnungsjahr_quelle: "feld"}),'
+            'zeige(null)]));')
+    assert _node(code) == [['', '01.07.'], ['01.04.', '01.04.'], ['', '01.01.']]

@@ -2072,13 +2072,18 @@ function openAddPropertyModal(prop = null) {
         editingPropertyId = prop.id;
         document.getElementById('prop-name').value = prop.name;
         document.getElementById('prop-standalone').checked = prop.is_standalone;
-        document.getElementById('prop-jahresbeginn').value = prop.abrechnungsjahr_beginn || '';
+        // Nur ein eingetragener Beginn steht im Feld. Der abgeleitete steht als
+        // Platzhalter da, sonst wuerde ihn jedes Speichern festschreiben.
+        const jahresbeginn = document.getElementById('prop-jahresbeginn');
+        jahresbeginn.value = prop.abrechnungsjahr_quelle === 'feld' ? prop.abrechnungsjahr_beginn : '';
+        jahresbeginn.placeholder = prop.abrechnungsjahr_beginn || '01.01.';
         propertyModal.querySelector('h2').textContent = 'Immobilie bearbeiten';
     } else {
         editingPropertyId = null;
         document.getElementById('prop-name').value = '';
         document.getElementById('prop-standalone').checked = false;
         document.getElementById('prop-jahresbeginn').value = '';
+        document.getElementById('prop-jahresbeginn').placeholder = '01.01.';
         propertyModal.querySelector('h2').textContent = 'Neue Immobilie';
     }
     propertyModal.classList.add('active');
