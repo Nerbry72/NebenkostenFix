@@ -39,6 +39,7 @@ import os
 import re
 import secrets
 import shutil
+import threading
 import time
 from datetime import date, datetime
 from pathlib import Path
@@ -156,13 +157,15 @@ def _teil(app, kennung: str) -> tuple[Path, Path]:
 
 
 _letzter_stempel = 0
+_stempel_sperre = threading.Lock()  # Waitress bedient Uploads parallel
 
 
 def _stempel() -> int:
     """Streng steigend im Prozess, auch wo time_ns() grob tickt (Windows)."""
     global _letzter_stempel
-    _letzter_stempel = max(time.time_ns(), _letzter_stempel + 1)
-    return _letzter_stempel
+    with _stempel_sperre:
+        _letzter_stempel = max(time.time_ns(), _letzter_stempel + 1)
+        return _letzter_stempel
 
 
 def _begonnen(info: Path) -> int:

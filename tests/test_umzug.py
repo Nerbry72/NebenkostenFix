@@ -609,3 +609,29 @@ def test_cli_export_und_import(bestand, tmp_path):
     erg = runner.invoke(args=['umzug', 'import', str(paket), '--ja'])
     assert erg.exit_code == 0, erg.output
     assert '"belege": 1' in erg.output
+
+
+def test_stempel_bleiben_bei_parallelen_uploads_eindeutig(monkeypatch):
+    """PR #25 (Copilot): zwei Uploads zugleich lasen denselben letzten Stempel.
+
+    Die Uhr steht still (grobes Ticken), und zwischen Lesen und Schreiben
+    gibt jeder Thread ab -- ohne Sperre bekommen mehrere denselben Stempel.
+    """
+    import builtins
+    import threading
+    import time as zeit
+
+    def langsam(*werte):
+        zeit.sleep(0.005)
+        return builtins.max(*werte)
+
+    monkeypatch.setattr(umzug.time, 'time_ns', lambda: 1)
+    monkeypatch.setattr(umzug, 'max', langsam, raising=False)
+    stempel = []
+    threads = [threading.Thread(target=lambda: stempel.append(umzug._stempel()))
+               for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(set(stempel)) == 8
