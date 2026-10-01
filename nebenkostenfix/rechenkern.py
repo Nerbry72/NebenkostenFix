@@ -1480,6 +1480,12 @@ def _vermieterverbrauchsanteil(vorgang: Vorgang, kategorie_name: str,
         return None
     von, bis = fenster or (rechnung.beginn, rechnung.ende_grenze)
     bilanz = _leerstandsbilanz(vorgang, von, bis, ids)
+    # F-133: ohne ``gemessen`` zahlen die Mieter ihren Teil im Ersatzmassstab
+    # (Tage). Der Rest im Fenster ist dann der Rest der ganzen Rechnung, nach
+    # den Leertagen geteilt -- so ergeben alle Zeitraeume zusammen genau ihn.
+    leertage = ({b.wohnung_id: b.unbelegt for b in _leerstandsbilanz(
+        vorgang, rechnung.beginn, rechnung.ende_grenze, ids)}
+        if fenster and not gemessen else None)
     einheiten = []
     mengen = {LEERSTAND: 0.0, EIGENNUTZUNG: 0.0}
     for b in bilanz:
@@ -1488,9 +1494,14 @@ def _vermieterverbrauchsanteil(vorgang: Vorgang, kategorie_name: str,
         z = zaehler.get(b.wohnung_id)
         if z is None:
             continue
-        menge = (verbrauch_in(z, von, bis)['consumption'] if fenster
-                 else verbrauch(z, rechnung.beginn, rechnung.ende))
-        rest = menge - _belegte_verbrauchsmenge(vorgang, z, rechnung, gemessen, fenster)
+        if leertage is not None:
+            ganz = (verbrauch(z, rechnung.beginn, rechnung.ende)
+                    - _belegte_verbrauchsmenge(vorgang, z, rechnung))
+            rest = ganz * b.unbelegt / leertage[b.wohnung_id]
+        else:
+            menge = (verbrauch_in(z, von, bis)['consumption'] if fenster
+                     else verbrauch(z, rechnung.beginn, rechnung.ende))
+            rest = menge - _belegte_verbrauchsmenge(vorgang, z, rechnung, gemessen, fenster)
         if rest <= 0:
             continue
         einheiten.append({
@@ -1996,7 +2007,8 @@ def _verteilzeile(vorgang: Vorgang, anlage, rechnungen: Sequence[Rechnung],
         if erfasst:
             anteil = _vermieterverbrauchsanteil(
                 vorgang, f"{heizung.ZEILENTITEL[zweck]} ({anlage.name})", inv,
-                verbrauchsteil, summe_zaehler, zaehler, einheit, ids)
+                verbrauchsteil, summe_zaehler, zaehler, einheit, ids,
+                fenster=(overlap_von, overlap_bis))  # F-133: nur dieser Zeitraum
             if anteil:
                 vermieter_positionen.append(anteil)
 
@@ -2014,7 +2026,8 @@ def _verteilzeile(vorgang: Vorgang, anlage, rechnungen: Sequence[Rechnung],
         if erfasst:
             co2_rest = _vermieterverbrauchsanteil(
                 vorgang, f"CO2-Kosten ({anlage.name})", inv,
-                co2_verbrauchsteil, summe_zaehler, zaehler, einheit, ids)
+                co2_verbrauchsteil, summe_zaehler, zaehler, einheit, ids,
+                fenster=(overlap_von, overlap_bis))
             if co2_rest:
                 vermieter_positionen.append(co2_rest)
 

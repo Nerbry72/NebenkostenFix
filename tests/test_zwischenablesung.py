@@ -23,6 +23,7 @@ Die Fälle dieser Datei:
 Jede Zahl ist von Hand nachgerechnet und steht im Test.
 """
 
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
@@ -378,38 +379,56 @@ def test_die_ablesung_eines_anderen_tages_ersetzt_nicht_die_grenze():
 # AK 4: was Leerstand und Eigennutzung verbrauchen, bleibt beim Vermieter
 # --------------------------------------------------------------------------
 
+def _bert_sicht(welt):
+    """Dieselbe Welt aus Berts Abrechnung: rechts, 30.06. bis Jahresende."""
+    return replace(welt, mieter=welt.mieter_der_immobilie[1], wohnung=welt.wohnungen[1],
+                   beginn=WECHSEL, ende=JAHR_ENDE)
+
+
 def test_der_leerstand_verbraucht_beim_vermieter():
     """Annas Wohnung nach dem Auszug: ihr Zaehler laeuft weiter.
 
     Anna nimmt 690,4110 kWh (zeitanteilig), ihre Wohnung hat 1.400 kWh
     gemessen -- der Rest 709,5890 kWh ist leerstehender Verbrauch. Bert
     zieht erst zum 30.06. ein; bis dahin ist auch seine Wohnung leer und
-    nimmt 800 * 185/365 = 405,4795, der Rest sind 394,5205 kWh. Beide
-    Reste bleiben beim Vermieter: 7.000 * 1.104,1096/2.200 = 3.513,08
-    EUR. Anna selbst zahlt wie oben 2.196,76 EUR am Verbrauchsteil.
+    nimmt 800 * 185/365 = 405,4795, der Rest sind 394,5205 kWh.
+
+    F-133: jede Abrechnung zeigt den Leerstand ihres Zeitraums. Annas
+    (01.01.-30.06.) traegt rechts: 7.000 * 394,5205/2.200 = 1.255,29 EUR.
+    Berts (30.06.-31.12.) traegt links: 7.000 * 709,5890/2.200 = 2.257,78
+    EUR. Zusammen der fruehere Wert 3.513,07 (Cent Rundung).
     """
-    ergebnis = rechne(welt_mietwechsel((
+    welt = welt_mietwechsel((
         stand(JAHR_BEGINN, 0),
         stand(JAHR_GRENZE, 1400),
-    ), bert_einzug=WECHSEL))
+    ), bert_einzug=WECHSEL)
+    ergebnis = rechne(welt)
 
     position = vermieter_verbrauchsposition(ergebnis)
     assert position is not None
-    assert position['amount'] == Decimal('3513.08')
-    assert position['leerstand_amount'] == Decimal('3513.08')
+    assert position['amount'] == Decimal('1255.29')
+    assert position['leerstand_amount'] == Decimal('1255.29')
     assert position['eigennutzung_amount'] == Decimal('0.00')
     assert position['total_consumption'] == 2200.0
-    assert position['vermieter_consumption'] == 1104.1
+    assert position['vermieter_consumption'] == 394.5
     assert [(e['apartment'], e['consumption'], e['vacant_days'])
-            for e in position['units']] == [
-        ('EG links', 709.6, 185),
-        ('EG rechts', 394.5, 180),
-    ]
+            for e in position['units']] == [('EG rechts', 394.5, 180)]
     assert 'Leerstand' in position['description']
 
     # Die Zeile selbst aendert sich nicht gegen den Fall ohne Position.
     zeile = heizzeile(ergebnis)
     assert verbrauchskosten(zeile)[0]['cost'] == Decimal('2196.76')
+
+    bert = rechne(_bert_sicht(welt))
+    bert_position = vermieter_verbrauchsposition(bert)
+    assert [(e['apartment'], e['consumption'], e['vacant_days'])
+            for e in bert_position['units']] == [('EG links', 709.6, 185)]
+    assert bert_position['amount'] == Decimal('2257.78')
+
+    # Bilanz: beide Mieter und beide Vermieterzeilen ergeben den Verbrauchsteil.
+    summe = (verbrauchskosten(zeile)[0]['cost'] + verbrauchskosten(heizzeile(bert))[0]['cost']
+             + position['amount'] + bert_position['amount'])
+    assert abs(summe - Decimal('7000.00')) <= Decimal('0.01')
 
 
 def test_die_eigennutzung_verbraucht_auch_beim_vermieter():
@@ -466,19 +485,54 @@ def test_die_zwischenablesung_macht_den_leerstand_zum_rest():
     Ihr Mietverhaeltnis nimmt die gemessenen 1.000 kWh, der Leerstand
     bekommt den Rest von 400 kWh -- die gemessene Menge nach dem Auszug,
     nicht 1.400 * 185/365 = 709,59 geschaetzt. Berts Wohnung bleibt bis
-    zu seinem Einzug leer und schaetzt 394,5205 kWh. Zusammen bleiben
-    7.000 * 794,5205/2.200 = 2.528,02 EUR beim Vermieter.
+    zu seinem Einzug leer und schaetzt 394,5205 kWh. Annas Abrechnung
+    zeigt rechts (1.255,29 EUR), Berts zeigt links: 7.000 * 400/2.200 =
+    1.272,73 EUR (F-133).
     """
-    ergebnis = rechne(welt_mietwechsel(DREI_STAENDE, bert_einzug=WECHSEL))
+    welt = welt_mietwechsel(DREI_STAENDE, bert_einzug=WECHSEL)
+    ergebnis = rechne(welt)
 
     position = vermieter_verbrauchsposition(ergebnis)
     assert position is not None
-    assert position['amount'] == Decimal('2528.02')
+    assert position['amount'] == Decimal('1255.29')
     assert [(e['apartment'], e['consumption']) for e in position['units']] == [
-        ('EG links', 400.0),
         ('EG rechts', 394.5),
     ]
 
     # Annas Zeile: gemessen, wie im Fall ohne Leerstandsbetrachtung.
     zeile = heizzeile(ergebnis)
     assert verbrauchskosten(zeile)[0]['cost'] == Decimal('3181.82')
+
+    bert = rechne(_bert_sicht(welt))
+    bert_position = vermieter_verbrauchsposition(bert)
+    assert [(e['apartment'], e['consumption']) for e in bert_position['units']] == [
+        ('EG links', 400.0),
+    ]
+    assert bert_position['amount'] == Decimal('1272.73')
+    assert (verbrauchskosten(zeile)[0]['cost'] + verbrauchskosten(heizzeile(bert))[0]['cost']
+            + position['amount'] + bert_position['amount']) == Decimal('7000.00')
+
+
+def test_die_teilperiode_zeigt_nur_ihren_leerstand():
+    """F-133: der Vermieteranteil der Anlage gilt nur im Zeitraum der Abrechnung.
+
+    Bert zieht am 01.07. rechts ein, mit Zwischenablesung (300 kWh). Annas
+    Abrechnung 01.07.–31.12. deckt die halbe Heizrechnung; rechts wohnt in
+    dieser Zeit Bert. Der Leerstand Januar bis Juni (300 kWh) liegt ausserhalb
+    -- er steht in keiner Vermieterzeile dieser Abrechnung. Vorher rechnete die
+    Anlage den Rest ueber die ganze Rechnung: 7.000 * 300/2.200 = 954,55 EUR.
+    """
+    einzug = date(2025, 7, 1)
+    bert = Mieter(id=2, name='Bert Nachbar', einzug=einzug, auszug=None, wohnung_id=2)
+    ergebnis = rechne(haus(
+        beginn=einzug,
+        alle_mieter=(ANNA, bert),
+        zaehler=(
+            waermezaehler(1, 1, (stand(JAHR_BEGINN, 0), stand(einzug, 700),
+                                 stand(JAHR_GRENZE, 1400))),
+            waermezaehler(2, 2, (stand(JAHR_BEGINN, 0),
+                                 stand(einzug, 300, ZWISCHENABLESUNG),
+                                 stand(JAHR_GRENZE, 800))),
+        ),
+    ))
+    assert vermieter_verbrauchsposition(ergebnis) is None
