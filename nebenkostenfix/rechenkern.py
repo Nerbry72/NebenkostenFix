@@ -2705,7 +2705,7 @@ def rechne(vorgang: Vorgang) -> dict:
                         grundanteil['description'] = (
                             'Grundpreis/Zählermiete nach Tagen. ' + grundanteil['description'])
                         vermieter_positionen.append(grundanteil)
-                elif vorgang.wohnung.id == inv.wohnung_id:
+                elif grundpreis is None and vorgang.wohnung.id == inv.wohnung_id:
                     leertage = sum(
                         b.unbelegt for b in _leerstandsbilanz(
                             vorgang, inv.beginn, inv.ende_grenze, {inv.wohnung_id})

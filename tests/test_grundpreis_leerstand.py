@@ -109,6 +109,13 @@ def test_ohne_grundpreis_wie_bisher_mit_hinweis():
     assert 'davon Grundpreis' in str(hinweise[0])
 
 
+
+def test_grundpreis_null_heisst_keiner_ohne_hinweis():
+    """0,00 ist eine Angabe: es gibt keinen Grundpreis, also auch keine Frage danach."""
+    ergebnis = rechne(_vorgang(Decimal('0.00')))
+    assert ergebnis['line_items'][0]['tenant_cost'] == Decimal('900.00')
+    assert not _hinweise(ergebnis)
+
 def test_ohne_leerstand_kein_hinweis():
     """Wohnte vorher jemand dort, gibt es keinen Leerstand, der Grundpreis braucht."""
     assert not _hinweise(rechne(_vorgang(vormieter=True)))
