@@ -126,6 +126,8 @@ for (const ton of ['--success-bg', '--danger-bg', '--warning-bg']) {
 // Wasserversorgung.“ Ursache war der requires_meter-Filter im Dialog. Der
 // Wächter ruft openAddMeterModal mit dem echten Katalog auf und zählt die
 // Optionen: 18 Stück (NK-117: Nr. 3 zweimal), jede Bezeichnung genau einmal.
+// Am Zähler steht der Alltagsname (F-113): „Strom“ statt „Beleuchtung
+// (Allgemeinstrom)“. Die Zuordnung kommt aus app.js selbst.
 function katalog_aus_quelle() {
     const betrkvQuelle = fs.readFileSync(path.join(__dirname, '..', 'nebenkostenfix', 'betrkv.py'), 'utf8');
     const zeilen = [];
@@ -142,12 +144,17 @@ function katalog_aus_quelle() {
 }
 
 const katalog = katalog_aus_quelle();
+const anzeigeQuelle = (appQuelle.match(/const ZAEHLER_ANZEIGENAMEN = [^\n]*\n/) || [''])[0]
+    + (appQuelle.match(/function zaehlerArtName\(name\) \{[\s\S]*?\n\}\n/) || [''])[0];
+const anzeigeName = new Function(anzeigeQuelle + 'return typeof zaehlerArtName === "function" ? zaehlerArtName : n => n;')();
+const dialogNamen = katalog.map(k => anzeigeName(k.name));
 pruefe('BetrKV-Katalog gelesen (18 Kostenarten, NK-117)', katalog.length === 18);
 
 const dialogFehler = (() => {
     try {
         const fnMatch = appQuelle.match(/function openAddMeterModal\(\) \{[\s\S]*?\n\}/);
         if (!fnMatch) return 'openAddMeterModal nicht gefunden';
+        if (!anzeigeQuelle) return 'zaehlerArtName nicht gefunden';
 
         const kategorien = katalog.map((k, i) => ({
             id: i + 1,
@@ -169,7 +176,7 @@ const dialogFehler = (() => {
             },
             createElement(tag) { return { tag, label: '', innerHTML: '' }; },
         };
-        new Function('categories', 'properties', 'document', fnMatch[0] + '; openAddMeterModal();')(
+        new Function('categories', 'properties', 'document', anzeigeQuelle + fnMatch[0] + '; openAddMeterModal();')(
             kategorien, [], dokument);
 
         // Optionen aus den Gruppen ziehen — innerHTML der optgroups bleibt
@@ -183,9 +190,9 @@ const dialogFehler = (() => {
         if (namen.length !== katalog.length) {
             return `erwartet ${katalog.length} Optionen, gefunden ${namen.length}`;
         }
-        for (const k of katalog) {
-            const n = namen.filter(n => n === k.name).length;
-            if (n !== 1) return `„${k.name}“ ${n}mal in der Auswahl`;
+        for (const name of dialogNamen) {
+            const n = namen.filter(n => n === name).length;
+            if (n !== 1) return `„${name}“ ${n}mal in der Auswahl`;
         }
         const gruppen = auswahl.kinder.map(k => k.label);
         if (!gruppen.includes('Üblich mit Zähler') || !gruppen.includes('Weitere Kostenarten')) {
@@ -199,8 +206,7 @@ const dialogFehler = (() => {
 pruefe('Zähler-Dialog bietet alle 18 Kostenarten, jede genau einmal (NK-105)',
     dialogFehler === null);
 if (dialogFehler) console.error('   ' + dialogFehler);
-const dialogNamen = katalog.map(k => k.name);
-for (const muss of ['Beleuchtung (Allgemeinstrom)', 'Heizung']) {
+for (const muss of ['Strom', 'Heizung']) {
     pruefe(`Zähler-Dialog nennt „${muss}“`, dialogNamen.includes(muss)
         && dialogFehler === null);
 }
@@ -271,11 +277,13 @@ const zeitraumFehler = (() => {
         const meldungen = [];
         const aufrufe = [];
         const oeffnen = new Function('document', 'showError', 'generateBillPreview', 'escapeHtml',
+            // Der Servervorschlag (NK-186) braucht fetch; hier zählt nur die Vorbelegung.
+            'zeitraumVorschlagen',
             'let currentBillingSelection = null;\n'
             + [teil('vorgeschlagenerZeitraum'), teil('pruefeAbrechnungszeitraum'),
                teil('openBillingSelectionModal')].join('\n')
             + '\nreturn openBillingSelectionModal;')(
-            dokument, m => meldungen.push(m), (...a) => aufrufe.push(a), s => String(s));
+            dokument, m => meldungen.push(m), (...a) => aufrufe.push(a), s => String(s), () => {});
         oeffnen({
             tenant_id: 7,
             categories: [
