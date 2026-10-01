@@ -4,6 +4,7 @@
 # ihrer Pruefsumme. Die Nummer steht nur in nebenkostenfix/abrechnung_version.py.
 # Am Release haengt ausserdem das signierte update.json; daraus liest die App,
 # ob es etwas Neues gibt (NK-175). Ohne Secret UPDATE_SCHLUESSEL kein Release.
+# Danach geht die MSIX als Einreichung in den Microsoft Store (Job store).
 # Die Tests laufen nicht noch einmal: main nimmt nur Pull Requests an, die
 # aktuell und gruen sind, der gemergte Stand ist also der gepruefte. Ein
 # Commit ohne gemergten Pull Request wird deshalb nicht veroeffentlicht.
@@ -198,3 +199,57 @@ jobs:
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "NebenkostenFix ${VERSION}" --notes-file notizen.md --generate-notes
           echo "- Release: v${VERSION}" >> "$GITHUB_STEP_SUMMARY"
+
+  # Die MSIX aus dem Bau geht als neue Einreichung in den Microsoft Store.
+  # Die Zugangsdaten (Entra-App mit Manager-Rolle) liegen nur im Environment
+  # "store", das nur main zulaesst. Danach zertifiziert der Store, das dauert
+  # Stunden bis Tage. Ein offener Entwurf im Partner Center laesst die
+  # Einreichung scheitern; Einreichungen per API nicht im Partner Center
+  # weiterbearbeiten. Das Client-Secret laeuft nach spaetestens 24 Monaten ab.
+  store:
+    name: Microsoft Store
+    needs: [version, release]
+    if: github.repository == 'Nerbry72/NebenkostenFix'
+    runs-on: windows-latest
+    environment: store
+    timeout-minutes: 30
+    env:
+      VERSION: ${{ needs.version.outputs.wert }}
+      MSSTORE_OUTPUT_STREAM: stdout
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v8
+        with:
+          name: nebenkostenfix-msix
+          path: msix
+      - uses: microsoft/microsoft-store-apppublisher@v1.4
+        with:
+          version: v0.4.3
+      - name: Zugang einrichten
+        shell: pwsh
+        run: >-
+          msstore reconfigure
+          --tenantId "${{ secrets.PARTNER_CENTER_TENANT_ID }}"
+          --sellerId "${{ secrets.PARTNER_CENTER_SELLER_ID }}"
+          --clientId "${{ secrets.PARTNER_CENTER_CLIENT_ID }}"
+          --clientSecret "${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}"
+      # publish uebernaehme die Neuerungen der letzten Fassung. Deshalb erst
+      # ein Entwurf (einen alten offenen loescht msstore selbst), dann die
+      # Neuerungen aus eintrag-de.md, dann einreichen. Scheitert ein Schritt
+      # danach, liegt der Entwurf im Partner Center: dort pruefen, einreichen.
+      - name: Entwurf anlegen
+        shell: pwsh
+        run: |
+          msstore publish "msix\NebenkostenFix-$env:VERSION.msix" -id 9PJQSSQGBNZ8 --noCommit
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Neuerungen setzen
+        run: python scripts/store_neuerungen.py 9PJQSSQGBNZ8
+      - name: Einreichen
+        shell: pwsh
+        run: |
+          msstore submission publish 9PJQSSQGBNZ8
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          "- Microsoft Store: NebenkostenFix-$env:VERSION.msix eingereicht, Zertifizierung laeuft" >> $env:GITHUB_STEP_SUMMARY

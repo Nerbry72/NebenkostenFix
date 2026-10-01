@@ -25,7 +25,16 @@ Die Nebenkostenabrechnung für private Vermieter. Kostenlos, und Ihre Daten blei
 
 ## Neuerungen in dieser Version
 
-Erste Fassung im Microsoft Store. Updates kommen ab jetzt über den Store.
+Version 0.11.0: Die Abrechnung rechnet Zeiträume, Leerstand und Mieterwechsel genauer.
+
+- Zeiträume über zwölf Monate werden vollständig gerechnet, mit Hinweis auf § 556 BGB.
+- Der Auszugstag ist der letzte Miettag. Der Nachmieter beginnt am Tag danach.
+- Vorschlag für den Abrechnungszeitraum, mit Begründung und der Schaltfläche „Übernehmen“.
+- Das Abrechnungsjahr kann je Immobilie an einem anderen Tag als dem 01.01. beginnen.
+- Leerstand: Den Anteil einer leeren Wohnung trägt der Vermieter, auch bei Zählern und beim Grundpreis.
+- Fehlt der Stand des Wärmezählers am Stichtag, wird er nach Gradtagszahlen geschätzt.
+- Meldungen sind kürzer, höchstens drei auf einmal, jede mit „Was tun:“.
+- Stromzähler heißen in der Oberfläche „Strom“.
 
 ## Produktmerkmale
 

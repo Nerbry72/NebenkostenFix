@@ -47,7 +47,10 @@ Bausteine mit -- dasselbe Versprechen wie in ``geld.py``, ``zeitraum.py``,
 
 from __future__ import annotations
 
+import calendar
+from datetime import date
 from decimal import Decimal
+from fractions import Fraction
 from typing import Iterable
 
 from nebenkostenfix.geld import dec, summe as geld_summe
@@ -67,6 +70,8 @@ __all__ = [
     'ABLESUNG',
     'ZWISCHENABLESUNG',
     'ABLESUNGSARTEN',
+    'GRADTAGE',
+    'gradtage',
     'HINWEIS_ERSATZMASSSTAB',
     'KUERZUNG_15',
     'HINWEIS_KUERZUNG_15',
@@ -191,6 +196,33 @@ ABLESUNG = 'ablesung'
 ZWISCHENABLESUNG = 'zwischenablesung'
 ABLESUNGSARTEN = (ABLESUNG, ZWISCHENABLESUNG)
 
+#: Gradtagszahlen je Monat in Promille des Jahres (VDI 2067, D-115). Fehlt
+#: der Stand eines Waermezaehlers am Stichtag, wird nicht nach Tagen
+#: geschaetzt, sondern nach dem Waermebedarf: ein Januartag verbraucht ein
+#: Vielfaches eines Julitags. Die Sommermonate teilen sich 40 Promille, die
+#: Tabelle summiert sich auf 1000.
+GRADTAGE = (170, 150, 130, 80, 40, Fraction(40, 3), Fraction(40, 3), Fraction(40, 3),
+            30, 80, 120, 160)
+
+
+def gradtage(von: date, bis: date) -> Fraction:
+    """Promille des Jahreswaermebedarfs in ``[von, bis)``.
+
+        >>> gradtage(date(2025, 1, 1), date(2026, 1, 1))
+        Fraction(1000, 1)
+        >>> gradtage(date(2025, 4, 1), date(2025, 4, 16))
+        Fraction(40, 1)
+    """
+    summe = Fraction(0)
+    tag = von
+    while tag < bis:
+        folgemonat = date(tag.year + tag.month // 12, tag.month % 12 + 1, 1)
+        stueck = min(bis, folgemonat)
+        summe += (Fraction(GRADTAGE[tag.month - 1]) * (stueck - tag).days
+                  / calendar.monthrange(tag.year, tag.month)[1])
+        tag = stueck
+    return summe
+
 #: Ein Mietrand im Rechnungszeitraum ohne Zwischenablesung (NK-051, R-HK-04):
 #: die Verbrauchskosten der Anlage werden fuer die betroffene Rechnung
 #: zeitanteilig verteilt, und die Abrechnung sagt es -- still geschaetzt wird
@@ -233,7 +265,8 @@ HINWEIS_KUERZUNG_15 = (
     "HeizkostenV in Höhe von 15 % möglich: Für die Heizungsanlage "
     "„{anlage}“ wurde der {verbrauch} nicht oder nicht ausschließlich nach "
     "erfasstem Verbrauch verteilt. Der Mieter kann seinen Anteil an diesen "
-    "Kosten um 15 vom Hundert kürzen."
+    "Kosten um 15 vom Hundert kürzen. Erfassen Sie den Verbrauch aller "
+    "Nutzer, dann entfällt das Kürzungsrecht."
 )
 
 

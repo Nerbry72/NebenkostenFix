@@ -1,4 +1,6 @@
 from io import BytesIO
+# Bandit-Ausnahme: maskiert Text fuer reportlab, parst kein XML
+from xml.sax.saxutils import escape  # nosec B406
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -14,6 +16,14 @@ from nebenkostenfix.zeitraum import HINWEIS_TAGESKONVENTION
 from nebenkostenfix import marke
 from nebenkostenfix.abrechnung_version import SOFTWARE_VERSION, REGEL_VERSION
 
+
+
+def stichtag_hinweis(detail: dict) -> str:
+    """Wie der fehlende Stand am Stichtag geschaetzt wurde (D-115)."""
+    if detail.get('gradtage'):
+        return ("Stichtagswert nach Gradtagszahlen geschätzt (VDI 2067, § 9b HeizkostenV): "
+                "Wintertage tragen mehr Wärme als Sommertage.")
+    return "Stichtagswert wurde interpoliert."
 
 def _zeichen_malen(canvas, x, y, kante):
     """Das Zeichen aus ``marke`` als Vektor, linke untere Ecke bei x, y.
@@ -173,7 +183,10 @@ class PDFGenerator:
                         'anbieter': r.get('provider_name') or '-',
                         'dokument': r.get('doc_name') or None,
                         'rechnungsbetrag': r.get('rechnungsbetrag'),
-                        'zeitanteilig': r.get('prorated_amount'),
+                        # Nach Verbrauch verteilt passt der Tagesanteil nicht
+                        # zum angesetzten Betrag -- dann steht der Weg da.
+                        'zeitanteilig': (None if r.get('nach_verbrauch')
+                                         else r.get('prorated_amount')),
                         'tage': None,
                     })
                 continue
@@ -186,7 +199,11 @@ class PDFGenerator:
                 'anbieter': item.get('provider_name') or '-',
                 'dokument': item.get('doc_name') or None,
                 'rechnungsbetrag': item.get('invoice_total_amount'),
-                'zeitanteilig': item.get('prorated_amount'),
+                # Nach Zaehler gerechnet ist der Tagesanteil nicht der
+                # angesetzte Betrag (bei Heizung am Stichtag nach Gradtagen
+                # geschaetzt) -- die Spalte nennt dann den Weg.
+                'zeitanteilig': (None if item.get('meter_details')
+                                 else item.get('prorated_amount')),
                 'tage': (item.get('overlap_days'), item.get('invoice_days')),
             })
 
@@ -216,8 +233,11 @@ class PDFGenerator:
                 Paragraph(z['dokument'] or '—', self.styles['TableCell']),
             ]
             if mit_betraegen:
-                zeitanteilig = f"{z['zeitanteilig']:.2f}".replace('.', ',')
-                if z['tage'] and z['tage'][0] and z['tage'][1] \
+                if z['zeitanteilig'] is None:
+                    zeitanteilig = 'nach Zähler'
+                else:
+                    zeitanteilig = f"{z['zeitanteilig']:.2f}".replace('.', ',')
+                if z['zeitanteilig'] is not None and z['tage'] and z['tage'][0] and z['tage'][1] \
                         and z['tage'][0] < z['tage'][1]:
                     zeitanteilig += f" ({z['tage'][0]}/{z['tage'][1]} Tage)"
                 row += [
@@ -401,7 +421,8 @@ class PDFGenerator:
         return elemente
 
     def generate(self, line_items, total_amount, prepaid_amount=NULL,
-                 co2_ausweis=None, landlord_share=None, anschreiben=None):
+                 co2_ausweis=None, landlord_share=None, anschreiben=None,
+                 vorbehalt=None):
         buffer = BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4,
                                 rightMargin=56.7, leftMargin=56.7,
@@ -678,6 +699,12 @@ class PDFGenerator:
             elements.append(Spacer(1, 10))
             elements.append(Paragraph(HINWEIS_TAGESKONVENTION, self.styles['Fussnote']))
 
+        # F-115: fehlen Rechnungen fuer einen Teil des Zeitraums, sagt das
+        # Blatt es dem Mieter, statt ein Guthaben als endgueltig zu zeigen.
+        if vorbehalt:
+            elements.append(Spacer(1, 10))
+            elements.append(Paragraph(escape(vorbehalt), self.styles['Fussnote']))
+
         # NK-060: der Heizkosten- und CO2-Abschnitt -- Verteilung, Stufe,
         # Vermieteranteil -- gehoert auf beide Wege des Dokuments, denn der
         # Vermieter sendet nur eine der beiden Fassungen.
@@ -776,7 +803,7 @@ class PDFGenerator:
                             if off_msg: off_msg += "<br/>"
                             off_msg += dt_offset("Ende", tm['end_offset_days'], tm['reading_span_days'])
                         if off_msg:
-                            box_data.append([Paragraph(f"<i>Hinweis: Stichtagswert wurde interpoliert.<br/>{off_msg}</i>", self.styles['SubTableCell']), ''])
+                            box_data.append([Paragraph(f"<i>Hinweis: {stichtag_hinweis(tm)}<br/>{off_msg}</i>", self.styles['SubTableCell']), ''])
                             box_style.append(('SPAN', (0, row_idx+3), (-1, row_idx+3)))
                             row_idx += 1
                         
@@ -808,7 +835,7 @@ class PDFGenerator:
                             if off_msg: off_msg += "<br/>"
                             off_msg += dt_offset("Ende", mm['end_offset_days'], mm['reading_span_days'])
                         if off_msg:
-                            box_data.append([Paragraph(f"<i>Hinweis Hauptzähler: Stichtagswert wurde interpoliert.<br/>{off_msg}</i>", self.styles['SubTableCell']), ''])
+                            box_data.append([Paragraph(f"<i>Hinweis Hauptzähler: {stichtag_hinweis(mm)}<br/>{off_msg}</i>", self.styles['SubTableCell']), ''])
                             box_style.append(('SPAN', (0, row_idx+4), (-1, row_idx+4)))
                             row_idx += 1
                         

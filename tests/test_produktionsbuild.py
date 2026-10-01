@@ -195,6 +195,13 @@ NUR_ENTWICKLUNG = frozenset({
     # DOM-Rauchtest des Design-Systems (NK-067): braucht Node, der im
     # Container nicht laeuft; Wirtswerkzeug wie e2e.py.
     'scripts/rauchtest_design.js',
+    # NK-187: Praxisprobe, liest eine Kopie der echten Datenbank und
+    # schreibt einen Fallkatalog; Werkzeug der Entwicklung.
+    'scripts/praxisprobe.py',
+    # NK-187: Datenwaechter, liest ebenfalls eine Kopie der echten Datenbank.
+    'scripts/datenwaechter.py',
+    # Store-Release: setzt die Neuerungen im Microsoft Store (release.yml).
+    'scripts/store_neuerungen.py',
 })
 GEHOERT_INS_ABBILD = frozenset({
     'scripts/kostenarten.py',

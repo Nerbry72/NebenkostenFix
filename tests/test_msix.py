@@ -231,3 +231,23 @@ def test_windows_lauf_packt_und_probt_das_msix():
     # Hochgeladen wird das unsignierte Paket, signiert wird nur die Kopie.
     assert 'Copy-Item "${{ steps.msix.outputs.datei }}" $test' in windows
     assert 'path: dist/NebenkostenFix-*.msix' in windows
+
+
+def test_release_reicht_das_msix_im_store_ein():
+    release = (WURZEL / '.github/workflows/release.yml').read_text(encoding='utf-8')
+    store = release[release.index('\n  store:\n'):]
+    # Erst nach dem GitHub-Release, nur im Live-Repo, Zugang nur ueber das
+    # Environment, das main allein zulaesst.
+    assert 'needs: [version, release]' in store
+    assert "if: github.repository == 'Nerbry72/NebenkostenFix'" in store
+    assert 'environment: store' in store
+    assert release.count('PARTNER_CENTER_') == store.count('PARTNER_CENTER_') == 4
+    # Dasselbe Artefakt, das windows.yml hochlaedt, fuer dasselbe Produkt.
+    assert 'name: nebenkostenfix-msix' in store
+    # publish uebernaehme die Neuerungen der letzten Fassung. Deshalb erst
+    # Entwurf, dann Neuerungen aus eintrag-de.md, dann einreichen.
+    assert 'version: v0.4.3' in store
+    entwurf = 'msstore publish "msix\\NebenkostenFix-$env:VERSION.msix" -id 9PJQSSQGBNZ8 --noCommit'
+    neuerungen = 'python scripts/store_neuerungen.py 9PJQSSQGBNZ8'
+    einreichen = 'msstore submission publish 9PJQSSQGBNZ8'
+    assert store.index(entwurf) < store.index(neuerungen) < store.index(einreichen)

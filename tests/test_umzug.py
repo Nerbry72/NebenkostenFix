@@ -432,6 +432,59 @@ def test_hoechstens_drei_offene_uploads(bestand):
     assert kennungen[-1] in offen and kennungen[0] not in offen
 
 
+def test_der_aelteste_upload_faellt_auch_bei_gleicher_dateizeit(bestand):
+    """F-119: die Reihenfolge kommt aus dem Eintrag, nicht aus der Dateizeit.
+
+    Die Dateizeit ist grob (unter Windows bis 16 ms) und kann rückwärts
+    laufen. Hier bekommt der neueste Upload die älteste Zeit -- gelöscht
+    werden muss trotzdem der zuerst begonnene.
+    """
+    import os
+    import time
+    client = bestand.app.test_client()
+    _anmelden(client)
+    kennungen = [client.post('/api/umzug/hochladen', json={'groesse': 4}).get_json()['id']
+                 for _ in range(umzug.HOECHSTENS_OFFEN)]
+    ordner = umzug.arbeitsordner(bestand.app)
+    jetzt = time.time()
+    for alter, kennung in enumerate(kennungen):  # neuester = ältester Zeitstempel
+        os.utime(ordner / f'{kennung}.json', (jetzt - alter, jetzt - alter))
+    client.post('/api/umzug/hochladen', json={'groesse': 4})
+    offen = {p.stem for p in ordner.glob('*.json')}
+    assert kennungen[0] not in offen
+    assert set(kennungen[1:]) <= offen
+
+
+def test_parallele_starts_halten_die_grenze(bestand, monkeypatch):
+    """PR #25 (Copilot, zweite Runde): Aufräumen, Zählen und Anlegen müssen
+    unter einer Sperre laufen. Sonst zählen parallele Starts dieselben offenen
+    Uploads, und danach legt jeder einen neuen an."""
+    import shutil
+    import threading
+    import time
+
+    echt = shutil.disk_usage
+
+    def langsam(pfad):  # zwischen Zählen und Anlegen gibt jeder Thread ab
+        time.sleep(0.02)
+        return echt(pfad)
+
+    monkeypatch.setattr(umzug.shutil, 'disk_usage', langsam)
+    start = threading.Barrier(8)
+
+    def beginnen():
+        start.wait()
+        umzug.hochladen_beginnen(bestand.app, 4, 'paket.zip')
+
+    threads = [threading.Thread(target=beginnen) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    offen = list(umzug.arbeitsordner(bestand.app).glob('*.json'))
+    assert len(offen) == umzug.HOECHSTENS_OFFEN
+
+
 # --- Windows-App: Pfade nur aus dem Dialog der Hülle ----------------------------
 
 def test_pfad_nur_in_der_app_und_nur_freigegeben(bestand, tmp_path, monkeypatch):
@@ -586,3 +639,29 @@ def test_cli_export_und_import(bestand, tmp_path):
     erg = runner.invoke(args=['umzug', 'import', str(paket), '--ja'])
     assert erg.exit_code == 0, erg.output
     assert '"belege": 1' in erg.output
+
+
+def test_stempel_bleiben_bei_parallelen_uploads_eindeutig(monkeypatch):
+    """PR #25 (Copilot): zwei Uploads zugleich lasen denselben letzten Stempel.
+
+    Die Uhr steht still (grobes Ticken), und zwischen Lesen und Schreiben
+    gibt jeder Thread ab -- ohne Sperre bekommen mehrere denselben Stempel.
+    """
+    import builtins
+    import threading
+    import time as zeit
+
+    def langsam(*werte):
+        zeit.sleep(0.005)
+        return builtins.max(*werte)
+
+    monkeypatch.setattr(umzug.time, 'time_ns', lambda: 1)
+    monkeypatch.setattr(umzug, 'max', langsam, raising=False)
+    stempel = []
+    threads = [threading.Thread(target=lambda: stempel.append(umzug._stempel()))
+               for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(set(stempel)) == 8

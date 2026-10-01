@@ -500,6 +500,8 @@ def test_der_allgemeinanteil_folgt_denselben_personentagen():
     posten = rechne(v)['line_items'][0]
 
     # 100 Einheiten zu 10,00 EUR, davon 30 eigen gemessen und 40 allgemein.
-    # Vom Allgemeinen traegt die Familie 1095 von 1279 Personentagen.
-    assert '1095 von 1279 Personentagen' in posten['description']
-    assert posten['tenant_cost'] == Decimal('300.00') + Decimal('342.46')
+    # Vom Allgemeinen traegt die Familie 1095 von 1460 Personentagen: die
+    # leere Haelfte vor Berts Einzug zaehlt seit F-121 mit, wie beim
+    # Personenschluessel seit NK-098 (vorher 1095 von 1279, 342,46 EUR).
+    assert '1095 von 1460 Personentagen' in posten['description']
+    assert posten['tenant_cost'] == Decimal('300.00') + Decimal('300.00')

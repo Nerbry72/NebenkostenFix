@@ -18,11 +18,16 @@
 </p>
 
 <p align="center">
+  <a href="https://apps.microsoft.com/detail/9pjqssqgbnz8"><img src="https://get.microsoft.com/images/de%20dark.svg" width="200" alt="Aus dem Microsoft Store herunterladen"></a>
+</p>
+
+<p align="center">
   <a href="https://ko-fi.com/nerbry72"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Auf Ko-fi unterstützen"></a>
 </p>
 
 <p align="center">
   <a href="https://github.com/Nerbry72/NebenkostenFix/releases/latest"><strong>Herunterladen</strong></a> ·
+  <a href="https://apps.microsoft.com/detail/9pjqssqgbnz8">Microsoft Store</a> ·
   <a href="#docker">Docker</a> ·
   <a href="docs/handbuch/handbuch.md">Handbuch</a> ·
   <a href="docs/handbuch/faq.md">Häufige Fragen</a> ·
@@ -85,12 +90,18 @@ Richtungen ist eine Datei (siehe [Umzug](#umzug-auf-einen-anderen-rechner)).
 | --- | --- | --- |
 | für | einen einzelnen Windows-PC | NAS (z. B. Synology), Raspberry Pi, Heimserver |
 | Zugriff | eigenes Fenster auf dem PC | Browser, von jedem Gerät im Netz |
-| Installation | [`NebenkostenFix-<Version>-Setup.exe`](https://github.com/Nerbry72/NebenkostenFix/releases/latest) | `docker compose up -d` |
+| Installation | [Microsoft Store](https://apps.microsoft.com/detail/9pjqssqgbnz8) oder [`NebenkostenFix-<Version>-Setup.exe`](https://github.com/Nerbry72/NebenkostenFix/releases/latest) | `docker compose up -d` |
 
 ### Windows-App
 
-Für einen einzelnen PC (Windows 10 ab 1809 oder Windows 11) gibt es einen Installer. Er
-braucht weder Python noch Docker noch eine Kommandozeile.
+Für einen einzelnen PC (Windows 10 ab 1809 oder Windows 11) gibt es die App im Microsoft Store
+und als Installer. Beide brauchen weder Python noch Docker noch eine Kommandozeile.
+
+**Aus dem Microsoft Store (empfohlen):** [NebenkostenFix im Store](https://apps.microsoft.com/detail/9pjqssqgbnz8)
+öffnen und auf „Herunterladen“ klicken. Windows warnt dabei nicht, und Updates kommen über den
+Store. Die Daten liegen wie beim Installer unter `Dokumente\NebenkostenFix`.
+
+**Mit dem Installer:**
 
 1. Unter [**Releases**](https://github.com/Nerbry72/NebenkostenFix/releases/latest) die neueste `NebenkostenFix-<Version>-Setup.exe` herunterladen.
 2. Ausführen und den Schritten folgen. Die App startet in ihrem eigenen Fenster (Edge WebView2).
@@ -115,7 +126,8 @@ signiert, das kostet jedes Jahr Geld. Windows zeigt deshalb beim ersten Start �
 wurde durch Windows geschützt“. Laden Sie das Setup nur hier unter Releases herunter und
 vergleichen Sie die Prüfsumme. Stimmt sie, klicken Sie auf „Weitere Informationen“ und dann
 auf „Trotzdem ausführen“. Updates aus der App heraus prüft NebenkostenFix selbst über eine
-digitale Signatur. Die spätere Fassung aus dem Microsoft Store kommt ohne diese Warnung aus.
+digitale Signatur. Die Fassung aus dem [Microsoft Store](https://apps.microsoft.com/detail/9pjqssqgbnz8)
+kommt ohne diese Warnung aus.
 
 ### Docker
 

@@ -167,3 +167,80 @@ def test_dualtarif_warnt_auch_fuer_ein_einzelnes_register():
     assert len(warnungen) == 1
     assert 'im Hochtarif' in warnungen[0]
     assert '-10,0 kWh' in warnungen[0]
+
+
+def test_gleiche_ursache_fuer_wasser_und_entwaesserung_ist_eine_meldung():
+    """F-132: Wasserversorgung und Entwässerung lesen denselben Hauptzähler.
+    Die Abrechnung meldete dieselbe Ursache zweimal; jetzt ist es eine
+    Meldung, die beide Kostenarten nennt. Andere Meldungen bleiben getrennt."""
+    from nebenkostenfix.rechenkern import HINWEIS_ALLGEMEIN_NEGATIV, meldungen_buendeln
+    werte = dict(zaehler='WA-1', beginn='01.01.2025', ende='31.12.2025',
+                 register='', menge='-1,3', einheit='m³')
+    wasser = HINWEIS_ALLGEMEIN_NEGATIV.format(kategorie='Wasserversorgung', **werte)
+    abwasser = HINWEIS_ALLGEMEIN_NEGATIV.format(kategorie='Entwässerung', **werte)
+    anders = HINWEIS_ALLGEMEIN_NEGATIV.format(kategorie='Strom', **{**werte, 'menge': '-4,0'})
+    gebuendelt = meldungen_buendeln([wasser, abwasser, anders, wasser])
+    assert len(gebuendelt) == 2
+    assert 'Für „Wasserversorgung“ und „Entwässerung“ zeigen' in gebuendelt[0]
+    assert gebuendelt[1] == anders
+
+
+def test_warnung_nennt_auch_falschen_stand_und_zuordnung():
+    """F-134: Ein Hauptzähler unter seinen Wohnungszählern kommt nicht nur von
+    verschiedenen Ablesetagen. Die Meldung nennt auch den falsch erfassten
+    Stand und die falsche Zuordnung, mit einer Handlung dazu."""
+    warnung = _warnungen(rechne(_vorgang(_wasserzaehler(), ende=date(2025, 6, 30))))[0]
+
+    assert 'ist ein Stand falsch erfasst' in warnung
+    assert 'Prüfen Sie die Stände und die Zuordnung der Zähler.' in warnung
+
+
+STAND_FAELLT = 'W-ZAEHLER-STAND-FAELLT'
+
+
+def _fallender_annazaehler():
+    """Wie oben, nur fällt Annas Zähler im Juli von 45 auf 40 m³ (Tippfehler)."""
+    haupt, _, bert = _wasserzaehler()
+    anna = _zaehler(11, WASSER, (Stand(JAHR_BEGINN, 0.0), Stand(date(2025, 7, 1), 45.0),
+                                 Stand(date(2025, 8, 1), 40.0), Stand(JAHRSGRENZE, 60.0)),
+                    wohnung_id=1)
+    return haupt, anna, bert
+
+
+def test_fallender_stand_wird_gemeldet():
+    """F-134: Ein Stand, der fällt, rechnete still einen negativen Verbrauch.
+    Jetzt steht er als Meldung da, mit beiden Ständen und einer Handlung."""
+    ergebnis = rechne(_vorgang(_fallender_annazaehler()))
+    warnungen = [w for w in ergebnis['warnings'] if STAND_FAELLT in w]
+
+    assert warnungen == [
+        'W-ZAEHLER-STAND-FAELLT · Zähler Z-11 fällt vom 01.07.2025 (45) auf den '
+        '01.08.2025 (40). Ein Zähler zählt nur vorwärts; gerechnet wird damit ein '
+        'negativer Verbrauch. Prüfen Sie beide Stände auf Tippfehler und korrigieren '
+        'Sie den falschen. Wurde der Zähler getauscht, legen Sie den neuen Zähler an '
+        'und tragen Sie seine Stände dort ein.']
+
+
+def test_fallender_stand_wird_nicht_korrigiert():
+    """Keine Auto-Korrektur: über das Jahr bleibt Annas Verbrauch 60 m³."""
+    posten = rechne(_vorgang(_fallender_annazaehler()))['line_items'][0]
+
+    assert posten['meter_details']['tenant_consumption'] == 60.0
+
+
+def test_fallender_stand_ausserhalb_des_zeitraums_schweigt():
+    """Ein Rückgang vor allen Rechnungen und vor dem Zeitraum ist alt -- still."""
+    haupt, _, bert = _wasserzaehler()
+    anna = _zaehler(11, WASSER, (Stand(date(2023, 1, 1), 50.0), Stand(date(2023, 6, 1), 0.0),
+                                 Stand(JAHR_BEGINN, 0.0), Stand(JAHRSGRENZE, 60.0)),
+                    wohnung_id=1)
+    ergebnis = rechne(_vorgang((haupt, anna, bert)))
+
+    assert not [w for w in ergebnis['warnings'] if STAND_FAELLT in w]
+
+
+def test_fallender_stand_steht_in_der_pruefung():
+    from nebenkostenfix.rechenkern import pruefe
+    meldungen = [c.get('message') or '' for c in pruefe(_vorgang(_fallender_annazaehler()))['checks']]
+
+    assert any(STAND_FAELLT in m for m in meldungen)

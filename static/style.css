@@ -1161,6 +1161,20 @@ input[type="number"] {
     color: var(--primary);
 }
 
+/* NK-186: Zeitraumvorschlag mit Begruendung in den Abrechnungsdialogen. */
+.zeitraumvorschlag {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-hover);
+    padding: 12px;
+    margin: 8px 0 12px;
+}
+
+.zeitraumvorschlag ul {
+    margin: 6px 0 10px;
+    padding-left: 20px;
+}
+
 /* Erste Schritte (K5, NK-103): neu gesetzt, nicht ausgebessert. Das Panel
    steht über den Kennzahlen und verschwindet, sobald alle Pflichtschritte
    erledigt sind; gezeichnet wird es von zeigeErsteSchritte() in app.js. */
@@ -2287,6 +2301,10 @@ td .btn-icon,
 }
 
 .jahr-warnungen { color: #B45309; }
+
+/* D-116: ab der vierten Meldung aufklappbar, ohne eigenen Listenpunkt. */
+.weitere-hinweise-zeile { list-style: none; }
+.weitere-hinweise > ul { margin: 4px 0 0 20px; padding: 0; }
 
 /* Die Rückfrage wechselt ihren Hauptknopf zwischen btn-primary und
    btn-gefahr; ohne das blendete „Löschen“ beim Öffnen von Violett nach Rot. */

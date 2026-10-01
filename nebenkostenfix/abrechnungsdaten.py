@@ -31,7 +31,9 @@ from nebenkostenfix.models import (
     db,
 )
 from nebenkostenfix.haushalt import normiere as normiere_haushalt
+from nebenkostenfix.heizung import ZWISCHENABLESUNG
 from nebenkostenfix.nutzung import VORGABE as NUTZUNG_VORGABE
+from nebenkostenfix.zeitraum import grenze
 from nebenkostenfix.rechenkern import (
     Beleg,
     Heizungsanlage,
@@ -77,7 +79,10 @@ def _mieter(tenant: Tenant) -> Mieter:
         id=tenant.id,
         name=tenant.name,
         einzug=tenant.move_in_date,
-        auszug=tenant.move_out_date,
+        # F-118: Der Vermieter traegt den letzten Miettag ein ("ausgezogen
+        # am 30.09., der Nachmieter kommt am 01.10."). Der Kern rechnet mit
+        # der Grenze dahinter (R-NUM-03); umgerechnet wird nur hier.
+        auszug=grenze(tenant.move_out_date) if tenant.move_out_date else None,
         wohnung_id=tenant.apartment_id,
         haushaltsgroessen=normiere_haushalt(
             (h.gueltig_ab, h.personenanzahl) for h in tenant.haushaltsgroessen
@@ -126,6 +131,7 @@ def _rechnung(invoice: CostInvoice) -> Rechnung:
         co2_emission_kg=invoice.co2_emission_kg,
         preis_ht=invoice.preis_ht,
         preis_nt=invoice.preis_nt,
+        grundpreis=invoice.grundpreis,
     )
 
 
@@ -148,24 +154,30 @@ def _heizungsanlage(anlage: HeizungsanlageZeile) -> Heizungsanlage:
     )
 
 
-def _staende(readings) -> tuple:
+def _staende(readings, auszugstage=frozenset()) -> tuple:
     """Die Staende in fester Reihenfolge -- Gleichstand eingeschlossen (NK-039).
 
     Zwei Ablesungen am selben Tag kommen beim Mieterwechsel vor: einmal fuer
     den Auszug, kurz darauf fuer den Einzug. Ohne die Kennung im Schluessel
     haengt ihre Reihenfolge daran, in welcher die Datenbank sie liefert.
+
+    F-118: Eine Zwischenablesung am letzten Miettag ist die Uebergabe -- sie
+    misst das Ende dieses Tages, also die Grenze am Tag danach, an der der
+    Kern sie sucht.
     """
     return tuple(
         # ``art`` traegt die Ablesungsart mit (NK-051): nur der Stand zum
         # Datum eines Nutzerwechsels ist eine Zwischenablesung und misst die
         # Grenze zwischen zwei Mietverhaeltnissen.
-        Stand(datum=r.reading_date, wert=r.value, wert_nt=r.value_nt,
-              art=r.ablesungsart)
+        Stand(datum=(grenze(r.reading_date)
+                     if r.ablesungsart == ZWISCHENABLESUNG
+                     and r.reading_date in auszugstage else r.reading_date),
+              wert=r.value, wert_nt=r.value_nt, art=r.ablesungsart)
         for r in sorted(readings, key=lambda r: (r.reading_date, r.id))
     )
 
 
-def _zaehler(meter: Meter, readings) -> Zaehler:
+def _zaehler(meter: Meter, readings, auszugstage=frozenset()) -> Zaehler:
     return Zaehler(
         id=meter.id,
         nummer=meter.meter_number,
@@ -178,7 +190,7 @@ def _zaehler(meter: Meter, readings) -> Zaehler:
         ist_hauptzaehler=bool(meter.is_main_meter),
         immobilie_id=meter.property_id,
         wohnung_id=meter.apartment_id,
-        staende=_staende(readings),
+        staende=_staende(readings, auszugstage),
         heizungsanlage_id=meter.heizungsanlage_id,
     )
 
@@ -260,6 +272,15 @@ def lade_vorgang(tenant_id, start_date, end_date, category_ids=None) -> Vorgang:
         if wohnungs_ids else []
     )
 
+    # Auszugstage je Wohnung: der Auszug nebenan verschiebt die Ablesung
+    # dieser Wohnung nicht. Haus- und Hauptzaehler messen jeden Wechsel im
+    # Haus (F-122) und bekommen alle Auszugstage.
+    auszugstage: dict = {}
+    for t in mieter_der_immobilie:
+        if t.move_out_date:
+            auszugstage.setdefault(t.apartment_id, set()).add(t.move_out_date)
+    alle_auszugstage = frozenset().union(*auszugstage.values())
+
     rechnungen = CostInvoice.query.filter(
         CostInvoice.property_id == prop.id,
         CostInvoice.start_date <= ende,
@@ -304,7 +325,10 @@ def lade_vorgang(tenant_id, start_date, end_date, category_ids=None) -> Vorgang:
         mieter_der_immobilie=tuple(_mieter(t) for t in mieter_der_immobilie),
         profile={p.category_id: p.billing_type for p in tenant.cost_profiles},
         rechnungen=tuple(_rechnung(i) for i in rechnungen),
-        zaehler=tuple(_zaehler(m, staende_je_zaehler.get(m.id, [])) for m in meters),
+        zaehler=tuple(_zaehler(m, staende_je_zaehler.get(m.id, []),
+                               auszugstage.get(m.apartment_id, frozenset())
+                               if m.apartment_id else alle_auszugstage)
+                      for m in meters),
         zahlungen=tuple(Zahlung(datum=z.payment_date, betrag=z.amount) for z in zahlungen),
         heizungsanlagen=tuple(_heizungsanlage(a) for a in anlagen),
         wasser_kategorie_id=_wasser_kategorie_id(prop.id),

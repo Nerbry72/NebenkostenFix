@@ -88,9 +88,12 @@ def _zaehler(id, haupt=False, wohnung_id=None, bis=0.0):
 
 
 def _vorgang(kat=ENTWAESSERUNG, **kw):
-    """Ein Mieter in einer von zwei 50-qm-Wohnungen, Frischwasser 60 von 100 m³."""
+    """Ein Mieter allein im Haus, Frischwasser 60 von 100 m³.
+
+    Ohne zweite Wohnung: eine leere trüge seit F-121 einen Teil des
+    Allgemeinen, und darum geht es hier nicht.
+    """
     meine = Wohnung(id=1, name='EG links', qm=50.0)
-    andere = Wohnung(id=2, name='EG rechts', qm=50.0)
     ich = Mieter(id=1, name='Anna Mieterin', einzug=date(2020, 1, 1),
                  auszug=None, wohnung_id=1)
     grund = dict(
@@ -100,7 +103,7 @@ def _vorgang(kat=ENTWAESSERUNG, **kw):
         immobilie_name='Rinnenhaus',
         beginn=JAHR_BEGINN,
         ende=JAHR_ENDE,
-        wohnungen=(meine, andere),
+        wohnungen=(meine,),
         mieter_der_immobilie=(ich,),
         profile={kat.id: 'direkt'},
         rechnungen=(Rechnung(id=1, kategorie=kat, betrag=Decimal('1000.00'),
@@ -181,7 +184,6 @@ def test_lader_und_rechenweg_mit_dem_katalog(app_ctx):
     entwaesserung = CostCategory.query.filter_by(betrkv_nr=3).first()
     haus = house(name='Rinnenhaus')
     links = apt(haus, 'EG links', 50.0)
-    apt(haus, 'EG rechts', 50.0)
     anna = tenant(links, 'Anna Mieterin', move_in=date(2020, 1, 1))
     profile(anna, entwaesserung, 'direkt')
     invoice(haus, entwaesserung, 1000.00)

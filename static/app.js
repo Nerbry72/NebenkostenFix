@@ -1109,7 +1109,8 @@ async function saveProperty() {
         const response = await fetch(url, {
             method: method,
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ name: name, is_standalone: isStandalone })
+            body: JSON.stringify({ name: name, is_standalone: isStandalone,
+                abrechnungsjahr_beginn: document.getElementById('prop-jahresbeginn').value.trim() })
         });
         
         if (!response.ok) throw await serverFehler(response);
@@ -2071,11 +2072,18 @@ function openAddPropertyModal(prop = null) {
         editingPropertyId = prop.id;
         document.getElementById('prop-name').value = prop.name;
         document.getElementById('prop-standalone').checked = prop.is_standalone;
+        // Nur ein eingetragener Beginn steht im Feld. Der abgeleitete steht als
+        // Platzhalter da, sonst wuerde ihn jedes Speichern festschreiben.
+        const jahresbeginn = document.getElementById('prop-jahresbeginn');
+        jahresbeginn.value = prop.abrechnungsjahr_quelle === 'feld' ? prop.abrechnungsjahr_beginn : '';
+        jahresbeginn.placeholder = prop.abrechnungsjahr_beginn || '01.01.';
         propertyModal.querySelector('h2').textContent = 'Immobilie bearbeiten';
     } else {
         editingPropertyId = null;
         document.getElementById('prop-name').value = '';
         document.getElementById('prop-standalone').checked = false;
+        document.getElementById('prop-jahresbeginn').value = '';
+        document.getElementById('prop-jahresbeginn').placeholder = '01.01.';
         propertyModal.querySelector('h2').textContent = 'Neue Immobilie';
     }
     propertyModal.classList.add('active');
@@ -2361,6 +2369,18 @@ function renderInvoiceZeitleiste(daten, ziel) {
     ziel.innerHTML = teile.join('');
 }
 
+// Zaehler zeigen ihre Kostenart unter einem Alltagsnamen (F-113). Haupt- und
+// Wohnungszaehler fuer Strom haengen an BetrKV Nr. 11 „Beleuchtung
+// (Allgemeinstrom)“, weil der Allgemeinstrom daraus gerechnet wird (Haupt-
+// zaehler minus Wohnungszaehler). Am Zaehler selbst ist das schlicht Strom.
+// Der Rechnungen-Tab nennt die Stromrechnung ebenso (F-136). Kostenarten und
+// PDF behalten den Namen aus der BetrKV.
+const ZAEHLER_ANZEIGENAMEN = { 'Beleuchtung (Allgemeinstrom)': 'Strom' };
+
+function zaehlerArtName(name) {
+    return ZAEHLER_ANZEIGENAMEN[name] || name;
+}
+
 function getReadingHtml(r, categoryName) {
     let unit = '';
     if (categoryName) {
@@ -2457,7 +2477,7 @@ function renderMeters() {
             
             const tdCat = document.createElement('td');
             tdCat.style.padding = "12px 8px";
-            tdCat.textContent = m.category_name;
+            tdCat.textContent = zaehlerArtName(m.category_name);
             
             const tdNum = document.createElement('td');
             tdNum.style.padding = "12px 8px";
@@ -2557,7 +2577,7 @@ function renderInvoices() {
         uniqueCats.forEach(c => {
             const opt = document.createElement('option');
             opt.value = c;
-            opt.textContent = c;
+            opt.textContent = zaehlerArtName(c);
             catSelect.appendChild(opt);
         });
     }
@@ -2648,7 +2668,7 @@ function renderInvoices() {
                 <div class="accordion-header" onclick="toggleAccordion('${accId}')">
                     <div class="accordion-header-left">
                         <i class="ph ${icon} accordion-icon"></i>
-                        <span>${escapeHtml(catName)}</span>
+                        <span>${escapeHtml(zaehlerArtName(catName))}</span>
                         <span class="accordion-badge">${catInvoices.length} Einträge</span>
                     </div>
                     <i class="ph ph-caret-down accordion-chevron"></i>
@@ -2940,13 +2960,13 @@ function openAddMeterModal() {
     if (ueblich.length) {
         const gruppe = document.createElement('optgroup');
         gruppe.label = 'Üblich mit Zähler';
-        gruppe.innerHTML = ueblich.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+        gruppe.innerHTML = ueblich.map(c => `<option value="${c.id}">${escapeHtml(zaehlerArtName(c.name))}</option>`).join('');
         catSelect.appendChild(gruppe);
     }
     if (weitere.length) {
         const gruppe = document.createElement('optgroup');
         gruppe.label = 'Weitere Kostenarten';
-        gruppe.innerHTML = weitere.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+        gruppe.innerHTML = weitere.map(c => `<option value="${c.id}">${escapeHtml(zaehlerArtName(c.name))}</option>`).join('');
         catSelect.appendChild(gruppe);
     }
     
@@ -3046,7 +3066,7 @@ function openHistoryModal(meterId) {
     const meter = meters.find(m => m.id === meterId);
     if(!meter) return;
     
-    document.getElementById('history-modal-title').textContent = `Historie: ${meter.meter_number} (${meter.category_name})`;
+    document.getElementById('history-modal-title').textContent = `Historie: ${meter.meter_number} (${zaehlerArtName(meter.category_name)})`;
     
     const table = document.getElementById('history-table');
     table.replaceChildren();
@@ -3133,7 +3153,7 @@ function openAddReadingModal(meterId = null, editReadingId = null) {
     const meterSelect = document.getElementById('reading-meter');
     meterSelect.replaceChildren();
     meters.forEach(m => {
-        const label = `${m.property_name} - ${m.is_main_meter ? 'Allgemein' : m.apartment_name} - ${m.category_name} (${m.meter_number})`;
+        const label = `${m.property_name} - ${m.is_main_meter ? 'Allgemein' : m.apartment_name} - ${zaehlerArtName(m.category_name)} (${m.meter_number})`;
         meterSelect.insertAdjacentHTML('beforeend', `<option value="${m.id}">${escapeHtml(label)}</option>`);
     });
     
@@ -3339,7 +3359,7 @@ async function openAddInvoiceModal(editInvoiceId = null) {
     const catSelect = document.getElementById('invoice-category');
     catSelect.replaceChildren();
     categories.forEach(c => {
-        catSelect.insertAdjacentHTML('beforeend', `<option value="${c.id}">${escapeHtml(c.name)}</option>`);
+        catSelect.insertAdjacentHTML('beforeend', `<option value="${c.id}">${escapeHtml(zaehlerArtName(c.name))}</option>`);
     });
     
     const propSelect = document.getElementById('invoice-property');
@@ -3390,6 +3410,7 @@ async function openAddInvoiceModal(editInvoiceId = null) {
             // NK-124: die Tarifpreise (NK-055) gehoeren zusammen.
             document.getElementById('invoice-preis-ht').value = i.preis_ht ?? '';
             document.getElementById('invoice-preis-nt').value = i.preis_nt ?? '';
+            document.getElementById('invoice-grundpreis').value = i.grundpreis ?? '';
             document.getElementById('invoice-pages').value = i.document_pages || '';
             // NK-125: Anlage, Posten und CO2-Angaben des Belegs.
             await populateInvoiceHeizung(i.heizungsanlage_id || null);
@@ -3420,6 +3441,7 @@ async function openAddInvoiceModal(editInvoiceId = null) {
         document.getElementById('invoice-rechnungsdatum').value = '';
         document.getElementById('invoice-preis-ht').value = '';
         document.getElementById('invoice-preis-nt').value = '';
+        document.getElementById('invoice-grundpreis').value = '';
         document.getElementById('invoice-pages').value = '';
         if (provSelect) provSelect.value = '';
         docSelect.value = '';
@@ -3659,6 +3681,9 @@ async function saveInvoice() {
     }
     if (preisHt !== '') formData.append('preis_ht', preisHt);
     if (preisNt !== '') formData.append('preis_nt', preisNt);
+    // F-137: leer heisst keine Angabe, der Server rechnet dann wie bisher.
+    const grundpreis = document.getElementById('invoice-grundpreis').value;
+    if (grundpreis !== '') formData.append('grundpreis', grundpreis);
     // NK-125: Anlage und Posten gehoeren zusammen (D-44); die CO2-Angaben
     // des Belegs kommen dazu, sobald eine Anlage gewaehlt ist.
     const heizungsanlageId = document.getElementById('invoice-heizungsanlage').value;
@@ -4648,7 +4673,52 @@ let jahrAktuell = 1;
 let jahrVorschau = {};
 
 const euroText = betrag => Number(betrag || 0).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
-const datumText = iso => iso ? new Date(`${iso}T00:00:00`).toLocaleDateString('de-DE') : '—';
+const datumText = iso => iso ? new Date(`${iso}T00:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
+
+// Warnungen kompakt (F-116): ohne Kennung vorn, gleiche Meldungen für
+// mehrere Kostenarten zu einer zusammengefasst, Einzelheiten zum Aufklappen.
+function warnungenBuendeln(warnungen) {
+    const gruppen = new Map();
+    (warnungen || []).forEach(w => {
+        const roh = typeof w === 'string' ? w : (w.text || w.message || '');
+        const kennung = roh.match(/^([A-Z]+(?:-[A-Z0-9]+)+) · /);
+        const text = kennung ? roh.slice(kennung[0].length) : roh;
+        const kat = text.match(/„[^“]*“/);
+        const schluessel = kat ? text.replace(kat[0], '„…“') : text;
+        const gruppe = gruppen.get(schluessel);
+        if (!gruppe) gruppen.set(schluessel, { text, kats: kat ? [kat[0]] : [], kennung: kennung ? kennung[1] : '' });
+        else if (kat && !gruppe.kats.includes(kat[0])) gruppe.kats.push(kat[0]);
+    });
+    return [...gruppen.values()].map(g => {
+        const text = g.kats.length > 1
+            ? g.text.replace(g.kats[0], () => g.kats.slice(0, -1).join(', ') + ' und ' + g.kats[g.kats.length - 1])
+            : g.text;
+        // Satzende: Punkt nach zwei Zeichen, nicht nach „bzw.“ und Co.
+        const ende = /(?<=\S{2}\.)(?<!\b(?:bzw|ggf|Abs|Nr|vgl|ca|usw|inkl|evtl|z\.\s?B)\.)\s+(?=[A-ZÄÖÜ„])/;
+        const satzende = text.match(ende);
+        const schnitt = satzende ? satzende.index : text.length;
+        // F-132: was zu tun ist, steht sichtbar -- die Sätze in der
+        // Sie-Form („Lesen Sie …“). Nur die Begründung klappt auf.
+        const saetze = text.slice(schnitt).trim().split(new RegExp(ende, 'g')).filter(Boolean);
+        const istTun = satz => /^[A-ZÄÖÜ][a-zäöüß]+ Sie\b/.test(satz);
+        return { kurz: text.slice(0, schnitt), tun: saetze.filter(istTun).join(' '),
+                 rest: saetze.filter(satz => !istTun(satz)).join(' '), kennung: g.kennung };
+    });
+}
+
+// D-116: höchstens drei Meldungen sichtbar, der Rest aufklappbar.
+function warnungenHtml(warnungen) {
+    const zeilen = warnungenBuendeln(warnungen).map(w =>
+        `<li title="${escapeHtml(w.kennung)}">${escapeHtml(w.kurz)}`
+        + (w.tun ? ` <strong>Was tun:</strong> ${escapeHtml(w.tun)}` : '')
+        + (w.rest ? ` <details><summary>Mehr</summary>${escapeHtml(w.rest)}</details>` : '')
+        + '</li>');
+    if (zeilen.length <= 3) return zeilen.join('');
+    const weitere = zeilen.length - 3;
+    return zeilen.slice(0, 3).join('')
+        + `<li class="weitere-hinweise-zeile"><details class="weitere-hinweise"><summary>${weitere} weitere${weitere === 1 ? 'r Hinweis' : ' Hinweise'}</summary>`
+        + `<ul>${zeilen.slice(3).join('')}</ul></details></li>`;
+}
 
 async function oeffneJahrAssistent() {
     await fetchProperties();
@@ -4807,7 +4877,7 @@ async function jahrVorschauLaden() {
                 const rechenwegHtml = weg ? '<br><span class="text-muted">' + escapeHtml(weg) + '</span>' : '';
                 return `<li><strong>${escapeHtml(zeile.category)}</strong>: ${escapeHtml(euroText(zeile.tenant_cost))}${rechenwegHtml}</li>`;
             }).join('');
-            const warnungen = (daten.warnings || []).map(w => `<li>${escapeHtml(typeof w === 'string' ? w : (w.text || w.message || ''))}</li>`).join('');
+            const warnungen = warnungenHtml(daten.warnings);
             const warnListe = warnungen ? '<ul class="jahr-warnungen">' + warnungen + '</ul>' : '';
             const erklaerungHtml = mieterErklaerungHtml(daten);
             karten.push(`<div class="jahr-mieter">
@@ -5385,6 +5455,44 @@ function vorgeschlagenerZeitraum(categories, ids) {
     return [beginn, ende];
 }
 
+// NK-186: Welcher Zeitraum passt -- und warum. Die Gruende kommen vom
+// Server; "Übernehmen" setzt beide Felder wie eine Eingabe von Hand.
+function zeitraumVorschlagHtml(v) {
+    const gruende = v.gruende.map(g => `<li>${escapeHtml(g)}</li>`).join('');
+    const kopf = v.beginn
+        ? `<strong>Vorschlag: ${escapeHtml(datumText(v.beginn))} – ${escapeHtml(datumText(v.ende))}</strong>`
+        : '<strong>Zurzeit kein Vorschlag</strong>';
+    const knopf = v.beginn ? '<button type="button" class="btn btn-secondary">Übernehmen</button>' : '';
+    return `${kopf}<ul>${gruende}</ul>${knopf}`;
+}
+
+async function zeitraumVorschlagen(tenantId, boxId, beginnFeld, endeFeld, sofort) {
+    const box = document.getElementById(boxId);
+    box.hidden = true;
+    // Wer schnell den Mieter wechselt, bekommt die Antworten nicht der Reihe
+    // nach. Nur die Antwort auf die letzte Anfrage darf die Felder fuellen.
+    const anfrage = box.dataset.anfrage = String((+box.dataset.anfrage || 0) + 1);
+    if (!tenantId) return;
+    try {
+        const res = await fetch(`/api/tenants/${tenantId}/zeitraumvorschlag`);
+        if (!res.ok || box.dataset.anfrage !== anfrage) return;
+        const v = await res.json();
+        if (box.dataset.anfrage !== anfrage) return;
+        box.innerHTML = zeitraumVorschlagHtml(v);
+        box.hidden = false;
+        if (!v.beginn) return;
+        const uebernehmen = () => {
+            beginnFeld.value = v.beginn;
+            endeFeld.value = v.ende;
+            beginnFeld.dispatchEvent(new Event('input'));
+        };
+        box.querySelector('button').onclick = uebernehmen;
+        if (sofort()) uebernehmen();
+    } catch (e) {
+        // Ohne Vorschlag bleibt die Vorbelegung stehen.
+    }
+}
+
 // Prüfung vor dem Senden (NK-119). Überschneidungen mit festgesetzten
 // Abrechnungen prüft der Server (D-55) und meldet sie in der Vorschau.
 /* NK-142: Der freie Weg zur Abrechnung, falls die Vorschlagskarte fehlt
@@ -5410,10 +5518,18 @@ function openFreieAbrechnung() {
             '<option value="">Kein Mietverhältnis vorhanden</option>');
     }
 
-    // Vorbelegt: das vergangene Kalenderjahr, der haeufigste Fall.
+    // Vorbelegt: der Vorschlag der App (NK-186), ohne ihn das vergangene
+    // Kalenderjahr, der haeufigste Fall.
     const jahr = new Date().getFullYear() - 1;
-    document.getElementById('frei-period-start').value = `${jahr}-01-01`;
-    document.getElementById('frei-period-end').value = `${jahr}-12-31`;
+    const beginnFeld = document.getElementById('frei-period-start');
+    const endeFeld = document.getElementById('frei-period-end');
+    const vorschlagen = () => {
+        beginnFeld.value = `${jahr}-01-01`;
+        endeFeld.value = `${jahr}-12-31`;
+        zeitraumVorschlagen(auswahl.value, 'frei-zeitraumvorschlag', beginnFeld, endeFeld, () => true);
+    };
+    auswahl.onchange = vorschlagen;
+    vorschlagen();
 
     document.getElementById('billing-frei-modal').classList.add('active');
 }
@@ -5485,6 +5601,8 @@ function openBillingSelectionModal(suggestion) {
     endeFeld.oninput = () => { vonHand = true; };
     body.querySelectorAll('.category-select-cb').forEach(cb => { cb.onchange = vorbelegen; });
     vorbelegen();
+    zeitraumVorschlagen(suggestion.tenant_id, 'billing-zeitraumvorschlag',
+        beginnFeld, endeFeld, () => !vonHand);
 
     document.getElementById('btn-proceed-preview').onclick = () => {
         const selectedCategoryIds = ausgewaehlteIds();
@@ -5545,25 +5663,31 @@ async function generateBillPreview(tenantId, startDate, endDate, categoryIds = n
             <div style="margin-bottom: 24px;">
                 <h3 style="margin:0;">Abrechnung für ${escapeHtml(data.tenant_name)}</h3>
                 <p style="color: var(--text-muted); margin: 4px 0;">${escapeHtml(data.property)} - ${escapeHtml(data.apartment)}</p>
-                <p style="color: var(--text-muted); margin: 4px 0;">Zeitraum: ${new Date(data.start_date).toLocaleDateString('de-DE')} bis ${new Date(data.end_date).toLocaleDateString('de-DE')}</p>
+                <p style="color: var(--text-muted); margin: 4px 0;">Zeitraum: ${escapeHtml(datumText(data.start_date))} bis ${escapeHtml(datumText(data.end_date))}</p>
             </div>
         `;
         
-        // Preflight Panel
-        if (pfData.overall !== 'no_meters' && pfData.checks && pfData.checks.length > 0) {
+        // Preflight Panel: nur echte Zaehler. Kacheln ohne Zaehler (Zeitraum,
+        // Rechnungen) sind Hinweise und stehen weiter unten im Klartext (F-116).
+        const pruefungen = pfData.checks || [];
+        const zaehlerChecks = pruefungen.filter(c => c.meter_id != null);
+        const hinweisTexte = pruefungen.filter(c => c.meter_id == null && c.message).map(c => c.message);
+        const zaehlerStatus = zaehlerChecks.some(c => c.status === 'warning' || c.status === 'no_data') ? 'warning'
+            : (zaehlerChecks.some(c => c.status === 'acceptable') ? 'acceptable' : 'excellent');
+        if (zaehlerChecks.length > 0) {
             let pfColor = 'var(--success-color)';
             let pfIcon = 'ph-check-circle';
             let pfTitle = 'Zählerstände: Ausgezeichnet (Alle Ablesungen innerhalb von 7 Tagen zum Stichtag)';
             let pfBg = 'rgba(16, 185, 129, 0.1)';
             let pfBorder = 'rgba(16, 185, 129, 0.3)';
             
-            if (pfData.overall === 'warning') {
+            if (zaehlerStatus === 'warning') {
                 pfColor = 'var(--danger-color)';
                 pfIcon = 'ph-warning-circle';
                 pfTitle = 'Zählerstände: Warnung (Große Lücken oder fehlende Daten)';
                 pfBg = 'var(--danger-bg)';
                 pfBorder = 'rgba(220, 38, 38, 0.3)';
-            } else if (pfData.overall === 'acceptable') {
+            } else if (zaehlerStatus === 'acceptable') {
                 pfColor = 'var(--warning-color)';
                 pfIcon = 'ph-info';
                 pfTitle = 'Zählerstände: Akzeptabel (Einige Ablesungen bis zu 14 Tage Toleranz)';
@@ -5581,7 +5705,7 @@ async function generateBillPreview(tenantId, startDate, endDate, categoryIds = n
                     <div style="margin-top: 12px; display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));">
             `;
             
-            pfData.checks.forEach(c => {
+            zaehlerChecks.forEach(c => {
                 let statusIcon = '<i class="ph ph-check-circle" style="color: var(--success-color);"></i>';
                 if (c.status === 'warning' || c.status === 'no_data') statusIcon = '<i class="ph ph-warning-circle" style="color: var(--danger-color);"></i>';
                 else if (c.status === 'acceptable') statusIcon = '<i class="ph ph-info" style="color: var(--warning-color);"></i>';
@@ -5604,7 +5728,7 @@ async function generateBillPreview(tenantId, startDate, endDate, categoryIds = n
                 html += `
                         <div style="background: white; border: 1px solid var(--border-color); padding: 8px; border-radius: 4px;">
                             <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <div style="font-weight: 500; font-size: 0.9rem;">${escapeHtml(c.category)} (${escapeHtml(c.meter_type)})</div>
+                                <div style="font-weight: 500; font-size: 0.9rem;">${escapeHtml(zaehlerArtName(c.category))} (${escapeHtml(c.meter_type)})</div>
                                 ${statusIcon}
                             </div>
                             <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">Zähler: ${escapeHtml(c.meter_number || 'N/A')}</div>
@@ -5620,16 +5744,14 @@ async function generateBillPreview(tenantId, startDate, endDate, categoryIds = n
             `;
         }
         
-        // Old warnings logic fallback for non-meter stuff
-        if (data.warnings && data.warnings.length > 0) {
-            const otherWarnings = data.warnings.filter(w => !w.includes('interpoliert'));
-            if (otherWarnings.length > 0) {
-                html += `<div style="background: var(--danger-bg); border: 1px solid rgba(220, 38, 38, 0.3); border-radius: 8px; padding: 12px; margin-bottom: 24px;">`;
-                otherWarnings.forEach(w => {
-                    html += `<div style="color: var(--danger-color); font-size: 0.95rem; margin-bottom: 4px;">${escapeHtml(w)}</div>`;
-                });
-                html += `</div>`;
-            }
+        // Hinweise: Kacheln ohne Zaehler und Warnungen der Rechnung, jede nur einmal.
+        const hinweise = hinweisTexte.concat((data.warnings || []).filter(w =>
+            typeof w !== 'string' || (!w.includes('interpoliert') && !hinweisTexte.includes(w))));
+        if (hinweise.length > 0) {
+            html += `<div style="background: var(--warning-bg); border: 1px solid rgba(217, 119, 6, 0.3); border-radius: 8px; padding: 12px; margin-bottom: 24px;">
+                <div style="font-weight: bold; color: var(--warning-color); margin-bottom: 6px;">Hinweise zur Abrechnung</div>
+                <ul class="jahr-warnungen" style="margin: 0;">${warnungenHtml(hinweise)}</ul>
+            </div>`;
         }
         
         html += `
@@ -5681,7 +5803,7 @@ async function generateBillPreview(tenantId, startDate, endDate, categoryIds = n
                     <td style="font-weight: 500; padding: 12px 8px; vertical-align: top;">${escapeHtml(item.category)}</td>
                     <td style="color: var(--text-muted); font-size: 0.9rem; white-space: nowrap; padding: 12px 8px; vertical-align: top;">${escapeHtml(item.period)}</td>
                     <td style="color: var(--text-muted); font-size: 0.875rem; padding: 12px 8px; vertical-align: top;">${detailsHtml}</td>
-                    <td style="text-align: right; font-weight: 500; padding: 12px 8px; vertical-align: top;">€${item.tenant_cost.toFixed(2).replace('.', ',')}</td>
+                    <td style="text-align: right; font-weight: 500; padding: 12px 8px; vertical-align: top;">${escapeHtml(euroText(item.tenant_cost))}</td>
                 </tr>
             `;
         });
@@ -5691,17 +5813,17 @@ async function generateBillPreview(tenantId, startDate, endDate, categoryIds = n
                 <tfoot>
                     <tr style="border-top: 2px solid var(--border-color);">
                         <td colspan="3" style="text-align: right; padding: 12px 8px;">Gesamtkosten der Periode:</td>
-                        <td style="text-align: right; font-weight: bold; padding: 12px 8px;">€${data.total_amount.toFixed(2).replace('.', ',')}</td>
+                        <td style="text-align: right; font-weight: bold; padding: 12px 8px;">${escapeHtml(euroText(data.total_amount))}</td>
                     </tr>
                     <tr>
                         <td colspan="3" style="text-align: right; padding: 12px 8px;">Abzüglich geleistete Vorauszahlungen:</td>
-                        <td style="text-align: right; color: var(--danger-color); padding: 12px 8px;">- €${data.prepaid_amount.toFixed(2).replace('.', ',')}</td>
+                        <td style="text-align: right; color: var(--danger-color); padding: 12px 8px;">- ${escapeHtml(euroText(data.prepaid_amount))}</td>
                     </tr>
                     <tr style="background: var(--bg-hover);">
                         <td colspan="3" style="text-align: right; font-size: 1.1rem; font-weight: bold; padding: 16px 8px;">
                             ${data.balance > 0 ? 'Nachzahlung des Mieters' : (data.balance < 0 ? 'Guthaben des Mieters' : 'Saldobetrag')}
                         </td>
-                        <td style="text-align: right; font-size: 1.1rem; font-weight: bold; color: var(--primary-color); padding: 16px 8px;">€${data.balance.toFixed(2).replace('.', ',')}</td>
+                        <td style="text-align: right; font-size: 1.1rem; font-weight: bold; color: var(--primary-color); padding: 16px 8px;">${escapeHtml(euroText(data.balance))}</td>
                     </tr>
                 </tfoot>
             </table>
@@ -6343,7 +6465,7 @@ function renderDataQuality(data) {
             
             const meta = document.createElement('div');
             meta.className = 'dq-warning-meta';
-            meta.textContent = `${w.tenant_name} · ${w.apartment_name} · ${w.category_name}`;
+            meta.textContent = `${w.tenant_name} · ${w.apartment_name} · ${zaehlerArtName(w.category_name)}`;
             textWrap.appendChild(meta);
             
             card.appendChild(textWrap);
@@ -6402,12 +6524,13 @@ function renderDataQuality(data) {
         
         const title = document.createElement('div');
         title.className = 'dq-meter-title';
-        const iconClass = categoryIcons[m.category_name] || 'ph-gauge';
+        const artName = zaehlerArtName(m.category_name);
+        const iconClass = categoryIcons[artName] || 'ph-gauge';
         const titleIcon = document.createElement('i');
         titleIcon.className = `ph ${iconClass}`;
         titleIcon.style.marginRight = '6px';
         title.appendChild(titleIcon);
-        const titleText = document.createTextNode(m.category_name);
+        const titleText = document.createTextNode(artName);
         title.appendChild(titleText);
         if (m.is_main_meter) {
             const mainBadge = document.createElement('span');

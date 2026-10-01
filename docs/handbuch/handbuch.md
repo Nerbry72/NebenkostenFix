@@ -143,9 +143,11 @@ bekommt neue PDFs. Die alte Version bleibt zum Nachweis erhalten.
 
 ### Mieterwechsel im laufenden Jahr
 
-1. Beim alten Mieter das Auszugsdatum eintragen, beim neuen das Einzugsdatum.
-2. Am Tag des Wechsels jeden Zähler der Wohnung ablesen und als **Zwischenablesung**
-   eintragen.
+1. Beim alten Mieter das Auszugsdatum eintragen, beim neuen das Einzugsdatum. Das
+   Auszugsdatum ist der letzte Miettag, er wird dem alten Mieter noch berechnet. Zieht er
+   am 30.09. aus, zieht der neue Mieter am 01.10. ein.
+2. Beim Wechsel jeden Zähler der Wohnung ablesen und als **Zwischenablesung** eintragen,
+   mit dem letzten Miettag oder dem Einzugstag als Datum. Beides zählt als Übergabe.
 3. **Jahr abrechnen** verteilt die Kosten dann auf beide Mieter: verbrauchsabhängige Kosten
    nach den Zählerständen, alle anderen nach Tagen.
 

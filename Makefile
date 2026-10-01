@@ -47,6 +47,10 @@ kern:
 	  tests/test_leerstand_personenschluessel.py \
 	  tests/test_zwischenablesung.py tests/test_co2_aufteilung.py \
 	  tests/test_ht_nt.py tests/test_golden_fixtures.py \
+	  tests/test_allgemein_belegungsabschnitte.py tests/test_leerstand_einzige_wohnung.py \
+	  tests/test_leerstand_zaehlerzweig.py tests/test_wohnungsrechnung_leerstand.py \
+	  tests/test_rechnungen_bestand.py tests/test_rechnungsabdeckung.py \
+	  tests/test_grundpreis_leerstand.py \
 	  -q --no-header \
 	  --cov=nebenkostenfix.rechenkern --cov-branch --cov-report=term-missing --cov-fail-under=95
 

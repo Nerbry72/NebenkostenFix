@@ -297,9 +297,10 @@ def test_erzeugung_naehrt_sich_der_frist(auth_client, app_ctx, monkeypatch):
     assert [w for w in ergebnis['warnings'] if 'in 16 Tagen' in w]
 
 
-def test_erzeugung_nimmt_366_tage_und_keinen_tag_mehr(auth_client, app_ctx, monkeypatch):
-    """R-FRIST-01 an der Route: ein volles Schaltjahr bleibt ungeschaert,
-    der 367. Tag wird auf die Jahresgrenze gestutzt (NK-041, gepinnt)."""
+def test_erzeugung_warnt_erst_ab_dem_367_tag(auth_client, app_ctx, monkeypatch):
+    """R-FRIST-01 an der Route: ein volles Schaltjahr bleibt ohne Hinweis.
+    Der 367. Tag wird seit F-112 nicht mehr still gekuerzt, sondern
+    gerechnet und angesagt (vorher NK-041: auf die Jahresgrenze gestutzt)."""
     monkeypatch.setattr(frist, '_heute', lambda: date(2026, 3, 1))
     mieter = _mieter(app_ctx)
 
@@ -308,12 +309,14 @@ def test_erzeugung_nimmt_366_tage_und_keinen_tag_mehr(auth_client, app_ctx, monk
         'start_date': '2024-01-01', 'end_date': '2024-12-31'})
     assert ok.status_code == 200
     assert ok.get_json()['end_date'] == '2024-12-31'
+    assert not any('länger als ein Jahr' in w for w in ok.get_json()['warnings'])
 
     zu_lang = auth_client.post('/api/billing/generate', json={
         'tenant_id': mieter.id,
         'start_date': '2024-01-01', 'end_date': '2025-01-01'})
     assert zu_lang.status_code == 200
-    assert zu_lang.get_json()['end_date'] == '2024-12-31'
+    assert zu_lang.get_json()['end_date'] == '2025-01-01'
+    assert any('367 Tage' in w for w in zu_lang.get_json()['warnings'])
 
 
 # --- Die Festsetzung: das Fristende wird geboren ------------------------------

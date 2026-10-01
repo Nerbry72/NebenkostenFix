@@ -246,8 +246,10 @@ def test_mieterwechsel_aendert_nichts_am_ganzjaehrigen_mieter():
     Ihr Abrechnungszeitraum (2025) und der Rechnungszeitraum fallen zusammen,
     also misst der Schnitt denselben Verbrauch wie vorher -- die Zahlen fuer
     den ganzjaehrigen Mieter duerfen sich durch NK-097 nicht aendern. Von
-    Hand: Eigenverbrauch 300,00 EUR, allgemein 400,00 EUR auf 365 von 549
-    Personentagen, zusammen 565,94 EUR.
+    Hand: Eigenverbrauch 300,00 EUR, allgemein 400,00 EUR auf 365 von 730
+    Personentagen, zusammen 500,00 EUR. Die 181 Tage vor Berts Einzug stand
+    seine Wohnung leer; die traegt seit F-121 der Vermieter (vorher 365 von
+    549, 565,94 EUR).
     """
     anna = mieter(1, 'Anna', 1, einzug=date(2020, 1, 1))
     bert = mieter(2, 'Bert', 2, einzug=date(2025, 7, 1))
@@ -255,10 +257,10 @@ def test_mieterwechsel_aendert_nichts_am_ganzjaehrigen_mieter():
 
     posten = rechne(v)['line_items'][0]
 
-    assert posten['tenant_cost'] == Decimal('565.94')
+    assert posten['tenant_cost'] == Decimal('500.00')
     assert posten['sub_items'][0]['cost'] == Decimal('300.00')
-    assert posten['sub_items'][1]['cost'] == Decimal('265.94')
-    assert 'Anteil: 365 von 549 Personentagen' in posten['description']
+    assert posten['sub_items'][1]['cost'] == Decimal('200.00')
+    assert 'Anteil: 365 von 730 Personentagen' in posten['description']
 
 
 def test_nur_allgemein_schneidet_auch_ins_fenster():

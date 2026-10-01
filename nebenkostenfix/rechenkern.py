@@ -140,6 +140,7 @@ und die Anzeige im Bericht haengen an genau diesen Feldern.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
@@ -318,6 +319,10 @@ class Rechnung:
     # bestimmen nur, wie er zwischen HT und NT gesplitet wird.
     preis_ht: Optional[Decimal] = None
     preis_nt: Optional[Decimal] = None
+    # Der verbrauchsunabhaengige Teil des Betrags (F-137). Bei einer
+    # Wohnungsrechnung mit Zaehler folgt er den Tagen, nur der Rest dem
+    # Zaehler. ``None`` heisst keine Angabe: alles nach Zaehler wie bisher.
+    grundpreis: Optional[Decimal] = None
 
     @property
     def ende_grenze(self) -> date:
@@ -417,7 +422,7 @@ class Vorgang:
     jeder Stichprobenfall es nachbauen.
 
     Genau dieses Stutzen macht ``ende`` zweideutig: mal ist es das Ende des
-    Abrechnungszeitraums, mal das Auszugsdatum des Mieters. Gerechnet wird
+    Abrechnungszeitraums, mal der letzte Miettag des Mieters. Gerechnet wird
     deshalb nie mit ``ende``, sondern mit ``ende_grenze`` -- das Feld bleibt
     fuer die Anzeige, die Grenze fuer die Tage.
     """
@@ -451,9 +456,10 @@ class Vorgang:
 
         Hier loest sich die Zweideutigkeit von ``ende`` auf, und zwar an der
         einzigen Stelle, an der die noetige Auskunft vorliegt: am Mieter.
-        Steht ein Auszugsdatum und hat der Lader darauf gestutzt, dann ist
-        ``ende`` bereits die Grenze -- der Auszugstag zaehlt nicht mit. Sonst
-        ist es ein Zeitraumende und die Grenze liegt einen Tag weiter.
+        ``Mieter.auszug`` ist schon die Grenze, der Tag nach dem letzten
+        Miettag (der Lader rechnet um, F-118). Liegt sie im Zeitraum, gilt
+        sie. Sonst ist ``ende`` ein Zeitraumende und die Grenze liegt einen
+        Tag weiter.
 
         Ohne diese Unterscheidung bekommt der Wechseltag zwei Rechnungen: bei
         einem Auszug am 30.06. zahlten Vor- und Nachmieter zusammen 367 von
@@ -487,10 +493,12 @@ def hauptzaehler(vorgang: Vorgang, kategorie_id: int) -> Optional[Zaehler]:
     return None
 
 
-def wohnungszaehler(vorgang: Vorgang, kategorie_id: int) -> Optional[Zaehler]:
-    """Der Zaehler dieser Wohnung fuer diese Kategorie, oder None."""
+def wohnungszaehler(vorgang: Vorgang, kategorie_id: int,
+                    wohnung_id: Optional[int] = None) -> Optional[Zaehler]:
+    """Der Zaehler dieser (oder der genannten) Wohnung fuer diese Kategorie, oder None."""
+    wohnung_id = wohnung_id or vorgang.wohnung.id
     for z in _nach_id(vorgang.zaehler):
-        if z.wohnung_id == vorgang.wohnung.id and z.kategorie_id == kategorie_id and not z.ist_hauptzaehler:
+        if z.wohnung_id == wohnung_id and z.kategorie_id == kategorie_id and not z.ist_hauptzaehler:
             return z
     return None
 
@@ -624,9 +632,9 @@ def ueberschneidungstage(d1_start: date, d1_end: date, d2_start: date, d2_end: d
     werden dafuer nach ``zeitraum.grenze()`` verschoben -- das ``+ 1`` steht
     nicht mehr hier (NK-041, R-NUM-03).
 
-    **Nicht fuer Mietverhaeltnisse.** Ein Auszugsdatum ist kein letzter Tag,
-    sondern schon die Grenze; wer es hier hineingibt, berechnet den Auszugstag
-    mit. Dafuer gibt es ``Vorgang.ende_grenze``.
+    **Nicht fuer Mietverhaeltnisse.** ``Mieter.auszug`` ist kein letzter Tag,
+    sondern schon die Grenze; wer es hier hineingibt, berechnet einen Tag zu
+    viel. Dafuer gibt es ``Vorgang.ende_grenze``.
     """
     return ueberschneidung(d1_start, grenze(d1_end), d2_start, grenze(d2_end))
 
@@ -775,7 +783,7 @@ def leerer_verbrauch(zaehler_nummer: str = '', einheit: str = '') -> dict:
         'consumption': 0.0, 'ht': 0.0, 'nt': 0.0,
         'r_start': None, 'r_end': None, 'reading_span_days': 0,
         'target_days': 0, 'start_offset_days': 0, 'end_offset_days': 0,
-        'status': 'no_data', 'is_interpolated': True,
+        'status': 'no_data', 'is_interpolated': True, 'gradtage': False,
         'meter_number': zaehler_nummer, 'unit': einheit,
     }
 
@@ -796,15 +804,47 @@ def _stand_angabe(stand: Stand) -> dict:
 
 #: Kennung der Warnung zum Preisfuss. Sie steht im Text, damit Oberflaeche
 #: und PDF die Warnung wiederfinden, ohne den Satz zu parsen (dieselbe
-#: Konvention wie W-HKV-KUERZUNG-15 und W-FRIST-30TAGE).
+#: Konvention wie W-HKV-KUERZUNG-15 und W-FRIST-30TAGE). Eine Warnung je
+#: Zaehler, nicht je Rechnung (F-125): {zeitraeume} zaehlt alle Rechnungen auf.
 HINWEIS_PREIS_HOCHGERECHNET = (
-    "W-ZAEHLER-PREIS-HOCHGERECHNET · Der Einheitspreis für „{kategorie}“ "
-    "(Zähler {zaehler}) beruht auf hochgerechnetem Verbrauch: Die Ablesungen "
-    "({ablesungen}) decken den Rechnungszeitraum ({beginn} – {ende}) nicht "
-    "ab. Die Kosten werden trotzdem verteilt, aber der Preis je Einheit ist "
-    "ein Schätzwert. Tragen Sie die fehlenden Ablesungen nach und erzeuge die "
-    "Abrechnung erneut."
+    "W-ZAEHLER-PREIS-HOCHGERECHNET · Der Einheitspreis für „{kategorie}“ ist "
+    "geschätzt: Die Ablesungen von Zähler {zaehler} decken {zeitraeume} nicht "
+    "ab. Tragen Sie Ablesungen zu Beginn und Ende der {rechnungen} nach und "
+    "erstellen Sie die Abrechnung erneut."
 )
+
+
+def _zaehlername(nummer: Optional[str]) -> str:
+    """Die Nummer ohne vorangestelltes „Zähler“ -- der Satz bringt es selbst (F-125)."""
+    name = nummer or '?'
+    return name[7:].lstrip() if name.lower().startswith('zähler ') else name
+
+
+def meldungen_buendeln(meldungen: Sequence[str]) -> list[str]:
+    """Jede Meldung nur einmal; gleiche Meldungen, die sich nur in der
+    Kostenart („…“) unterscheiden, werden zu einer (F-132). Wasserversorgung
+    und Entwässerung lesen meist denselben Hauptzähler -- eine Ursache, eine
+    Meldung: „Für „Wasserversorgung“ und „Entwässerung“ …“."""
+    gruppen: dict[str, list] = {}
+    for text in meldungen:
+        kat = re.search(r'„[^“]*“', text)
+        schluessel = text.replace(kat.group(0), '„…“', 1) if kat else text
+        gruppe = gruppen.setdefault(schluessel, [text, []])
+        if kat and kat.group(0) not in gruppe[1]:
+            gruppe[1].append(kat.group(0))
+    ergebnis = []
+    for text, kats in gruppen.values():
+        if len(kats) > 1:
+            text = text.replace(kats[0], ', '.join(kats[:-1]) + ' und ' + kats[-1], 1)
+        ergebnis.append(text)
+    return ergebnis
+
+
+def _zeitraeume(spannen: list[str]) -> str:
+    """„den Rechnungszeitraum X“ oder „die Rechnungszeiträume X, Y und Z“."""
+    if len(spannen) == 1:
+        return f"den Rechnungszeitraum {spannen[0]}"
+    return f"die Rechnungszeiträume {', '.join(spannen[:-1])} und {spannen[-1]}"
 
 #: Kennung der Warnung zur negativen Allgemeinmenge (NK-115). Im
 #: Abrechnungszeitraum wird jeder Zaehler zwischen seinen Ablesungen linear
@@ -822,7 +862,23 @@ HINWEIS_ALLGEMEIN_NEGATIV = (
     "meist, wenn Haupt- und Wohnungszähler an verschiedenen Tagen abgelesen "
     "wurden und der Verbrauch dazwischen geschätzt wird. Lesen Sie alle "
     "Zähler am selben Tag ab — beim Mieterwechsel am Einzugs- bzw. "
-    "Auszugstag — und erstellen Sie die Abrechnung erneut."
+    "Auszugstag — und erstellen Sie die Abrechnung erneut. Zeigt der "
+    "Hauptzähler auch dann weniger, ist ein Stand falsch erfasst oder ein "
+    "Wohnungszähler dem falschen Hauptzähler zugeordnet. Prüfen Sie die "
+    "Stände und die Zuordnung der Zähler."
+)
+
+#: F-137: eine Wohnungsrechnung mit Zaehler wird nach Verbrauch geteilt. Ein
+#: Grundpreis faellt aber auch im Leerstand an; ohne die Angabe, wie viel
+#: davon Grundpreis ist, traegt der Mieter mehr als seine Tage.
+HINWEIS_GRUNDPREIS_LEERSTAND = (
+    "W-GRUNDPREIS-LEERSTAND · Die Rechnung „{kategorie}“ für {wohnung} "
+    "({beginn} – {ende}) wird nach dem Zähler der Wohnung verteilt, und die "
+    "Wohnung war darin {tage} Tage nicht vermietet. Ein Grundpreis oder eine "
+    "Zählermiete fällt auch dann an. Nach Verbrauch geteilt trägt der Mieter "
+    "davon mehr, als auf seine Tage entfällt. Tragen Sie bei der Rechnung "
+    "„davon Grundpreis/Zählermiete“ ein, dann teilt die App ihn nach Tagen "
+    "und gibt den Anteil der leeren Tage an den Vermieter."
 )
 
 
@@ -887,12 +943,23 @@ def verbrauch_detail(zaehler: Zaehler, start_date: date, end_date: date) -> dict
     return verbrauch_in(zaehler, start_date, grenze(end_date))
 
 
+def eigenverbrauch_text(menge, unit: str, detail: dict | None) -> str:
+    """Der Unterposten Eigenverbrauch. Ein nach Gradtagszahlen geschaetzter
+    Stichtag steht auch im einfachen PDF dabei, nicht nur im detaillierten (D-115);
+    die Schwelle von 7 Tagen ist dieselbe wie dort."""
+    text = f"Eigenverbrauch ({menge:.1f} {unit}"
+    if detail and detail.get('gradtage') and max(detail['start_offset_days'], detail['end_offset_days']) > 7:
+        text += ", Stichtag nach Gradtagszahlen geschätzt"
+    return text + ")"
+
+
 def verbrauch_in(zaehler: Zaehler, von: date, bis: date) -> dict:
     """Verbrauch in ``[von, bis)`` -- der erste Tag zaehlt, der letzte nicht.
 
     Die halboffene Form ist die, in der der Kern rechnet (R-NUM-03). Sie ist
-    hier noetig, weil ein auf das Mietverhaeltnis gestutzter Zeitraum am
-    Auszugsdatum endet, und das ist bereits eine Grenze und kein letzter Tag.
+    hier noetig, weil ein auf das Mietverhaeltnis gestutzter Zeitraum an
+    ``Mieter.auszug`` endet, und das ist bereits eine Grenze und kein letzter
+    Tag.
 
     Liegt eine **Zwischenablesung** (NK-051, R-HK-04) genau auf einer der
     beiden Grenzen, dann misst sie diese Grenze: liegt ein Ablesungspaar an
@@ -904,8 +971,21 @@ def verbrauch_in(zaehler: Zaehler, von: date, bis: date) -> dict:
     Bei einem Dualtarifzaehler (NK-055) tragen ``ht`` und ``nt`` die Mengen
     getrennt, nach derselben Interpolation wie die Gesamtmenge; ihre Summe
     ist der Verbrauch. Ohne Niedertarif steht in ``nt`` die 0.
+
+    Ein **Heizwaermezaehler** ohne Stand am Stichtag wird nach
+    Gradtagszahlen geschaetzt, nicht nach Tagen (D-115, VDI 2067): der
+    Winteranteil eines Ablesejahrs traegt den Grossteil der Waerme. Die
+    Auskunft sagt es mit ``gradtage``. Wasser und Strom bleiben linear.
     """
     einheit = einheit_fuer(zaehler.kategorie_name, zaehler.kategorie_betrkv_nr)
+    heiz = ist_heizwaermezaehler(zaehler)
+
+    def wirksame_tage(a: date, b: date, basis_von: date, basis_bis: date) -> Decimal:
+        """Tage in ``[a, b)``, beim Heizwaermezaehler nach Gradtagen gewichtet."""
+        if not heiz:
+            return Decimal(str((b - a).days))
+        anteil = heizung.gradtage(a, b) / heizung.gradtage(basis_von, basis_bis)
+        return (Decimal((basis_bis - basis_von).days) * anteil.numerator) / anteil.denominator
     leer = leerer_verbrauch(zaehler.nummer or '', einheit)
 
     staende = sorted(zaehler.staende, key=lambda s: s.datum)
@@ -942,15 +1022,16 @@ def verbrauch_in(zaehler: Zaehler, von: date, bis: date) -> dict:
         if overlap_days > 0:
             interval_consumption = s2.gesamt - s1.gesamt
             daily_rate = interval_consumption / Decimal(str(interval_days))
-            total_consumption += daily_rate * Decimal(str(overlap_days))
+            wirksam = wirksame_tage(overlap_start, overlap_end, s1.datum, s2.datum)
+            total_consumption += daily_rate * wirksam
             # Der Dualtarif braucht die Mengen getrennt (NK-055): dieselbe
             # Interpolation, zweimal -- einmal je Register. Die Differenzen
             # addieren sich wieder zum Gesamtbetrag, denn gesamt ist HT
             # plus NT.
             ht_rate = (dec(s2.wert) - dec(s1.wert)) / Decimal(str(interval_days))
             nt_rate = (dec(s2.wert_nt or 0) - dec(s1.wert_nt or 0)) / Decimal(str(interval_days))
-            total_ht += ht_rate * Decimal(str(overlap_days))
-            total_nt += nt_rate * Decimal(str(overlap_days))
+            total_ht += ht_rate * wirksam
+            total_nt += nt_rate * wirksam
             total_covered_days += overlap_days
 
             benutzt.add(i)
@@ -970,11 +1051,18 @@ def verbrauch_in(zaehler: Zaehler, von: date, bis: date) -> dict:
         global_days = (letzter.datum - erster.datum).days
         if global_days > 0:
             global_rate = (letzter.gesamt - erster.gesamt) / Decimal(str(global_days))
-            total_consumption += global_rate * Decimal(str(missing_days))
+            # Die Luecken liegen vor der ersten und nach der letzten Ablesung.
+            fehlend = Decimal(str(missing_days))
+            if heiz:
+                fehlend = sum((wirksame_tage(a, b, erster.datum, letzter.datum)
+                               for a, b in ((von, min(bis, erster.datum)),
+                                            (max(von, letzter.datum), bis)) if a < b),
+                              Decimal(0))
+            total_consumption += global_rate * fehlend
             global_rate_ht = (dec(letzter.wert) - dec(erster.wert)) / Decimal(str(global_days))
             global_rate_nt = (dec(letzter.wert_nt or 0) - dec(erster.wert_nt or 0)) / Decimal(str(global_days))
-            total_ht += global_rate_ht * Decimal(str(missing_days))
-            total_nt += global_rate_nt * Decimal(str(missing_days))
+            total_ht += global_rate_ht * fehlend
+            total_nt += global_rate_nt * fehlend
             benutzt.add(0)
             benutzt.add(len(staende) - 1)
 
@@ -1034,6 +1122,7 @@ def verbrauch_in(zaehler: Zaehler, von: date, bis: date) -> dict:
         'end_offset_days': end_offset,
         'status': status,
         'is_interpolated': is_interpolated,
+        'gradtage': heiz and is_interpolated,
         'zwischenablesungen': zwischen,
         'meter_id': zaehler.id,
         'meter_number': zaehler.nummer or '',
@@ -1076,8 +1165,8 @@ def _personentage_des_mieters(mieter: Mieter, von: date, bis: date) -> int:
 
     Erst wird die Mietzeit mit dem Zeitraum geschnitten, dann zaehlt jeder Tag
     so oft, wie an ihm Personen im Haushalt lebten (R-NUM-04). Der Einzugstag
-    zaehlt, der Auszugstag nicht -- das Auszugsdatum ist schon die Grenze
-    (R-NUM-03).
+    zaehlt und der letzte Miettag auch -- ``Mieter.auszug`` ist der Tag
+    danach, die Grenze (R-NUM-03, F-118).
     """
     m_von = max(von, mieter.einzug)
     m_bis = min(bis, mietende(mieter.auszug, bis))
@@ -1109,6 +1198,65 @@ def _personentage_im_haus(vorgang: Vorgang, von: date, bis: date):
         if m.id == vorgang.mieter.id:
             eigene = pt
     return eigene, alle, parteien
+
+
+def _allgemeinquoten(vorgang: Vorgang, haupt: Zaehler, unter, von: date, bis: date,
+                     fenster_von: date, fenster_bis: date, preise=None):
+    """``(Mieter, Vermieter)``: die Anteile am Allgemeinverbrauch der Rechnung ``[von, bis)``.
+
+    F-122: die Rechnung zerfaellt an jedem Einzug, Auszug und jeder Aenderung
+    der Haushaltsgroesse in Abschnitte gleicher Belegung. In jedem Abschnitt
+    wird der Allgemeinverbrauch gemessen und nach Personentagen geteilt; die
+    Quote ist der Anteil an der Summe. Mieter wie Vermieter tragen nur aus
+    dem Abrechnungsfenster ``[fenster_von, fenster_bis)`` (der Vermieter seit
+    F-128). Mal dem Allgemeinbetrag der ganzen Rechnung ergeben die Anteile
+    aller Mieter plus der Vermieteranteile aller Zeitraeume die Rechnung --
+    auch wenn der Verbrauch uebers Jahr ungleich liegt.
+
+    ``preise`` (HT, NT) beim Dualtarif: dann wiegt jeder Abschnitt mit seinem
+    Betrag statt seiner Menge, je Register nie negativ wie ``allgemein_voll``.
+
+    D-73 je Abschnitt: misst ein Abschnitt negativen Allgemeinverbrauch, zaehlt
+    er als null. Niemand bekommt eine Gutschrift, und die positiven Abschnitte
+    teilen sich, was die Rechnung netto an Allgemeinverbrauch hat.
+
+    ``None``, wenn die Belegung ueber die ganze Rechnung gleich bleibt (dann
+    ist die Quote das Verhaeltnis der Personentage, wie seit NK-097) oder kein
+    Abschnitt positiv ist.
+    """
+    belegung = {von, bis}
+    for m in vorgang.mieter_der_immobilie:
+        belegung |= {m.einzug, mietende(m.auszug, bis)}
+        belegung |= {h.gueltig_ab for h in m.haushaltsgroessen}
+    belegung = {g for g in sorted(belegung) if von <= g <= bis}
+    if len(belegung) <= 2:
+        return None
+    grenzen = [g for g in sorted(belegung | {fenster_von, fenster_bis}) if von <= g <= bis]
+
+    summe = mieter = vermieter = NULL
+    for a, e in zip(grenzen, grenzen[1:]):
+        h = verbrauch_in(haupt, a, e)
+        u = [verbrauch_in(z, a, e) for z in unter]
+        if preise:
+            allgemein = sum(
+                max(NULL, dec(h[r]) - sum(dec(d[r]) for d in u)) * preis
+                for r, preis in zip(('ht', 'nt'), preise))
+        else:
+            allgemein = dec(h['consumption']) - sum(dec(d['consumption']) for d in u)
+        if allgemein <= 0:
+            continue
+        eigene, alle, _ = _personentage_im_haus(vorgang, a, e)
+        leer = sum(b.unbelegt for b in _leerstandsbilanz(vorgang, a, e)
+                   if b.traegt_der_vermieter)
+        if alle + leer <= 0:
+            continue
+        summe += allgemein
+        if fenster_von <= a and e <= fenster_bis:
+            mieter += allgemein * dec(eigene) / dec(alle + leer)
+            vermieter += allgemein * dec(leer) / dec(alle + leer)
+    if summe <= 0:
+        return None
+    return mieter / summe, vermieter / summe
 
 
 def _leerstandsbilanz(vorgang: Vorgang, von: date, bis: date, nur=None) -> list:
@@ -1208,7 +1356,8 @@ def _vermieteranteil(vorgang, kategorie_name, rechnung, anteiliger_betrag,
 
 
 def _vermieterpersonenanteil(vorgang, kategorie_name, rechnung, bilanz,
-                             vermieter_pt, nenner) -> Optional[dict]:
+                             vermieter_pt, nenner, betrag=None,
+                             quote=None) -> Optional[dict]:
     """Was von einer Personen-Umlage beim Vermieter bleibt -- oder ``None``.
 
     Der Personennenner zaehlte nur Mietverhaeltnisse; eine Wohnung ohne
@@ -1219,16 +1368,26 @@ def _vermieterpersonenanteil(vorgang, kategorie_name, rechnung, bilanz,
     -- ausgewiesen statt zwischen den Zeilen zu verschwinden (R-NUM-05,
     Produktprinzip 3).
 
-    Gemessen wird ueber den vollen Rechnungszeitraum -- derselbe Nenner, an
-    dem auch die Personentage der Mieter haengen, denn beim Personenschluessel
-    steckt die Zeitanteiligkeit im Verhaeltnis und nicht im Betrag (R-NUM-04).
-    Damit gilt Zeile fuer Zeile: die Anteile aller Mieter plus der
-    Vermieteranteil ergeben den vollen Rechnungsbetrag.
+    Der Nenner ist der des vollen Rechnungszeitraums -- derselbe, an dem auch
+    die Personentage der Mieter haengen, denn beim Personenschluessel steckt
+    die Zeitanteiligkeit im Verhaeltnis und nicht im Betrag (R-NUM-04). Die
+    ``bilanz`` und ``vermieter_pt`` gelten dagegen nur fuer den Zeitraum der
+    Abrechnung (F-128): ueber alle Zeitraeume zusammen ergeben die Anteile
+    aller Mieter plus der Vermieteranteile den vollen Rechnungsbetrag, und
+    keiner zeigt Leerstand, der ausserhalb seines Zeitraums liegt.
+
+    ``betrag`` ersetzt den Rechnungsbetrag, wenn nur ein Teil nach Personen
+    geht -- im Zaehlerzweig die Kosten des Allgemeinverbrauchs (F-121).
+    ``quote`` ersetzt dort das Verhaeltnis der Personentage, wenn der
+    Verbrauch je Belegungsabschnitt gemessen wurde (F-122).
     """
     if vermieter_pt <= 0 or nenner <= 0:
         return None
 
-    anteiliger_betrag = runde(dec(rechnung.betrag) * (dec(vermieter_pt) / dec(nenner)))
+    basis = rechnung.betrag if betrag is None else betrag
+    if quote is None:
+        quote = dec(vermieter_pt) / dec(nenner)
+    anteiliger_betrag = runde(dec(basis) * quote)
     leer_tage = sum(b.unbelegt for b in bilanz if b.grund == LEERSTAND)
     eigen_tage = sum(b.unbelegt for b in bilanz if b.grund == EIGENNUTZUNG)
     leer_betrag = runde(anteiliger_betrag * (dec(leer_tage) / dec(vermieter_pt)))
@@ -1242,7 +1401,7 @@ def _vermieterpersonenanteil(vorgang, kategorie_name, rechnung, bilanz,
             # Haushaltseintrag: eine Person (Entscheidung zu NK-098).
             'personen': HAUSHALT_VORGABE,
             'vacant_days': b.unbelegt,
-            'period_days': tage(rechnung.beginn, rechnung.ende_grenze),
+            'period_days': b.belegt + b.unbelegt,
             'reason': b.grund,
             'reason_text': GRUND_TEXT[b.grund],
         }
@@ -1275,11 +1434,13 @@ def _vermieterpersonenanteil(vorgang, kategorie_name, rechnung, bilanz,
 
 
 def _belegte_verbrauchsmenge(vorgang: Vorgang, zaehler: Zaehler,
-                             rechnung: Rechnung) -> float:
+                             rechnung: Rechnung, gemessen: bool = False,
+                             fenster=None, register: str = 'consumption') -> float:
     """Wie viel der Menge eines Zaehlers auf Mietverhaeltnisse entfaellt.
 
     Fuer jede Wohnung zaehlt dasselbe, was auch ihre Zeile als
-    verbrauchsabhaengige Menge annimmt (D-52): liegt an jedem Mietrand des
+    verbrauchsabhaengige Menge annimmt (D-52; im Zaehlerzweig mit
+    ``gemessen`` immer die Menge im Fenster, F-120): liegt an jedem Mietrand des
     Mietverhaeltnisses eine Zwischenablesung, die gemessene Menge des
     Fensters -- sonst der Ersatzmassstab, die gemessene Menge der Wohnung,
     zeitanteilig geteilt. Fuer eine ganz belegte Wohnung ergibt das genau
@@ -1288,19 +1449,24 @@ def _belegte_verbrauchsmenge(vorgang: Vorgang, zaehler: Zaehler,
     Zusammen mit dem Rest dieser Funktion haelt sie die Bilanz der Zeile:
     was die Mieter verbrauchsabhaengig zahlen und was beim Vermieter
     verbleibt, ergibt zusammen den Verbrauchsteil der Rechnung.
+
+    ``fenster`` (``(von, bis)``) zaehlt nur die Mietzeit darin (F-128).
+    ``register`` ('ht' oder 'nt') zaehlt beim Dualtarif nur dieses Register;
+    gilt nur gemessen.
     """
     von = rechnung.beginn
     bis = rechnung.ende_grenze
     laenge = tage(von, bis)
     if laenge <= 0:
         return 0.0
+    f_von, f_bis = fenster or (von, bis)
     volle_menge = verbrauch(zaehler, rechnung.beginn, rechnung.ende)
     menge = 0.0
     for m in vorgang.mieter_der_immobilie:
         if m.wohnung_id != zaehler.wohnung_id:
             continue
-        fenster_von = max(m.einzug, von)
-        fenster_bis = min(m.auszug, bis) if m.auszug else bis
+        fenster_von = max(m.einzug, von, f_von)
+        fenster_bis = min(m.auszug or bis, bis, f_bis)
         if tage(fenster_von, fenster_bis) <= 0:
             continue
         raende = [
@@ -1310,19 +1476,21 @@ def _belegte_verbrauchsmenge(vorgang: Vorgang, zaehler: Zaehler,
             g for g in raende
             if not any(s.art == heizung.ZWISCHENABLESUNG and s.datum == g
                        for s in zaehler.staende)]
-        if fehlen:
+        if fehlen and not gemessen:
             # Ersatzmassstab: die Tage des Mietverhaeltnisses im Zeitraum.
             menge += volle_menge * (tage(fenster_von, fenster_bis) / laenge)
         else:
             # Gemessen -- eine Zwischenablesung an jedem Mietrand.
-            menge += verbrauch_in(zaehler, fenster_von, fenster_bis)['consumption']
+            menge += verbrauch_in(zaehler, fenster_von, fenster_bis)[register]
     return menge
 
 
 def _vermieterverbrauchsanteil(vorgang: Vorgang, kategorie_name: str,
                                rechnung: Rechnung, verbrauchsteil,
                                summe_zaehler: float, zaehler: dict,
-                               einheit: str, ids: set) -> Optional[dict]:
+                               einheit: str, ids: set,
+                               gemessen: bool = False,
+                               fenster=None, preise=None) -> Optional[dict]:
     """Was vom Verbrauchsteil einer Rechnung beim Vermieter bleibt.
 
     Eine leer stehende oder eigengenutzte Wohnung verbraucht dennoch Waerme
@@ -1333,27 +1501,57 @@ def _vermieterverbrauchsanteil(vorgang: Vorgang, kategorie_name: str,
     verbrauchsabhaengigen Anteile aller Mieter plus dieser Rest ergeben
     zusammen den Verbrauchsteil der Rechnung -- nichts wird doppelt
     verteilt, nichts verschwindet.
+
+    ``fenster`` (``(von, bis)``, der Teil der Rechnung im Zeitraum der
+    Abrechnung) misst nur den Rest darin (F-128): keine Abrechnung zeigt
+    Leerstand ausserhalb ihres Zeitraums, und ueber alle Zeitraeume ergibt
+    sich der Rest der ganzen Rechnung.
+
+    ``preise`` (``(ht, nt)``, die effektiven Tarifpreise) rechnet den Rest
+    beim Dualtarif je Register wie die Mieterzeile; nur mit ``gemessen``
+    und ``fenster``.
     """
     if verbrauchsteil is None or summe_zaehler <= 0:
         return None
-    bilanz = _leerstandsbilanz(
-        vorgang, rechnung.beginn, rechnung.ende_grenze, ids)
+    von, bis = fenster or (rechnung.beginn, rechnung.ende_grenze)
+    bilanz = _leerstandsbilanz(vorgang, von, bis, ids)
+    # F-133: ohne ``gemessen`` zahlen die Mieter ihren Teil im Ersatzmassstab
+    # (Tage). Der Rest im Fenster ist dann der Rest der ganzen Rechnung, nach
+    # den Leertagen geteilt -- so ergeben alle Zeitraeume zusammen genau ihn.
+    leertage = ({b.wohnung_id: b.unbelegt for b in _leerstandsbilanz(
+        vorgang, rechnung.beginn, rechnung.ende_grenze, ids)}
+        if fenster and not gemessen else None)
     einheiten = []
     mengen = {LEERSTAND: 0.0, EIGENNUTZUNG: 0.0}
+    betraege = {LEERSTAND: NULL, EIGENNUTZUNG: NULL}
     for b in bilanz:
         if not b.traegt_der_vermieter:
             continue
         z = zaehler.get(b.wohnung_id)
         if z is None:
             continue
-        rest = verbrauch(z, rechnung.beginn, rechnung.ende) - \
-            _belegte_verbrauchsmenge(vorgang, z, rechnung)
+        if leertage is not None:
+            ganz = (verbrauch(z, rechnung.beginn, rechnung.ende)
+                    - _belegte_verbrauchsmenge(vorgang, z, rechnung))
+            rest = ganz * b.unbelegt / leertage[b.wohnung_id]
+        elif preise:
+            gesamt = verbrauch_in(z, von, bis)
+            rest_ht, rest_nt = (
+                gesamt[r] - _belegte_verbrauchsmenge(vorgang, z, rechnung, True, fenster, r)
+                for r in ('ht', 'nt'))
+            rest = rest_ht + rest_nt
+            if rest > 0:
+                betraege[b.grund] += dec(rest_ht) * preise[0] + dec(rest_nt) * preise[1]
+        else:
+            menge = (verbrauch_in(z, von, bis)['consumption'] if fenster
+                     else verbrauch(z, rechnung.beginn, rechnung.ende))
+            rest = menge - _belegte_verbrauchsmenge(vorgang, z, rechnung, gemessen, fenster)
         if rest <= 0:
             continue
         einheiten.append({
             'apartment': b.name,
             'vacant_days': b.unbelegt,
-            'period_days': tage(rechnung.beginn, rechnung.ende_grenze),
+            'period_days': tage(von, bis),
             'consumption': round(rest, 1),
             'reason': b.grund,
             'reason_text': GRUND_TEXT[b.grund],
@@ -1362,10 +1560,13 @@ def _vermieterverbrauchsanteil(vorgang: Vorgang, kategorie_name: str,
     if not einheiten:
         return None
     rest_menge = mengen[LEERSTAND] + mengen[EIGENNUTZUNG]
-    leer_betrag = runde(
-        dec(verbrauchsteil) * dec(mengen[LEERSTAND]) / dec(summe_zaehler))
-    eigen_betrag = runde(
-        dec(verbrauchsteil) * dec(mengen[EIGENNUTZUNG]) / dec(summe_zaehler))
+    if preise:
+        leer_betrag, eigen_betrag = runde(betraege[LEERSTAND]), runde(betraege[EIGENNUTZUNG])
+    else:
+        leer_betrag = runde(
+            dec(verbrauchsteil) * dec(mengen[LEERSTAND]) / dec(summe_zaehler))
+        eigen_betrag = runde(
+            dec(verbrauchsteil) * dec(mengen[EIGENNUTZUNG]) / dec(summe_zaehler))
 
     namen = {
         LEERSTAND: [e['apartment'] for e in einheiten if e['reason'] == LEERSTAND],
@@ -1408,6 +1609,22 @@ def _vermieterverbrauchsanteil(vorgang: Vorgang, kategorie_name: str,
 # Zeile mit zwei Unterposten ausgewiesen (D-47). Eine Zeile je Rechnung waere
 # eine Aufteilung, die das Gesetz nicht kennt: der Verbrauchsanteil bezieht
 # sich auf die Masse, nicht auf den Brennstoff allein.
+
+
+def ist_heizwaermezaehler(zaehler) -> bool:
+    """Ob dieser Zaehler Raumwaerme misst, deren Verbrauch dem Wetter folgt (D-115).
+
+    Heizung (Nr. 4) und verbundene Anlage (Nr. 6), jeder Zaehler einer
+    Heizungsanlage, ohne Katalog der Name -- aber nie das Warmwasser in
+    Kubikmetern, das fliesst im Sommer wie im Winter.
+    """
+    if ist_warmwasserzaehler(zaehler):
+        return False
+    if zaehler.kategorie_betrkv_nr in (4, 6) or zaehler.heizungsanlage_id is not None:
+        return True
+    name = (zaehler.kategorie_name or '').lower()
+    return zaehler.kategorie_betrkv_nr is None and any(
+        x in name for x in ('heiz', 'wärme', 'waerme'))
 
 
 def ist_warmwasserzaehler(zaehler) -> bool:
@@ -1837,7 +2054,8 @@ def _verteilzeile(vorgang: Vorgang, anlage, rechnungen: Sequence[Rechnung],
         if erfasst:
             anteil = _vermieterverbrauchsanteil(
                 vorgang, f"{heizung.ZEILENTITEL[zweck]} ({anlage.name})", inv,
-                verbrauchsteil, summe_zaehler, zaehler, einheit, ids)
+                verbrauchsteil, summe_zaehler, zaehler, einheit, ids,
+                fenster=(overlap_von, overlap_bis))  # F-133: nur dieser Zeitraum
             if anteil:
                 vermieter_positionen.append(anteil)
 
@@ -1855,7 +2073,8 @@ def _verteilzeile(vorgang: Vorgang, anlage, rechnungen: Sequence[Rechnung],
         if erfasst:
             co2_rest = _vermieterverbrauchsanteil(
                 vorgang, f"CO2-Kosten ({anlage.name})", inv,
-                co2_verbrauchsteil, summe_zaehler, zaehler, einheit, ids)
+                co2_verbrauchsteil, summe_zaehler, zaehler, einheit, ids,
+                fenster=(overlap_von, overlap_bis))
             if co2_rest:
                 vermieter_positionen.append(co2_rest)
 
@@ -1879,6 +2098,11 @@ def _verteilzeile(vorgang: Vorgang, anlage, rechnungen: Sequence[Rechnung],
             'amount': runde(betrag),
             'rechnungsbetrag': inv.betrag,
             'prorated_amount': runde(betrag * time_fraction),
+            # Mit erfasstem Verbrauch ist ``prorated_amount`` nur der Tagesanteil
+            # der Rechnung -- angesetzt wird aber der Verbrauch am Zaehler (am
+            # Stichtag nach Gradtagen geschaetzt). Die Belegliste darf den
+            # Tagesbetrag dann nicht als angesetzt ausweisen.
+            'nach_verbrauch': erfasst,
             'grundteil': runde(grundteil * time_fraction),
             'verbrauchsteil': runde(verbrauchsteil),
             # § 6 CO2KostAufG (NK-053): der Teil der Rechnung, der vor der
@@ -2165,6 +2389,223 @@ def rechnungen_im_umfang(vorgang: Vorgang) -> list:
     return [r for r in vorgang.rechnungen if r.kategorie.id in erlaubt]
 
 
+def _fuer_die_wohnung(vorgang: Vorgang, rechnungen: Sequence[Rechnung]) -> list:
+    return [r for r in rechnungen
+            if not r.wohnung_id or r.wohnung_id == vorgang.wohnung.id]
+
+
+def _d(tag: date) -> str:
+    return tag.strftime('%d.%m.%Y')
+
+
+def abdeckungsluecken(vorgang: Vorgang, rechnungen: Sequence[Rechnung]) -> list:
+    """Je Kostenart die Tage des Zeitraums, fuer die keine Rechnung da ist (F-115).
+
+    Eine Rechnung, die vor dem Zeitraumende aufhoert, rechnet nur ihre Tage
+    ab; die Vorauszahlungen zaehlen trotzdem voll. Das ergab ein Guthaben,
+    das nur aus fehlenden Rechnungen entstand, ohne jeden Hinweis. Gemeldet
+    werden nur Kostenarten, die im Zeitraum ueberhaupt eine Rechnung haben.
+    Luecken sind ``(erster, letzter)`` Tag, beide einschliesslich.
+    """
+    von, bis = vorgang.beginn, vorgang.ende_grenze
+    je_art: dict = {}
+    for r in _fuer_die_wohnung(vorgang, rechnungen):
+        a, b = max(r.beginn, von), min(r.ende_grenze, bis)
+        if a < b:
+            je_art.setdefault(r.kategorie.name, []).append((a, b))
+    ergebnis = []
+    for name in sorted(je_art):
+        luecken, stand = [], von
+        for a, b in sorted(je_art[name]):
+            if a > stand:
+                luecken.append((stand, a))
+            stand = max(stand, b)
+        if stand < bis:
+            luecken.append((stand, bis))
+        if luecken:
+            ergebnis.append({
+                'kategorie': name,
+                'tage': tage(von, bis) - sum(tage(a, b) for a, b in luecken),
+                'von_tagen': tage(von, bis),
+                'luecken': [(a, letzter_tag(b)) for a, b in luecken],
+            })
+    return ergebnis
+
+
+def _lueckentext(eintrag: dict) -> str:
+    return ', '.join(f'{_d(a)}–{_d(b)}' for a, b in eintrag['luecken'])
+
+
+def abdeckungs_warnung(vorgang: Vorgang, luecken: list) -> Optional[str]:
+    """Der Hinweis an den Vermieter samt Vorschlag, den Zeitraum zu teilen."""
+    if not luecken:
+        return None
+    arten = '; '.join(
+        f"„{e['kategorie']}“ {e['tage']} von {e['von_tagen']} Tagen "
+        f"(fehlt {_lueckentext(e)})" for e in luecken)
+    text = (f'Die Rechnungen decken den Zeitraum nicht ganz ab: {arten}. '
+            'Die fehlenden Tage werden nicht abgerechnet, die Vorauszahlungen '
+            'zählen aber voll.')
+    # Bis wohin ist jede Kostenart lueckenlos da? Dahin laesst sich jetzt
+    # abrechnen, der Rest spaeter in einem eigenen Zeitraum.
+    teilbar_bis = min(e['luecken'][0][0] for e in luecken)
+    if teilbar_bis > vorgang.beginn:
+        text += (f' Vorschlag: Zeitraum aufteilen – jetzt bis '
+                 f'{_d(letzter_tag(teilbar_bis))} abrechnen, den Rest, sobald '
+                 'die Rechnungen vorliegen.')
+    return text
+
+
+def abdeckungs_vorbehalt(luecken: list) -> Optional[str]:
+    """Der Satz fuer den Mieter im PDF: was noch nicht abgerechnet ist."""
+    if not luecken:
+        return None
+    arten = '; '.join(f"{e['kategorie']} ({_lueckentext(e)})" for e in luecken)
+    return ('Vorbehalt: Für folgende Kostenarten lagen bei Erstellung noch '
+            f'nicht alle Rechnungen vor: {arten}. Diese Zeiträume sind hier '
+            'nicht abgerechnet und werden nachberechnet, sobald die '
+            'Rechnungen vorliegen.')
+
+
+# ponytail: kurze Ueberschneidung = Tippfehler an der Grenze. Laengere
+# Ueberschneidungen sind oft echt (zwei Policen einer Versicherung, Brennstoff
+# und Wartung einer Anlage) und bleiben still; bei Bedarf je Versorger pruefen.
+UEBERSCHNEIDUNG_MAX_TAGE = 7
+
+
+def ueberschneidende_rechnungen(vorgang: Vorgang, rechnungen: Sequence[Rechnung]) -> list:
+    """Rechnungen derselben Kostenart, die sich am Rand ueberlappen (F-117).
+
+    Rechnung 1 bis 01.01., Rechnung 2 ab 01.01.: der 01.01. zaehlt doppelt.
+    Gemeldet wird nur, was im Abrechnungszeitraum liegt.
+    """
+    meldungen = []
+    gruppen: dict = {}
+    for r in _fuer_die_wohnung(vorgang, rechnungen):
+        schluessel = (r.kategorie.id, r.wohnung_id, r.heizungsanlage_id, r.heizkostenart)
+        gruppen.setdefault(schluessel, []).append(r)
+    for gruppe in gruppen.values():
+        gruppe.sort(key=lambda r: (r.beginn, r.ende))
+        for i, r1 in enumerate(gruppe):
+            for r2 in gruppe[i + 1:]:
+                a = max(r2.beginn, vorgang.beginn)
+                b = min(r1.ende_grenze, r2.ende_grenze, vorgang.ende_grenze)
+                doppelt = tage(a, b)
+                if 0 < doppelt <= UEBERSCHNEIDUNG_MAX_TAGE:
+                    tage_text = (f'am {_d(a)}' if doppelt == 1
+                                 else f'vom {_d(a)} bis {_d(letzter_tag(b))}')
+                    meldungen.append(
+                        f'Zwei Rechnungen für „{r1.kategorie.name}“ überschneiden '
+                        f'sich {tage_text} ({_d(r1.beginn)}–{_d(r1.ende)} und '
+                        f'{_d(r2.beginn)}–{_d(r2.ende)}). Diese Tage werden '
+                        'doppelt umgelegt. Meist endet die erste Rechnung einen '
+                        'Tag früher; prüfen Sie die Daten.')
+    return meldungen
+
+
+
+def ueberschneidende_mietverhaeltnisse(vorgang: Vorgang) -> list:
+    """Mietverhaeltnisse dieser Wohnung, die sich am Rand ueberlappen.
+
+    Seit F-118 ist das Auszugsdatum der letzte Miettag. Im Altbestand steht
+    beim Vormieter oft der Einzugstag des Nachmieters; dieser Tag zaehlt
+    jetzt bei beiden. Umgeschrieben wird nichts -- welches Datum gemeint
+    war, weiss nur der Vermieter. Laengere Ueberlappungen bleiben still,
+    zwei Vertraege fuer eine Wohnung (WG) sind echt.
+    """
+    meldungen = []
+    eigene = sorted((m for m in vorgang.mieter_der_immobilie
+                     if m.wohnung_id == vorgang.wohnung.id), key=lambda m: m.einzug)
+    for i, m1 in enumerate(eigene):
+        if m1.auszug is None:
+            continue
+        for m2 in eigene[i + 1:]:
+            a = max(m2.einzug, vorgang.beginn)
+            b = min(m1.auszug, mietende(m2.auszug, vorgang.ende_grenze), vorgang.ende_grenze)
+            doppelt = tage(a, b)
+            if 0 < doppelt <= UEBERSCHNEIDUNG_MAX_TAGE:
+                tage_text = (f'am {_d(a)}' if doppelt == 1
+                             else f'vom {_d(a)} bis {_d(letzter_tag(b))}')
+                meldungen.append(
+                    f'Zwei Mietverhältnisse in {vorgang.wohnung.name} überschneiden '
+                    f'sich {tage_text}: Das eine endet am {_d(letzter_tag(m1.auszug))}, '
+                    f'das nächste beginnt am {_d(m2.einzug)}. Diese Tage zählen bei '
+                    'beiden. Das Auszugsdatum ist der letzte Miettag; tragen Sie beim '
+                    'Vormieter den Tag vor dem Einzug ein.')
+    return meldungen
+
+HINWEIS_STAND_FAELLT = (
+    "W-ZAEHLER-STAND-FAELLT · Zähler {zaehler} fällt vom {d1} ({w1}) auf den "
+    "{d2} ({w2}). Ein Zähler zählt nur vorwärts; gerechnet wird damit ein "
+    "negativer Verbrauch. Prüfen Sie beide Stände auf Tippfehler und "
+    "korrigieren Sie den falschen. Wurde der Zähler getauscht, legen Sie den "
+    "neuen Zähler an und tragen Sie seine Stände dort ein."
+)
+
+
+def fallende_staende(vorgang: Vorgang, rechnungen: Sequence[Rechnung]) -> list:
+    """Zaehlerstaende, die rueckwaerts laufen (Punkt 3 aus dem Vergleich).
+
+    Ein fallendes Paar rechnet still einen negativen Verbrauch. Korrigiert
+    wird nichts -- welcher der beiden Staende falsch ist, weiss nur der
+    Vermieter. Gemeldet wird jedes Paar, dessen Intervall den Zeitraum der
+    Abrechnung oder einer ihrer Rechnungen beruehrt.
+    """
+    von = min([vorgang.beginn, *(r.beginn for r in rechnungen)])
+    bis = max([vorgang.ende_grenze, *(r.ende_grenze for r in rechnungen)])
+    meldungen = []
+    for z in vorgang.zaehler:
+        staende = sorted(z.staende, key=lambda s: s.datum)
+        for s1, s2 in zip(staende, staende[1:]):
+            if s2.datum > s1.datum and s2.gesamt < s1.gesamt and s1.datum < bis and s2.datum > von:
+                meldungen.append(HINWEIS_STAND_FAELLT.format(
+                    zaehler=_zaehlername(z.nummer), d1=_d(s1.datum), w1=zahl_text(s1.gesamt),
+                    d2=_d(s2.datum), w2=zahl_text(s2.gesamt)))
+    return meldungen
+
+
+HINWEIS_LEERSTAND_EINZIGE_WOHNUNG = (
+    "W-LEERSTAND-OHNE-ABRECHNUNG · „{wohnung}“ ist die einzige Wohnung im Haus "
+    "und war an {tage} nicht vermietet, über die Rechnungen dieser "
+    "Abrechnung auch laufen ({spannen}). Die Kosten dieser Tage trägt der "
+    "Vermieter. Sie stehen in keiner Abrechnung, weil kein anderer Mieter sie "
+    "als Vermieteranteil ausweist. Vermerken Sie sie bei Bedarf selbst, etwa für "
+    "die Steuer."
+)
+
+
+def _tage_text(n: int) -> str:
+    return '1 Tag' if n == 1 else f'{n} Tagen'
+
+
+def leerstand_der_einzigen_wohnung(vorgang: Vorgang, rechnungen: Sequence[Rechnung]) -> list:
+    """Leerstand, den keine Abrechnung zeigt (Punkt 2 aus dem Vergleich).
+
+    Im Haus mit mehreren Wohnungen steht der Leerstand einer Wohnung als
+    Vermieteranteil in den Abrechnungen der anderen. Hat das Haus nur eine
+    Wohnung, faellt er in keinen Abrechnungszeitraum: er blieb richtig beim
+    Vermieter, aber unsichtbar. Gemeldet werden die unvermieteten Tage der
+    Rechnungen dieser Abrechnung ausserhalb ihres Zeitraums.
+    """
+    aktiv = [w for w in vorgang.wohnungen if w.ist_aktiv]
+    rechnungen = _fuer_die_wohnung(vorgang, rechnungen)
+    if len(aktiv) != 1 or not rechnungen:
+        return []
+    von = min(r.beginn for r in rechnungen)
+    bis = max(r.ende_grenze for r in rechnungen)
+    stuecke = []
+    for a, b in ((von, vorgang.beginn), (vorgang.ende_grenze, bis)):
+        if a < b:
+            leer = sum(x.unbelegt for x in _leerstandsbilanz(vorgang, a, b))
+            if leer:
+                stuecke.append((leer, f'{_d(a)}–{_d(letzter_tag(b))}'))
+    if not stuecke:
+        return []
+    return [HINWEIS_LEERSTAND_EINZIGE_WOHNUNG.format(
+        wohnung=aktiv[0].name, tage=_tage_text(sum(t for t, _ in stuecke)),
+        spannen=' und '.join(f'{t} von {s}' for t, s in stuecke))]
+
+
 def rechne(vorgang: Vorgang) -> dict:
     """Die Abrechnung fuer einen Mieter. Rein: gleiche Eingabe, gleiches Bild.
 
@@ -2193,6 +2634,24 @@ def rechne(vorgang: Vorgang) -> dict:
     profiles = vorgang.profile
     invoices = rechnungen_im_umfang(vorgang)
 
+    # Vor der Heizkostentrennung, damit auch Heizrechnungen mitzaehlen:
+    # Luecken im Zeitraum (F-115) und doppelt gezaehlte Tage (F-117).
+    luecken = abdeckungsluecken(vorgang, invoices)
+    if not _fuer_die_wohnung(vorgang, invoices):
+        # H8: ohne Rechnung kostet der Zeitraum 0 und jede Vorauszahlung
+        # geht zurueck -- ohne jeden Hinweis sah das wie ein Ergebnis aus.
+        folge = (', die Abrechnung erstattet deshalb alle Vorauszahlungen.'
+                 if vorgang.zahlungen else '.')
+        warnings.append(
+            f'Für {_d(vorgang.beginn)}–{_d(vorgang.ende)} ist keine Rechnung erfasst{folge}'
+            ' Erfassen Sie zuerst die Rechnungen des Zeitraums.')
+    if luecken:
+        warnings.append(abdeckungs_warnung(vorgang, luecken))
+    warnings.extend(ueberschneidende_rechnungen(vorgang, invoices))
+    warnings.extend(ueberschneidende_mietverhaeltnisse(vorgang))
+    warnings.extend(fallende_staende(vorgang, invoices))
+    warnings.extend(leerstand_der_einzigen_wohnung(vorgang, invoices))
+
     # Die Heizkosten gehen ihren eigenen Weg (R-HK-01, D-46/D-47): sie
     # laufen nicht durch die Fallunterscheidung darunter, sondern werden je
     # Anlage zusammengelegt und nach § 7 HeizkostenV verteilt.
@@ -2211,6 +2670,8 @@ def rechne(vorgang: Vorgang) -> dict:
         if status == 'warning':
             warnings.append(msg)
 
+    # F-125: geschaetzter Preisfuss je (Kostenart, Zaehler) -> Rechnungszeitraeume
+    preis_geschaetzt: dict[tuple[str, str], list[str]] = {}
     for inv in invoices:
         cat = inv.kategorie
         billing_type = abrechnungsart_von(profiles, cat)
@@ -2246,10 +2707,13 @@ def rechne(vorgang: Vorgang) -> dict:
         preis_nt_eff = None
         this_tenant_days = 0
         total_person_days = 0
+        # F-122: steht hinter "Personentagen", wenn der Allgemeinanteil je
+        # Belegungsabschnitt gemessen wurde.
+        abschnitte_text = ''
 
         # Halboffen (R-NUM-03): der erste Tag zaehlt, der letzte nicht.
         # ``ende_grenze`` entscheidet dabei, ob das Ende ein Zeitraumende ist
-        # -- dann liegt die Grenze einen Tag weiter -- oder ein Auszugsdatum,
+        # -- dann liegt die Grenze einen Tag weiter -- oder ein Mietende,
         # das schon die Grenze ist. Der Lader stutzt beides in dasselbe Feld.
         invoice_days = tage(inv.beginn, inv.ende_grenze)
         overlap_von = max(inv.beginn, vorgang.beginn)
@@ -2275,6 +2739,57 @@ def rechne(vorgang: Vorgang) -> dict:
         rechenweg: list = []
 
         if inv.wohnung_id:
+            # F-123: was die Wohnung verbraucht, waehrend niemand dort wohnt,
+            # zahlt kein Mieter. Es bleibt beim Vermieter und steht, wie jeder
+            # Vermieteranteil, in jeder Abrechnung des Hauses -- auch wenn die
+            # Wohnung die ganze Zeit leer stand und es ihre eigene nicht gibt.
+            # Gemessen am Zaehler der Wohnung, ohne Zaehler nach Tagen.
+            leer_zaehler = wohnungszaehler(vorgang, cat.id, inv.wohnung_id)
+            qm = next((w.qm for w in vorgang.wohnungen if w.id == inv.wohnung_id), None)
+            # F-137: der Grundpreis faellt auch im Leerstand an, unabhaengig
+            # vom Verbrauch. Er folgt den Tagen, nur der Rest dem Zaehler.
+            grundpreis = inv.grundpreis if leer_zaehler else None
+            # PR #25: beim Dualtarif kostet jedes Register seinen Preis, in
+            # der Mieterzeile wie im Leerstand -- wie beim Hauszaehler.
+            preise = None
+            if leer_zaehler:
+                ganz = verbrauch_in(leer_zaehler, inv.beginn, inv.ende_grenze)
+                preis_ht_eff, preis_nt_eff = tarifpreise(
+                    inv.betrag - (grundpreis or NULL), dec(ganz['ht']), dec(ganz['nt']),
+                    inv.preis_ht, inv.preis_nt)
+                if preis_ht_eff is not None:
+                    preise = (preis_ht_eff, preis_nt_eff)
+                anteil = _vermieterverbrauchsanteil(
+                    vorgang, cat.name, inv, inv.betrag - (grundpreis or NULL),
+                    verbrauch(leer_zaehler, inv.beginn, inv.ende),
+                    {inv.wohnung_id: leer_zaehler},
+                    einheit_fuer(cat.name, cat.betrkv_nr), {inv.wohnung_id},
+                    gemessen=True, fenster=(overlap_von, overlap_bis), preise=preise)
+                if grundpreis:
+                    grundanteil = qm and _vermieteranteil(
+                        vorgang, cat.name, inv, grundpreis * time_fraction, qm,
+                        overlap_von, overlap_bis, nur={inv.wohnung_id})
+                    if grundanteil:
+                        grundanteil['description'] = (
+                            'Grundpreis/Zählermiete nach Tagen. ' + grundanteil['description'])
+                        vermieter_positionen.append(grundanteil)
+                elif grundpreis is None and vorgang.wohnung.id == inv.wohnung_id:
+                    leertage = sum(
+                        b.unbelegt for b in _leerstandsbilanz(
+                            vorgang, inv.beginn, inv.ende_grenze, {inv.wohnung_id})
+                        if b.traegt_der_vermieter)
+                    if leertage > 0:
+                        warnings.append(HINWEIS_GRUNDPREIS_LEERSTAND.format(
+                            kategorie=cat.name, wohnung=vorgang.wohnung.name,
+                            beginn=inv.beginn.strftime('%d.%m.%Y'),
+                            ende=inv.ende.strftime('%d.%m.%Y'), tage=leertage))
+            else:
+                # F-128: nur der Leerstand im Zeitraum dieser Abrechnung.
+                anteil = qm and _vermieteranteil(
+                    vorgang, cat.name, inv, prorated_invoice_amount, qm,
+                    overlap_von, overlap_bis, nur={inv.wohnung_id})
+            if anteil:
+                vermieter_positionen.append(anteil)
             if vorgang.wohnung.id != inv.wohnung_id:
                 continue  # Not for this apartment
             tenant_cost = prorated_invoice_amount
@@ -2288,8 +2803,46 @@ def rechne(vorgang: Vorgang) -> dict:
 
                 tenant_meter = wohnungszaehler(vorgang, cat.id)
                 if tenant_meter:
-                    tenant_detail = verbrauch_detail(tenant_meter, inv.beginn, inv.ende)
+                    # Nur der Verbrauch im Abrechnungszeitraum (F-114). Ragt
+                    # die Rechnung hinaus, teilt der Zaehler den Betrag, nicht
+                    # die Tage: Gas im Winter ist nicht Gas im Sommer.
+                    tenant_detail = verbrauch_in(tenant_meter, overlap_von, overlap_bis)
                     tenant_consumption = tenant_detail['consumption']
+                    gesamt = verbrauch_in(tenant_meter, inv.beginn, inv.ende_grenze)['consumption']
+                    if overlap_days < invoice_days and gesamt > 0:
+                        anteil = min(max(dec(tenant_consumption) / dec(gesamt), NULL), dec(1))
+                        verbrauchsteil = inv.betrag - (grundpreis or NULL)
+                        if preise:
+                            verbrauchskosten = (dec(tenant_detail['ht']) * preise[0]
+                                                + dec(tenant_detail['nt']) * preise[1])
+                        else:
+                            verbrauchskosten = verbrauchsteil * anteil
+                        tenant_cost = verbrauchskosten
+                        description = (f"Direkt zugewiesen, nach Verbrauch: "
+                                       f"{zahl_text(round(tenant_consumption, 1))} von "
+                                       f"{zahl_text(round(gesamt, 1))} {unit} der Rechnung")
+                        if grundpreis:
+                            # F-137: der Grundpreis nach Tagen, der Rest nach Zaehler.
+                            grund_kosten = grundpreis * time_fraction
+                            tenant_cost += grund_kosten
+                            description += ", Grundpreis/Zählermiete nach Tagen"
+                            rechenweg.append(
+                                f"{euro_text(grundpreis)} Grundpreis/Zählermiete, anteilig "
+                                f"{overlap_days} von {invoice_days} Tagen = "
+                                f"{euro_text(runde(grund_kosten))}")
+                        if preise:
+                            rechenweg.append(
+                                f"{zahl_text(round(tenant_detail['ht'], 1))} {unit} HT × "
+                                f"{zahl_text(runde_einheitspreis(preise[0]))} €/{unit} + "
+                                f"{zahl_text(round(tenant_detail['nt'], 1))} {unit} NT × "
+                                f"{zahl_text(runde_einheitspreis(preise[1]))} €/{unit} "
+                                f"= {euro_text(runde(verbrauchskosten))}")
+                        else:
+                            rechenweg.append(
+                                f"{euro_text(verbrauchsteil)} "
+                                f"{'übriger Betrag' if grundpreis else 'Rechnungsbetrag'} × "
+                                f"{zahl_text(round(tenant_consumption, 1))} / {zahl_text(round(gesamt, 1))} {unit} "
+                                f"= {euro_text(runde(verbrauchskosten))}")
 
         elif billing_type == 'qm':
             # Erst hier abbrechen, nicht schon oben: eine Abrechnung ohne
@@ -2356,9 +2909,14 @@ def rechne(vorgang: Vorgang) -> dict:
                     f"{euro_text(inv.betrag)} nach Personentagen "
                     f"{this_tenant_days} von {nenner} = "
                     f"{euro_text(tenant_cost)}")
-                if vermieter_pt > 0:
+                # F-128: ausgewiesen wird nur der Leerstand im Zeitraum dieser
+                # Abrechnung, wie beim qm-Schluessel -- der Nenner bleibt der
+                # der ganzen Rechnung, wie bei den Mietern.
+                zeitraum = _leerstandsbilanz(vorgang, overlap_von, overlap_bis)
+                zeitraum_pt = sum(b.unbelegt for b in zeitraum if b.traegt_der_vermieter)
+                if zeitraum_pt > 0:
                     anteil = _vermieterpersonenanteil(
-                        vorgang, cat.name, inv, bilanz, vermieter_pt, nenner)
+                        vorgang, cat.name, inv, zeitraum, zeitraum_pt, nenner)
                     if anteil:
                         vermieter_positionen.append(anteil)
 
@@ -2428,7 +2986,7 @@ def rechne(vorgang: Vorgang) -> dict:
                     if roh_menge < 0:
                         warnings.append(HINWEIS_ALLGEMEIN_NEGATIV.format(
                             kategorie=cat.name,
-                            zaehler=main_meter.nummer or '?',
+                            zaehler=_zaehlername(main_meter.nummer),
                             beginn=overlap_von.strftime('%d.%m.%Y'),
                             ende=(overlap_bis - timedelta(days=1)).strftime('%d.%m.%Y'),
                             register=register,
@@ -2453,17 +3011,11 @@ def rechne(vorgang: Vorgang) -> dict:
                     rechnung_main_detail = verbrauch_detail(main_meter, inv.beginn, inv.ende)
                     rechnung_main_consumption = rechnung_main_detail['consumption']
                     if rechnung_main_detail['status'] == 'warning':
-                        warn_ablesungen = rechnung_main_detail['basis_readings']
-                        warn_spanne = (
-                            f"{warn_ablesungen[0]['date']} – "
-                            f"{warn_ablesungen[-1]['date']}"
-                            if warn_ablesungen else 'keine Ablesungen im Zeitraum')
-                        warnings.append(HINWEIS_PREIS_HOCHGERECHNET.format(
-                            kategorie=cat.name,
-                            zaehler=main_meter.nummer or '?',
-                            ablesungen=warn_spanne,
-                            beginn=inv.beginn.strftime('%d.%m.%Y'),
-                            ende=inv.ende.strftime('%d.%m.%Y')))
+                        spannen = preis_geschaetzt.setdefault(
+                            (cat.name, _zaehlername(main_meter.nummer)), [])
+                        spanne = f"{_d(inv.beginn)}–{_d(inv.ende)}"
+                        if spanne not in spannen:
+                            spannen.append(spanne)
 
                     # Beim Dualtarif (NK-055) werden HT und NT getrennt
                     # gerechnet: der Betrag wird nach Wertanteil auf die
@@ -2497,11 +3049,69 @@ def rechne(vorgang: Vorgang) -> dict:
                     # verteilten Verbrauch gar nicht verursacht haben.
                     this_tenant_days, total_person_days, active_tenants = (
                         _personentage_im_haus(vorgang, overlap_von, overlap_bis))
+                    # F-121: Wohnungen ohne Mietverhaeltnis zaehlen auch hier
+                    # wie ein Einpersonenhaushalt (wie NK-098 beim
+                    # Personenschluessel) -- sonst traegen die Mieter ihren
+                    # Anteil am Allgemeinverbrauch still mit.
+                    zeitraum = _leerstandsbilanz(vorgang, overlap_von, overlap_bis)
+                    vermieter_pt = sum(b.unbelegt for b in zeitraum if b.traegt_der_vermieter)
+                    total_person_days += vermieter_pt
 
-                    if total_person_days > 0:
+                    # Der Allgemeinbetrag der ganzen Rechnung (D-73: nie negativ).
+                    haupt = verbrauch_in(main_meter, inv.beginn, inv.ende_grenze)
+                    unter = [verbrauch_in(m, inv.beginn, inv.ende_grenze)
+                             for m in all_sub_meters]
+                    if preis_ht_eff is not None:
+                        allgemein_voll = (
+                            max(NULL, dec(haupt['ht']) - sum(dec(d['ht']) for d in unter))
+                            * preis_ht_eff
+                            + max(NULL, dec(haupt['nt']) - sum(dec(d['nt']) for d in unter))
+                            * preis_nt_eff)
+                    else:
+                        allgemein_voll = dec(max(0, haupt['consumption'] - sum(
+                            d['consumption'] for d in unter))) * cost_per_unit
+
+                    # F-122: wechselt die Belegung in der Rechnung, wird je
+                    # Abschnitt gemessen -- sonst die Quote der Personentage.
+                    quoten = _allgemeinquoten(
+                        vorgang, main_meter, all_sub_meters, inv.beginn, inv.ende_grenze,
+                        overlap_von, overlap_bis,
+                        (preis_ht_eff, preis_nt_eff) if preis_ht_eff is not None else None)
+                    if quoten:
+                        tenant_allgemein_share_prorated = allgemein_voll * quoten[0]
+                        abschnitte_text = ', gemessen je Belegungsabschnitt'
+                    elif total_person_days > 0:
                         tenant_allgemein_share_prorated = allgemein_cost * (dec(this_tenant_days) / dec(total_person_days))
                     else:
                         tenant_allgemein_share_prorated = NULL
+
+                    # Ausgewiesen wird der Vermieteranteil im selben Fenster
+                    # wie die Mieterzeile (F-128): keine Abrechnung zeigt
+                    # Leerstand ausserhalb ihres Zeitraums.
+                    if vermieter_pt > 0:
+                        anteil = _vermieterpersonenanteil(
+                            vorgang, f"{cat.name} (Allgemeinverbrauch)", inv, zeitraum,
+                            vermieter_pt, total_person_days,
+                            betrag=allgemein_voll if quoten else allgemein_cost,
+                            quote=quoten[1] if quoten else None)
+                        if anteil:
+                            vermieter_positionen.append(anteil)
+
+                    # F-120: was der Unterzaehler einer leeren oder
+                    # eigengenutzten Wohnung misst, zahlt kein Mieter. Es
+                    # bleibt beim Vermieter -- ausgewiesen wie bei der Heizung.
+                    # Gemessen wird wie in der Mieterzeile (verbrauch_in), damit
+                    # die Rechnung aufgeht -- beim Dualtarif je Register.
+                    if billing_type == 'direkt':
+                        anteil = _vermieterverbrauchsanteil(
+                            vorgang, f"{cat.name} (Verbrauch der Wohnung)", inv,
+                            inv.betrag, rechnung_main_consumption,
+                            {m.wohnung_id: m for m in all_sub_meters}, unit, None,
+                            gemessen=True, fenster=(overlap_von, overlap_bis),
+                            preise=((preis_ht_eff, preis_nt_eff)
+                                    if preis_ht_eff is not None else None))
+                        if anteil:
+                            vermieter_positionen.append(anteil)
 
                     if billing_type == 'direkt' and tenant_meter:
                         tenant_detail = verbrauch_in(tenant_meter, overlap_von, overlap_bis)
@@ -2514,10 +3124,10 @@ def rechne(vorgang: Vorgang) -> dict:
                             tenant_direct_cost = dec(tenant_consumption) * cost_per_unit
 
                         tenant_cost = tenant_direct_cost + tenant_allgemein_share_prorated
-                        description = f"Eigenverbrauch ({tenant_consumption:.1f} {unit}) + Anteil Allgemein (Haus gesamt: {allgemein_consumption:.1f} {unit}, Anteil: {this_tenant_days} von {total_person_days} Personentagen)"
+                        description = f"Eigenverbrauch ({tenant_consumption:.1f} {unit}) + Anteil Allgemein (Haus gesamt: {allgemein_consumption:.1f} {unit}, Anteil: {this_tenant_days} von {total_person_days} Personentagen{abschnitte_text})"
                     else:
                         tenant_cost = tenant_allgemein_share_prorated
-                        description = f"Anteil am Allgemeinverbrauch (Haus gesamt: {allgemein_consumption:.1f} {unit}, Anteil: {this_tenant_days} von {total_person_days} Personentagen)"
+                        description = f"Anteil am Allgemeinverbrauch (Haus gesamt: {allgemein_consumption:.1f} {unit}, Anteil: {this_tenant_days} von {total_person_days} Personentagen{abschnitte_text})"
                 else:
                     # Kein Hauptzaehler: der Preis je Einheit kommt aus der Summe der Unterzaehler
                     unter_rechnung_details = [verbrauch_detail(m, inv.beginn, inv.ende)
@@ -2565,7 +3175,7 @@ def rechne(vorgang: Vorgang) -> dict:
             if is_apartment_direct:
                 desc = "Direkt zugewiesen (100 % der Rechnung)"
                 if tenant_consumption and tenant_consumption > 0:
-                    desc = f"Eigenverbrauch ({tenant_consumption:.1f} {unit})"
+                    desc = eigenverbrauch_text(tenant_consumption, unit, tenant_detail)
                 sub_items.append({
                     'type': 'eigenverbrauch',
                     'description': desc,
@@ -2575,16 +3185,16 @@ def rechne(vorgang: Vorgang) -> dict:
                 if 'Hauptzähler' in description:
                     sub_items.append({
                         'type': 'eigenverbrauch',
-                        'description': f"Eigenverbrauch ({tenant_consumption:.1f} {unit})",
+                        'description': eigenverbrauch_text(tenant_consumption, unit, tenant_detail),
                         'cost': runde(tenant_direct_cost)
                     })
                 else:
                     sub_items.append({
                         'type': 'eigenverbrauch',
-                        'description': f"Eigenverbrauch ({tenant_consumption:.1f} {unit})",
+                        'description': eigenverbrauch_text(tenant_consumption, unit, tenant_detail),
                         'cost': runde(tenant_direct_cost)
                     })
-                    sub_desc = f"Anteil Allgemein (Haus gesamt: {allgemein_consumption:.1f} {unit}, Anteil: {this_tenant_days} von {total_person_days} Personentagen)"
+                    sub_desc = f"Anteil Allgemein (Haus gesamt: {allgemein_consumption:.1f} {unit}, Anteil: {this_tenant_days} von {total_person_days} Personentagen{abschnitte_text})"
                     sub_items.append({
                         'type': 'allgemein',
                         'description': sub_desc,
@@ -2592,7 +3202,7 @@ def rechne(vorgang: Vorgang) -> dict:
                     })
             elif billing_type == 'nur_allgemein' or (billing_type == 'direkt' and not tenant_meter):
                 if 'Entfällt' not in description and 'Fehler' not in description:
-                    sub_desc = f"Anteil Allgemein (Haus gesamt: {allgemein_consumption:.1f} {unit}, Anteil: {this_tenant_days} von {total_person_days} Personentagen)"
+                    sub_desc = f"Anteil Allgemein (Haus gesamt: {allgemein_consumption:.1f} {unit}, Anteil: {this_tenant_days} von {total_person_days} Personentagen{abschnitte_text})"
                     sub_items.append({
                         'type': 'allgemein',
                         'description': sub_desc,
@@ -2690,6 +3300,11 @@ def rechne(vorgang: Vorgang) -> dict:
                 'rechenweg': rechenweg,
             })
             total_amount += runde(tenant_cost)
+
+    for (kategorie, zaehler), spannen in preis_geschaetzt.items():
+        warnings.append(HINWEIS_PREIS_HOCHGERECHNET.format(
+            kategorie=kategorie, zaehler=zaehler, zeitraeume=_zeitraeume(spannen),
+            rechnungen='Rechnungen' if len(spannen) > 1 else 'Rechnung'))
 
     # Und jetzt die Heizkosten -- eine Zeile je Anlage, in der Reihenfolge,
     # in der die Anlagen am Vorgang haengen, damit zwei Laeufe dasselbe Blatt
@@ -2802,7 +3417,10 @@ def rechne(vorgang: Vorgang) -> dict:
         # Anteile in Prozent und Euro, Herkunft der Zahlen. None heisst:
         # keine Einstufung -- dann erklaert die blockierende Warnung, warum.
         'co2': co2_ausweis,
-        'warnings': warnings
+        # Der Satz fuers PDF, wenn Rechnungen im Zeitraum fehlen (F-115).
+        'vorbehalt': abdeckungs_vorbehalt(luecken),
+        # D-116: dieselbe Meldung nur einmal, in der Reihenfolge des Auftretens.
+        'warnings': meldungen_buendeln(warnings)
     }
 
 
@@ -3011,6 +3629,27 @@ def pruefe(vorgang: Vorgang) -> dict:
                 'reading_span_days': None,
                 'target_days': None,
                 'is_interpolated': False
+            })
+
+    # Luecken (F-115) und doppelte Tage (F-117) als Hinweis, nicht als
+    # Sperre: eine Abrechnung bis zur Luecke ist ja der Vorschlag.
+    hinweise = [('Rechnungen', 'Abdeckung', abdeckungs_warnung(
+        vorgang, abdeckungsluecken(vorgang, invoices)))]
+    hinweise += [('Rechnungen', 'Überschneidung', m)
+                 for m in ueberschneidende_rechnungen(vorgang, invoices)]
+    hinweise += [('Mieter', 'Überschneidung', m)
+                 for m in ueberschneidende_mietverhaeltnisse(vorgang)]
+    hinweise += [('Zähler', 'Stand', m) for m in fallende_staende(vorgang, invoices)]
+    for kategorie, art_text, message in hinweise:
+        if message:
+            checks.append({
+                'category': kategorie, 'meter_type': art_text,
+                'meter_number': None, 'meter_id': None,
+                'apartment': vorgang.wohnung.name, 'invoice_period': None,
+                'status': 'warning', 'blocking': False, 'message': message,
+                'r_start': None, 'r_end': None, 'start_offset_days': None,
+                'end_offset_days': None, 'reading_span_days': None,
+                'target_days': None, 'is_interpolated': False,
             })
 
     statuses = [c['status'] for c in checks]

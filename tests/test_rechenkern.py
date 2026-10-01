@@ -136,7 +136,7 @@ def test_kern_importiert_kein_orm():
     importiert = importierte_module(baum)
 
     assert importiert <= {
-        '__future__', 'os', 'dataclasses', 'datetime', 'decimal', 'typing',
+        '__future__', 'os', 're', 'dataclasses', 'datetime', 'decimal', 'typing',
         # Die eigenen Bausteine haengen selbst an nichts als der
         # Standardbibliothek -- sie duerfen mit herein, ein ORM nicht.
         'abrechnungsart', 'betrkv', 'co2', 'geld', 'haushalt', 'heizung', 'leerstand',
@@ -716,6 +716,8 @@ def test_abwasser_rechnet_auf_dem_frischwasserzaehler():
         rechnungen=(rechnung(betrag='1000.00', kat=abwasser),),
         profile={3: 'direkt'},
         wasser_kategorie_id=2,
+        # Ohne leere Nachbarwohnung: die truege seit F-121 einen Teil des Allgemeinen.
+        wohnungen=(Wohnung(id=1, name='EG links', qm=50.0),),
     )
 
     posten = rechne(v)['line_items'][0]
@@ -777,8 +779,11 @@ def test_allgemeinanteil_nach_personentagen_nicht_nach_koepfen():
     posten = rechne(v)['line_items'][0]
 
     assert 'Personentagen' in posten['description']
-    # 366 von 366+184 Personentagen auf 40 Einheiten Allgemein zu 10 EUR
-    assert posten['tenant_cost'] == Decimal('566.18')
+    # 366 von 366+184+182 Personentagen auf 40 Einheiten Allgemein zu 10 EUR:
+    # die 182 Tage vor Berts Einzug stand seine Wohnung leer und traegt der
+    # Vermieter (F-121). Vorher 366 von 550, also 566,18 EUR.
+    assert posten['tenant_cost'] == Decimal('500.00')
+    assert '366 von 732 Personentagen' in posten['description']
 
 
 def test_nur_allgemein_bei_ungleichen_personentagen():

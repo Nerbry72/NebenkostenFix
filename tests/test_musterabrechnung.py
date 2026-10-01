@@ -139,14 +139,16 @@ W2-Rest 800 kWh (2.000 - 1.200) bzw. 12 m3 (30 - 18), W4 1.000 kWh bzw.
            (269,50)
            CO2-Verbrauch 105,00 x 2800/10.000 = 29,40 (18,90 / 10,50)
            CO2-WW-Verbrauch 35,00 x 22/100 = 7,70 (5,60 / 2,10)
-    Bernd: Heizverbrauch 3.936,0656 x 1800/10.000 = 708,49 / x 1000/10.000
-           = 393,61 (1.102,10)
-           WW-Verbrauch 1.312,0219 x 16/100 = 209,92 / x 6/100 = 78,72
-           (288,64)
-           CO2-Verbrauch 52,7869 x 1800/10.000 = 9,5016 -> 9,50 /
-           x 1000/10.000 = 5,2787 -> 5,28 (14,78)
-           CO2-WW-Verbrauch 17,5956 x 16/100 = 2,8153 -> 2,82 / x 6/100
-           = 1,0557 -> 1,06 (3,88)
+    Bernd (F-133: nur der Rest in seinem Fenster 01.07.-31.12., der Rest
+           der ganzen Rechnung nach Leertagen 184/366 -- Waerme je 502,73 kWh,
+           W4 2,0109 m3, W3 3,0164 m3; der W2-Rest liegt davor):
+           Heizverbrauch 3.936,0656 x 502,73/10.000 = 197,88 / 197,88
+           (395,76)
+           WW-Verbrauch 1.312,0219 x 2,0109/100 = 26,38 / x 3,0164/100
+           = 39,58 (65,96)
+           CO2-Verbrauch 52,7869 x 502,73/10.000 = 2,65 / 2,65 (5,30)
+           CO2-WW-Verbrauch 17,5956 x 2,0109/100 = 0,35 / x 3,0164/100
+           = 0,53 (0,88)
 
 Flache CO2-Positionen: Anna 600,00 + 200,00, Bernd 301,64 + 100,55.
 
@@ -154,9 +156,9 @@ Summen der Vermieterpositionen:
     Anna: 749,18 + 983,30 + 1.029,00 + 28,09 + 29,40 + 600,00 + 327,77
           + 269,50 + 9,36 + 7,70 + 200,00 = 4.233,30 EUR
           (Leerstand 2.139,70, Eigennutzung 1.293,60)
-    Bernd: 301,64 + 424,02 + 1.102,10 + 5,68 + 14,78 + 301,64 + 141,34
-           + 288,64 + 1,90 + 3,88 + 100,55 = 2.686,17 EUR
-          (Leerstand 1.368,02, Eigennutzung 915,96)
+    Bernd: 301,64 + 424,02 + 395,76 + 5,68 + 5,30 + 301,64 + 141,34
+           + 65,96 + 1,90 + 0,88 + 100,55 = 1.744,67 EUR
+          (Leerstand 664,55, Eigennutzung 677,93)
 """
 
 import pytest
@@ -462,25 +464,27 @@ def test_muster_bernd_vermieteranteile(app_ctx, musterhaus):
     """Die Vermieteranteile auf Bernds Blatt: nur das restliche Haus.
 
     Bernds Fenster [01.07., 01.01.): W4 leer (9.200 Flaechentage), W3
-    eigengenutzt (9.200), Nenner 36.800; der W2-Restverbrauch (800 kWh bzw.
-    12 m3) bleibt als Leerstandsanteil beim Vermieter."""
+    eigengenutzt (9.200), Nenner 36.800. Der Verbrauchsrest nur im Fenster
+    (F-133): der Rest der ganzen Rechnung nach Leertagen, W3 und W4 je
+    1.000 kWh x 184/366 = 502,7 kWh, beim Warmwasser 6 bzw. 4 m3 x 184/366. Der W2-Rest vor Bernds Einzug
+    liegt ausserhalb und steht nur auf Annas Blatt."""
     bericht = musterhaus['abrechnung'](musterhaus['bernd'])
     vs = bericht['landlord_share']
-    assert betrag(vs['total_amount']) == Decimal('2686.17')
-    assert betrag(vs['leerstand_amount']) == Decimal('1368.02')
-    assert betrag(vs['eigennutzung_amount']) == Decimal('915.96')
+    assert betrag(vs['total_amount']) == Decimal('1744.67')
+    assert betrag(vs['leerstand_amount']) == Decimal('664.55')
+    assert betrag(vs['eigennutzung_amount']) == Decimal('677.93')
 
     erwartet = [
         ('Grundsteuer', '150.82', '150.82', '301.64'),
         ('Heizkosten (Zentralheizung)', '212.01', '212.01', '424.02'),
-        ('Heizkosten (Zentralheizung)', '708.49', '393.61', '1102.10'),
+        ('Heizkosten (Zentralheizung)', '197.88', '197.88', '395.76'),
         ('CO2-Kosten (Zentralheizung)', '2.84', '2.84', '5.68'),
-        ('CO2-Kosten (Zentralheizung)', '9.50', '5.28', '14.78'),
+        ('CO2-Kosten (Zentralheizung)', '2.65', '2.65', '5.30'),
         ('CO2-Kosten (Zentralheizung)', '0.00', '0.00', '301.64'),
         ('Warmwasserkosten (Zentralheizung)', '70.67', '70.67', '141.34'),
-        ('Warmwasserkosten (Zentralheizung)', '209.92', '78.72', '288.64'),
+        ('Warmwasserkosten (Zentralheizung)', '26.38', '39.58', '65.96'),
         ('CO2-Kosten (Zentralheizung)', '0.95', '0.95', '1.90'),
-        ('CO2-Kosten (Zentralheizung)', '2.82', '1.06', '3.88'),
+        ('CO2-Kosten (Zentralheizung)', '0.35', '0.53', '0.88'),
         ('CO2-Kosten (Zentralheizung)', '0.00', '0.00', '100.55'),
     ]
     wirklich = [(p['category'], betrag(p['leerstand_amount']),
