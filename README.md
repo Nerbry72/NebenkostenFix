@@ -57,7 +57,7 @@ Kurze Antworten stehen in den [häufigen Fragen](docs/handbuch/faq.md).
 - **Abrechnung** als PDF mit Deckblatt, Anschreiben und Zahlungs-QR-Code (GiroCode)
 - **Assistent „Jahr abrechnen“**, Beispielimmobilie, Hilfe mit Begriffen A–Z
 - **Import** aus Excel oder CSV, **Umzug** zwischen Rechnern als eine `.nkfix`-Datei
-- **Anmeldung** mit Benutzername und Passwort, bis zu zwei Konten
+- **Anmeldung** mit Benutzername und Passwort, bis zu zwei Konten. Vorgabe: in der Windows-App ohne Anmeldung, in Docker mit Anmeldung. Beides lässt sich in den Einstellungen unter „Konto“ umschalten.
 
 <table>
   <tr>
@@ -105,7 +105,7 @@ Store. Die Daten liegen wie beim Installer unter `Dokumente\NebenkostenFix`.
 
 1. Unter [**Releases**](https://github.com/Nerbry72/NebenkostenFix/releases/latest) die neueste `NebenkostenFix-<Version>-Setup.exe` herunterladen.
 2. Ausführen und den Schritten folgen. Die App startet in ihrem eigenen Fenster (Edge WebView2).
-3. Beim ersten Start ein Konto anlegen. Auf dem eigenen PC braucht das keinen Einmal-Code.
+3. Die App startet direkt, ohne Anmeldung. Wer ein Konto möchte, legt es in den Einstellungen unter „Konto“ an. Auf dem eigenen PC braucht das keinen Einmal-Code.
 
 - **Programm:** `C:\Program Files\NebenkostenFix`
 - **Daten:** `Dokumente\NebenkostenFix`, im Installer änderbar und nie im Programmordner.
@@ -113,7 +113,7 @@ Store. Die Daten liegen wie beim Installer unter `Dokumente\NebenkostenFix`.
 - **Update:** Die App meldet neue Versionen selbst (siehe [Updates](#updates)). Die neue
   Setup-Exe über die alte zu installieren geht ebenso. Die Daten bleiben, vorher wird gesichert.
 - **Deinstallation:** Die Daten bleiben stehen, der Deinstaller sagt, wo sie liegen.
-- **Passwort vergessen:** Menü „Hilfe“.
+- **Passwort vergessen:** Menü „Hilfe“. Ohne Anmeldung gibt es kein Passwort.
 
 Die Prüfsumme jeder Setup-Exe steht im Release (`SHA256SUMS.txt`):
 
@@ -167,6 +167,10 @@ Neben der Compose-Datei entsteht der Datenordner `daten/`. Wer aus dem Quellcode
 bauen will, startet mit `docker compose up -d --build`.
 
 **3. Einrichten im Browser**
+
+In Docker gilt die Anmeldung. Wer sie nicht braucht, schaltet sie in den Einstellungen unter
+„Konto“ aus. Im offenen Modus sieht jeder im Netz alle Daten, deshalb nur hinter einer Firewall
+und nie aus dem Internet erreichbar.
 
 `http://<rechner>:6060` öffnen. Solange es noch kein Konto gibt, zeigt die Anwendung die
 Einrichtung. Dort vergeben Sie Benutzername und Passwort (mindestens zehn Zeichen)

@@ -129,6 +129,25 @@ async function abmelden() {
 }
 window.abmelden = abmelden;
 
+// NK-201: die Anmeldung ausschalten — POST /api/anmeldung/aus mit dem
+// Passwort als Bestaetigung; danach ist die App offen und neu geladen.
+async function anmeldungAusschalten() {
+    const feld = document.getElementById('konto-anmeldung-passwort');
+    if (!feld) return;
+    try {
+        const res = await fetch('/api/anmeldung/aus', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: feld.value })
+        });
+        if (!res.ok) throw await serverFehler(res);
+        window.location.assign('/');
+    } catch (e) {
+        showError(meldungZu(e, 'Die Anmeldung konnte nicht ausgeschaltet werden.'));
+    }
+}
+window.anmeldungAusschalten = anmeldungAusschalten;
+
 async function zeigeAngemeldetenBenutzer() {
     try {
         const antwort = await fetch('/api/auth/me');
@@ -136,6 +155,24 @@ async function zeigeAngemeldetenBenutzer() {
         const daten = await antwort.json();
         const feld = document.getElementById('angemeldeterBenutzer');
         if (feld) feld.textContent = daten.username;
+        // NK-201: im offenen Modus gehoert weder Name noch Abmelden in den
+        // Kopf, und die Konto-Karte zeigt keinen Bestand mehr -- sie
+        // erklaert stattdessen den offenen Zustand und haelt den Rueckweg
+        // ueber die Einrichtung offen.
+        const offen = !!daten.ohne_anmeldung;
+        ['angemeldeterBenutzer', 'kopf-abmelden', 'konto-liste',
+            'konto-passwort-bereich'].forEach(kennung => {
+            const teil = document.getElementById(kennung);
+            if (teil) teil.hidden = offen;
+        });
+        const einschalten = document.getElementById('konto-anmeldung-einschalten-bereich');
+        if (einschalten) einschalten.hidden = !offen;
+        const ausschalten = document.getElementById('konto-anmeldung-ausschalten-bereich');
+        if (ausschalten) ausschalten.hidden = offen;
+        const netzhinweis = document.getElementById('konto-anmeldung-netzhinweis');
+        if (netzhinweis) netzhinweis.hidden = !!daten.desktop;
+        const leiste = document.getElementById('ohne-anmeldung-hinweis');
+        if (leiste) leiste.hidden = !(offen && !daten.desktop);
         // NK-123: die Gefahrenzone gehoert nur in den Entwicklungsstapel.
         // Sie bleibt im HTML verborgen, bis /api/auth/me meldet, dass die
         // Entwicklerroute angemeldet ist -- im Auslieferungsbuild bleibt
@@ -964,6 +1001,11 @@ async function initLeerlauf() {
         const res = await fetch('/api/auth/me');
         if (res.ok) {
             const ich = await res.json();
+            if (ich.leerlauf_s === null) {
+                // NK-201: offener Modus — es gibt keine Sitzung, die
+                // ablaufen koennte; also keine Warnung, kein Abmelden.
+                return;
+            }
             if (ich.leerlauf_s) leerlaufMs = ich.leerlauf_s * 1000;
         }
     } catch (e) {
@@ -4292,7 +4334,13 @@ async function umzugUebernehmen() {
         });
         meldung.textContent = `Übernommen: ${window.umzugPaket.anzahl(bericht.zeilen, 'Datensatz', 'Datensätze')} und ` +
             `${window.umzugPaket.anzahl(bericht.belege, 'Beleg', 'Belege')}. ` +
-            'Sie werden gleich zur Anmeldung geleitet — melden Sie sich mit dem Konto aus dem Paket an.';
+            // NK-201: das Paket kann ohne Konto liegen — dann faehrt die
+            // App offen weiter, sonst meldet sie sich wie bisher an.
+            (bericht.anmelden
+                ? 'Sie werden gleich zur Anmeldung geleitet — melden Sie sich mit dem Konto aus dem Paket an.'
+                : bericht.ohne_anmeldung
+                    ? 'Das Paket enthält kein Konto. Die App öffnet sich ohne Anmeldung.'
+                    : 'Das Paket enthält kein Konto. Legen Sie jetzt eines an oder fahren Sie ohne Anmeldung fort.');
         setTimeout(() => { location.href = '/login'; }, 3500);
     } catch (e) {
         meldung.textContent = '';

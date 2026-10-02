@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 
 from nebenkostenfix import backup
+from nebenkostenfix import einstellungen
 from nebenkostenfix import umzug
 
 ALT_USER = 'alt-vermieter'
@@ -125,6 +126,23 @@ def _manifest_aendern(aendern):
     return schritt
 
 
+def _anwendung_im_paket_aendern(aendern):
+    """Pfuscht in einstellungen.json des Pakets und hält das Manifest aktuell."""
+    import hashlib
+
+    def schritt(inhalt):
+        einstellungen = json.loads(inhalt[backup.EINSTELLUNGEN_IM_ARCHIV])
+        aendern(einstellungen)
+        neu = json.dumps(einstellungen).encode()
+        inhalt[backup.EINSTELLUNGEN_IM_ARCHIV] = neu
+        manifest = json.loads(inhalt[backup.MANIFEST_NAME])
+        for eintrag in manifest.get('zusatz', []):
+            if eintrag['pfad'] == backup.EINSTELLUNGEN_IM_ARCHIV:
+                eintrag.update(groesse=len(neu), sha256=hashlib.sha256(neu).hexdigest())
+        inhalt[backup.MANIFEST_NAME] = json.dumps(manifest).encode()
+    return schritt
+
+
 # --- Format ----------------------------------------------------------------------
 
 def test_paket_ist_zip_mit_allem(bestand, tmp_path):
@@ -145,11 +163,125 @@ def test_paket_ist_zip_mit_allem(bestand, tmp_path):
     assert {e['pfad'] for e in manifest['zusatz']} >= {'einstellungen.json'}
     assert einstellungen['vermieter_umgebung'] == {'name': 'Anna Vermieterin',
                                                    'iban': 'DE02120300000000202051'}
-    # Hinweis und Update-Einstellung wandern mit, der Zeitpunkt der letzten
-    # Suche gehoert zum Rechner (NK-174, NK-175).
-    assert einstellungen['anwendung'] == {'haftung': HAFTUNG, 'updates_automatisch': False}
+    # Hinweis, Update-Einstellung und der Schalter wandern mit, der Zeitpunkt
+    # der letzten Suche gehoert zum Rechner (NK-174, NK-175, NK-197).
+    assert einstellungen['anwendung'] == {'haftung': HAFTUNG, 'updates_automatisch': False,
+                                          'ohne_anmeldung': False}
     # PDFs werden gespeichert, nicht noch einmal komprimiert.
     assert belegeintrag.compress_type == zipfile.ZIP_STORED
+
+
+# --- NK-197: der Schalter ohne_anmeldung ----------------------------------------
+
+def test_schalter_standard_ist_nie_gewaehlt():
+    """None heißt: nie gewählt, es gilt die Vorgabe der Plattform."""
+    from nebenkostenfix import einstellungen
+
+    assert einstellungen.STANDARD['ohne_anmeldung'] is None
+    assert 'ohne_anmeldung' in einstellungen.UEBERTRAGBAR
+
+
+@pytest.mark.parametrize('desktop', [False, True], ids=['docker', 'windows'])
+@pytest.mark.parametrize('wert', [None, True, False])
+def test_ohne_anmeldung_gewuenscht_wirksamer_wert(wert, desktop):
+    from nebenkostenfix import einstellungen
+
+    stand = {'ohne_anmeldung': wert}
+    assert einstellungen.ohne_anmeldung_gewuenscht(stand, desktop) \
+        == (wert if isinstance(wert, bool) else desktop)
+
+
+def test_ja_in_der_datei_wird_zum_standard(tmp_path):
+    """Alles außer None oder bool gilt als nie gewählt."""
+    from nebenkostenfix import einstellungen
+
+    (tmp_path / einstellungen.DATEINAME).write_text('{"ohne_anmeldung": "ja"}',
+                                                    encoding='utf-8')
+    assert einstellungen.lesen(tmp_path)['ohne_anmeldung'] is None
+
+
+def _anwendung_im_paket(archiv: Path) -> dict:
+    with zipfile.ZipFile(archiv) as z:
+        return json.loads(z.read(backup.EINSTELLUNGEN_IM_ARCHIV))['anwendung']
+
+
+@pytest.mark.parametrize('desktop', [False, True], ids=['docker', 'windows'])
+@pytest.mark.parametrize('vorwahl', ['nichts', True, False])
+def test_export_traegt_den_wirksamen_wert(bestand, tmp_path, monkeypatch, desktop, vorwahl):
+    """Sicherung und Umzugspaket schreiben den wirksamen Wert, nie None."""
+    from nebenkostenfix import datenordner
+    from nebenkostenfix import einstellungen
+
+    monkeypatch.setitem(bestand.app.config, 'DESKTOP', desktop)
+    ordner = datenordner.datenordner()
+    if vorwahl == 'nichts':
+        erwartet = desktop
+    else:
+        einstellungen.schreiben(ordner, ohne_anmeldung=vorwahl)
+        erwartet = vorwahl
+    for bauen in (lambda: backup.sicherung_erstellen(bestand.app, tmp_path),
+                  lambda: umzug.paket_erstellen(
+                      bestand.app, tmp_path / 'NebenkostenFix-test.nkfix')):
+        paket = bauen()
+        assert _anwendung_im_paket(paket)['ohne_anmeldung'] == erwartet, (desktop, vorwahl)
+
+
+def test_paket_mit_true_setzt_den_schalter(bestand, tmp_path, monkeypatch):
+    from nebenkostenfix import datenordner
+    from nebenkostenfix import einstellungen
+
+    ordner = datenordner.datenordner()
+    monkeypatch.setitem(bestand.app.config, 'DESKTOP', True)
+    paket = _paket(bestand, tmp_path)
+    monkeypatch.setitem(bestand.app.config, 'DESKTOP', False)
+    bericht = umzug.uebernehmen(bestand.app, paket)
+    assert einstellungen.lesen(ordner)['ohne_anmeldung'] is True
+    assert 'ohne_anmeldung' in bericht['zusatz']['einstellungen']
+
+
+def test_paket_mit_ja_wirft_den_schalter_weg(bestand, tmp_path):
+    """``'ja'`` ist kein erlaubter Typ und wird verworfen, nichts überschrieben."""
+    from nebenkostenfix import datenordner
+    from nebenkostenfix import einstellungen
+
+    ordner = datenordner.datenordner()
+    paket = _umbauen(_paket(bestand, tmp_path), tmp_path / 'ja.nkfix',
+                     _anwendung_im_paket_aendern(
+                         lambda werte: werte['anwendung'].update(ohne_anmeldung='ja')))
+    bericht = umzug.uebernehmen(bestand.app, paket)
+    assert einstellungen.lesen(ordner)['ohne_anmeldung'] is None
+    assert 'ohne_anmeldung' not in bericht['zusatz']['einstellungen']
+
+
+@pytest.mark.parametrize('art', ['nkfix', 'nkbak', 'tar'], ids=['format-1', '.nkbak', '.tar.gz'])
+@pytest.mark.parametrize('ziel', [None, True], ids=['nie-gewaehlt', 'ausdruecklich-true'])
+def test_pakete_ohne_schalter_laesst_den_zielwert_stehen(bestand, tmp_path, art, ziel):
+    """Alte Pakete kennen den Schlüssel nicht; am Ziel bleibt, was dort gilt."""
+    from nebenkostenfix import datenordner
+    from nebenkostenfix import einstellungen
+    from nebenkostenfix import verschluesselung
+
+    ordner = datenordner.datenordner()
+    if ziel is not None:
+        einstellungen.schreiben(ordner, ohne_anmeldung=ziel)
+    if art == 'tar':
+        paket = backup.sicherung_erstellen(bestand.app, tmp_path, art='tar')
+        passwort = None
+    else:
+        roh = _umbauen(_paket(bestand, tmp_path), tmp_path / 'roh.nkfix',
+                       _anwendung_im_paket_aendern(
+                           lambda werte: werte['anwendung'].pop('ohne_anmeldung')))
+        if art == 'nkfix':
+            paket, passwort = roh, None
+        else:
+            paket = tmp_path / 'alt.nkbak'
+            verschluesselung.verschluesseln(roh, paket, 'eine lange passphrase',
+                                            {'format': 2, 'anwendung': backup.ANWENDUNG,
+                                             'behaelter': 'zip'})
+            passwort = 'eine lange passphrase'
+    bericht = umzug.uebernehmen(bestand.app, paket, passwort)
+    assert einstellungen.lesen(ordner)['ohne_anmeldung'] == ziel, (art, ziel)
+    assert 'ohne_anmeldung' not in bericht['zusatz'].get('einstellungen', []), (art, ziel)
 
 
 def test_export_ueber_die_oberflaeche_liefert_download_und_raeumt_auf(bestand):
@@ -222,7 +354,8 @@ def test_rundlauf_ueber_die_api_ersetzt_alles(bestand, tmp_path, monkeypatch):
     assert bericht['anmelden'] is True
     assert bericht['belege'] == 1 and bericht['fehlende_verweise'] == []
     assert bericht['zusatz'] == {'logo': True,
-                                 'einstellungen': ['haftung', 'updates_automatisch'],
+                                 'einstellungen': ['haftung', 'ohne_anmeldung',
+                                                   'updates_automatisch'],
                                  'vermieter_festgeschrieben': ['name', 'iban']}
     assert Path(bericht['sicherheitskopie']).is_file()
     assert bericht['nicht_im_paket']
@@ -335,6 +468,9 @@ def test_einrichtung_bietet_die_uebernahme_an(bestand):
 
 def test_einrichtung_in_der_app_ohne_code(bestand, monkeypatch):
     _frisch(bestand)
+    # NK-198: die Pruefung gilt dem Umzugs-Code, nicht dem offenen Modus;
+    # der Schalter wird deshalb ausdruecklich auf Anmeldung gestellt.
+    einstellungen.schreiben(ohne_anmeldung=False)
     monkeypatch.setitem(bestand.app.config, 'DESKTOP', True)
     seite = bestand.app.test_client().get('/einrichtung').get_data(as_text=True)
     assert 'data-desktop="1"' in seite and 'id="umzug-code"' not in seite

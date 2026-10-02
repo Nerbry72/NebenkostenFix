@@ -520,6 +520,83 @@ async function haushaltPruefen() {
         && gut.liste.zeilen.length === 1 && gut.meldungen.length === 0);
 }
 
-haushaltPruefen()
-    .catch(e => pruefe('NK-118: Haushaltsprüfung lief durch — ' + e.message, false))
-    .then(() => process.exit(fehler ? 1 : 0));
+// --- NK-201: Warnleiste im offenen Modus -------------------------------------
+// Der Rauchtest gibt die Antwort von /api/auth/me vor: offen in Docker zeigt
+// die Warnleiste, offen in der Windows-App bleibt sie verborgen.
+async function warnLeistePruefen() {
+    // Funktion mit Klammernzaehler herausschneiden — der Rueckgabewert am
+    // Ende der Funktion hat die gleiche Zeile wie ihre schliessende Klammer,
+    // eine Regexp auf "\n}" waere hier zu fahrlaessig.
+    const anfang = appQuelle.indexOf('async function zeigeAngemeldetenBenutzer() {');
+    if (anfang < 0) throw new Error('zeigeAngemeldetenBenutzer nicht gefunden');
+    let tiefe = 0, ende = -1;
+    for (let i = anfang; i < appQuelle.length; i++) {
+        if (appQuelle[i] === '{') tiefe++;
+        else if (appQuelle[i] === '}') { tiefe--; if (!tiefe) { ende = i + 1; break; } }
+    }
+    const quelltext = appQuelle.slice(anfang, ende);
+    const lauf = (daten) => {
+        const teile = {};
+        const dokument = {
+            getElementById(id) {
+                if (!(id in teile)) teile[id] = { textContent: '', hidden: undefined };
+                return teile[id];
+            },
+        };
+        const holen = () => Promise.resolve({ ok: true, json: () => Promise.resolve(daten) });
+        return new Function('document', 'fetch', 'showError', 'serverFehler', 'meldungZu',
+            quelltext + '; return zeigeAngemeldetenBenutzer();')(
+            dokument, holen, () => {}, async () => new Error('Server'), (e, e2) => e2)
+            .then(() => teile);
+    };
+    const docker = await lauf({ username: null, ohne_anmeldung: true, leerlauf_s: null, desktop: false });
+    pruefe('NK-201: offen in Docker zeigt die Warnleiste',
+        docker['ohne-anmeldung-hinweis'].hidden === false
+        && docker['konto-anmeldung-einschalten-bereich'].hidden === false
+        && docker['kopf-abmelden'].hidden === true
+        && docker['konto-liste'].hidden === true);
+    const windows = await lauf({ username: null, ohne_anmeldung: true, leerlauf_s: null, desktop: true });
+    pruefe('NK-201: offen in der Windows-App bleibt die Warnleiste verborgen',
+        windows['ohne-anmeldung-hinweis'].hidden === true
+        && windows['kopf-abmelden'].hidden === true);
+}
+
+// --- NK-204: Ausschalter schickt das Feld so, wie der Server es liest --------
+// Befund: der Knopf „Anmeldung ausschalten" schickte `passwort`, der Server
+// liest `password` — der Knopf scheiterte immer mit 403. Hier geht der ganze
+// Weg: Konto vorhanden, Passwort eingegeben, Knopf drücken, Anfrage geht mit
+// "password" raus.
+async function ausschalterPruefen() {
+    const anfang = appQuelle.indexOf('async function anmeldungAusschalten() {');
+    if (anfang < 0) throw new Error('anmeldungAusschalten nicht gefunden');
+    let tiefe = 0, ende = -1;
+    for (let i = anfang; i < appQuelle.length; i++) {
+        if (appQuelle[i] === '{') tiefe++;
+        else if (appQuelle[i] === '}') { tiefe--; if (!tiefe) { ende = i + 1; break; } }
+    }
+    const quelltext = appQuelle.slice(anfang, ende);
+    const aufrufe = [];
+    const dokument = {
+        getElementById() { return { value: 'meinlangespasswort' }; },
+    };
+    const fns = new Function('document', 'fetch', 'showError', 'serverFehler', 'meldungZu',
+        quelltext + '; return anmeldungAusschalten();')(
+        dokument, (url, opt = {}) => {
+            aufrufe.push({ url, methode: opt.method || 'GET', koerper: opt.body });
+            return Promise.resolve({ ok: true });
+        }, () => {}, async () => new Error('Server'), (e, ersatz) => ersatz);
+    await fns;
+    const aufruf = aufrufe[0] || {};
+    pruefe('NK-204: Ausschalter schickt POST /api/anmeldung/aus mit "password"',
+        aufruf.methode === 'POST'
+        && aufruf.url === '/api/anmeldung/aus'
+        && aufruf.koerper === JSON.stringify({ password: 'meinlangespasswort' }));
+}
+
+warnLeistePruefen()
+    .catch(e => pruefe('NK-201: Warnleisten-Prüfung lief durch — ' + e.message, false))
+    .then(() => ausschalterPruefen()
+        .catch(e => pruefe('NK-204: Ausschalter-Prüfung lief durch — ' + e.message, false))
+        .then(() => haushaltPruefen()
+            .catch(e => pruefe('NK-118: Haushaltsprüfung lief durch — ' + e.message, false))
+            .then(() => process.exit(fehler ? 1 : 0))));

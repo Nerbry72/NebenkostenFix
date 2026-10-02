@@ -99,7 +99,7 @@ KURZANLEITUNG = [
         'Neuer Rechner, oder von Docker in die Windows-App? „Alles exportieren“ erstellt ein '
         'Umzugspaket (.nkfix) mit allem. Auf dem neuen Rechner wählen Sie bei der Einrichtung '
         '„Daten aus einer anderen Installation übernehmen“ und melden sich danach mit Ihrem '
-        'bisherigen Konto an.',
+        'bisherigen Konto an, falls das Paket ein Konto enthält.',
         'Keine Rechtsberatung: Im Zweifel fragen Sie Ihren Eigentümerverband oder eine '
         'Anwältin für Mietrecht.',
     ]),

@@ -505,7 +505,8 @@ def _zusatzdateien(app, arbeit: Path) -> list[tuple[str, Path]]:
             'name': os.environ.get('VERMIETER_NAME', '').strip(),
             'iban': iban_saeubern(os.environ.get('VERMIETER_IBAN', '')),
         },
-        'anwendung': {k: stand[k] for k in app_einstellungen.UEBERTRAGBAR},
+        # NK-197: der Schalter wandert als wirksamer Wert mit, nie als None.
+        'anwendung': app_einstellungen.uebertragbar(stand, app.config.get('DESKTOP')),
     }
     datei = arbeit / EINSTELLUNGEN_IM_ARCHIV
     datei.write_text(json.dumps(einstellungen, ensure_ascii=False, indent=2),
@@ -945,10 +946,13 @@ def _anwendung_uebernehmen(ordner: Path, werte) -> list[str]:
     if not isinstance(werte, dict):
         return []
     # Nur bekannte Schluessel mit dem erwarteten Typ; ein ``None`` beim
-    # Hinweis heisst „nie bestaetigt“ und ueberschreibt nichts.
+    # Hinweis heisst „nie bestaetigt“ und ueberschreibt nichts. Der Schalter
+    # ``ohne_anmeldung`` (NK-197) gilt nur mit bool; fehlt er (alte Pakete),
+    # bleibt der Wert am Ziel unverändert.
     werte = {k: v for k, v in werte.items()
              if (k == 'haftung' and isinstance(v, dict))
-             or (k == 'updates_automatisch' and isinstance(v, bool))}
+             or (k == 'updates_automatisch' and isinstance(v, bool))
+             or (k == 'ohne_anmeldung' and isinstance(v, bool))}
     if werte:
         app_einstellungen.schreiben(ordner, **werte)
     return sorted(werte)
