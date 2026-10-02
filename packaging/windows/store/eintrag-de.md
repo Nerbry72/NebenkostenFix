@@ -17,7 +17,7 @@ Für den Einstieg gibt es eine Beispielimmobilie, den Assistenten „Jahr abrech
 
 NebenkostenFix ist freie Software unter der GPL-3.0. Der Quelltext liegt auf GitHub.
 
-NebenkostenFix ist kostenlos und wird ohne Gewähr bereitgestellt. Der Entwickler übernimmt keine Haftung für die Richtigkeit Ihrer Abrechnungen, soweit das Gesetz das zulässt. Die Anwendung ist keine Rechtsberatung. Prüfen Sie jede Abrechnung selbst, bevor Sie sie verschicken.
+NebenkostenFix ist kostenlos, quelloffen (GPL-3.0) und wird ohne Gewähr bereitgestellt. Der Entwickler haftet nur für Vorsatz und grobe Fahrlässigkeit. Die Anwendung ist keine Rechtsberatung. Prüfen Sie jede Abrechnung selbst, bevor Sie sie verschicken.
 
 ## Kurzbeschreibung
 
