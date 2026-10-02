@@ -30,6 +30,7 @@ Anmeldung, Ersteinrichtung und Konto -- alles in auth.py, nicht hier
   GET         /api/konten                                  -> konten_auflisten
   POST        /api/konten                                  -> konto_anlegen
   PUT         /api/konto/passwort                          -> konto_passwort_aendern
+  POST        /api/anmeldung/aus                           -> anmeldung_ausschalten
   GET,POST    /huelle/passwort                             -> huelle_passwort
 
 Oberflaeche und Betrieb

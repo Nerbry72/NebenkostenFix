@@ -364,7 +364,7 @@ def test_api_haftung(auth_client, monkeypatch, tmp_path):
     monkeypatch.setattr(datenordner, 'datenordner', lambda: tmp_path)
     stand = auth_client.get('/api/haftung').get_json()
     assert stand['bestaetigt'] is False and stand['version'] == haftung.VERSION
-    assert any('keine Haftung' in satz for satz in stand['text'])
+    assert any('Rechtsberatung' in satz for satz in stand['text'])
     alt = auth_client.post('/api/haftung', json={'version': haftung.VERSION - 1})
     assert alt.status_code == 409
     assert auth_client.post('/api/haftung', json={'version': haftung.VERSION}).get_json()[

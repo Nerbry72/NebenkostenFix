@@ -72,7 +72,7 @@
                         title="Die aktive Ansicht über den Druckdialog des Browsers drucken">
                         <i class="ph ph-printer"></i> Drucken
                     </button>
-                    <button class="btn-secondary" onclick="abmelden()"
+                    <button class="btn-secondary" id="kopf-abmelden" onclick="abmelden()"
                         title="Sitzung beenden und zur Anmeldung zurück">
                         <i class="ph ph-sign-out"></i> Abmelden
                     </button>
@@ -392,7 +392,7 @@
                             Betreiber der Installation zurücksetzen (Anleitung in der README, Abschnitt
                             „Betrieb“).</span>
                         </p>
-                        <div class="table-container">
+                        <div class="table-container" id="konto-liste">
                             <table class="tabelle">
                                 <thead>
                                     <tr class="tabellen-kopfzeile">
@@ -404,7 +404,7 @@
                                 <tbody id="konto-zeilen"></tbody>
                             </table>
                         </div>
-                        <div class="karten-abschnitt-getrennt">
+                        <div class="karten-abschnitt-getrennt" id="konto-passwort-bereich">
                             <h4 class="abstand-unten-klein">Passwort ändern</h4>
                             <div class="form-group">
                                 <label for="konto-alt">Altes Passwort</label>
@@ -435,6 +435,35 @@
                             <button class="btn-primary" id="btn-konto-anlegen"
                                 onclick="zweitesKontoAnlegen()">Konto anlegen</button>
                         </div>
+                        <!-- NK-201: der offene Modus (Anmeldung ausgeschaltet)
+                                 erklaert sich in der Konto-Karte selbst und haelt
+                                 den Rueckweg ueber die Einrichtung offen. -->
+                            <div class="karten-abschnitt-getrennt" id="konto-anmeldung-einschalten-bereich" hidden>
+                                <p class="karten-text">
+                                    Die Anmeldung ist ausgeschaltet. Jeder, der dieses Programm öffnen kann, sieht
+                                    alle Daten.
+                                </p>
+                                <a class="btn-primary" id="link-anmeldung-einschalten"
+                                    href="/einrichtung">Anmeldung einschalten</a>
+                            </div>
+                            <!-- NK-201: angemeldet lassen sich hier alle Konten
+                                 loeschen; die Warnung nennt auch das zweite Konto,
+                                 im Docker-Betrieb zusaetzlich das Netz. -->
+                            <div class="karten-abschnitt-getrennt" id="konto-anmeldung-ausschalten-bereich" hidden>
+                                <h4 class="abstand-unten-klein">Anmeldung ausschalten</h4>
+                                <p class="karten-text">
+                                    Dabei werden alle Konten gelöscht, auch ein zweites.
+                                    <span id="konto-anmeldung-netzhinweis" hidden>Danach kann jeder in Ihrem Netz
+                                    alle Daten sehen.</span>
+                                </p>
+                                <div class="form-group">
+                                    <label for="konto-anmeldung-passwort">Ihr Passwort</label>
+                                    <input type="password" id="konto-anmeldung-passwort"
+                                        autocomplete="current-password">
+                                </div>
+                                <button class="btn-gefahr" id="btn-anmeldung-ausschalten"
+                                    onclick="anmeldungAusschalten()">Anmeldung ausschalten</button>
+                            </div>
                     </div>
 
                     <!-- NK-175: Updates kommen von der Projektseite auf GitHub,
@@ -603,7 +632,7 @@
                             <p class="karten-text">
                                 Alle Daten dieser Installation werden durch das Paket ersetzt. Vorher entsteht
                                 automatisch eine Sicherung des jetzigen Stands. Danach melden Sie sich mit dem
-                                Konto aus dem Paket an.
+                                Konto aus dem Paket an, falls das Paket eines enthält.
                             </p>
                             <div class="form-group">
                                 <label for="umzug-datei-einstellungen">Paket</label>
@@ -2234,6 +2263,12 @@
         <i class="ph ph-clock" aria-hidden="true"></i>
         <span id="leerlauf-text"></span>
         <button type="button" class="btn-primary" onclick="angemeldetBleiben()">Angemeldet bleiben</button>
+    </div>
+    <!-- NK-201: Warnung im offenen Modus, sichtbar nur in Docker. -->
+    <div id="ohne-anmeldung-hinweis" class="hinweis-leiste" role="status" hidden>
+        <i class="ph ph-eye" aria-hidden="true"></i>
+        <span>Die Anmeldung ist ausgeschaltet. Jeder in Ihrem Netz kann alle Daten sehen.</span>
+        <a class="btn-primary" id="ohne-anmeldung-einschalten" href="/einrichtung">Anmeldung einschalten</a>
     </div>
     <div id="entwurf-hinweis" class="hinweis-leiste" role="status" hidden>
         <i class="ph ph-floppy-disk" aria-hidden="true"></i>

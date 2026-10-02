@@ -69,6 +69,7 @@ ROUTEN_INVENTAR = frozenset({
     'backup_status',
     'konto_anlegen',
     'konto_passwort_aendern',
+    'anmeldung_ausschalten',
     'konten_auflisten',
     'billing_preflight',
     'billing_suggestions',

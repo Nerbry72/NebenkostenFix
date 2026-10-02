@@ -46,6 +46,20 @@ def test_api_ueber_kennt_den_store(auth_client, monkeypatch):
     assert auth_client.get('/api/ueber').get_json()['weg'] == 'Microsoft Store'
 
 
+def test_haftungstext_ohne_verkaufsreste():
+    """NK-195: kein AGB-Sprech wie „soweit das Gesetz das zulässt“
+    (intransparent, BGH § 307 BGB). Der Hinweis nennt auch keine eigene
+    Haftungsgrenze („haftet nur für …“): Das muss er nicht angeben."""
+    text = ' '.join(haftung.TEXT)
+    assert 'soweit das Gesetz' not in text
+    assert 'keine Haftung' not in text
+    assert 'kostenlos' in text
+    assert 'GPL-3.0' in text
+    assert 'haftet' not in text and 'Vorsatz' not in text and 'Fahrlässigkeit' not in text
+    assert 'keine Rechtsberatung' in text
+    assert haftung.VERSION == 2
+
+
 def test_hilfe_laesst_den_haftungshinweis_offen():
     """„Über …“ im Menü ruft zeigeHilfe; der feste Dialog bleibt (NK-174)."""
     import re
