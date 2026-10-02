@@ -24,7 +24,6 @@ TITEL = 'Bevor es losgeht'
 TEXT = (
     'NebenkostenFix ist kostenlos, quelloffen (GPL-3.0) und wird ohne '
     'Gewähr bereitgestellt.',
-    'Der Entwickler haftet nur für Vorsatz und grobe Fahrlässigkeit.',
     'Die Anwendung ist keine Rechtsberatung.',
     'Prüfen Sie jede Abrechnung selbst, bevor Sie sie verschicken.',
 )

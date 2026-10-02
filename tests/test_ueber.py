@@ -47,15 +47,15 @@ def test_api_ueber_kennt_den_store(auth_client, monkeypatch):
 
 
 def test_haftungstext_ohne_verkaufsreste():
-    """NK-195, E-19 Variante B: kein AGB-Sprech wie „soweit das Gesetz das
-    zulässt“ (intransparent, BGH § 307 BGB), sondern § 521 BGB: Haftung
-    nur für Vorsatz und grobe Fahrlässigkeit bei kostenloser Überlassung."""
+    """NK-195: kein AGB-Sprech wie „soweit das Gesetz das zulässt“
+    (intransparent, BGH § 307 BGB). Der Hinweis nennt auch keine eigene
+    Haftungsgrenze („haftet nur für …“): Das muss er nicht angeben."""
     text = ' '.join(haftung.TEXT)
     assert 'soweit das Gesetz' not in text
     assert 'keine Haftung' not in text
     assert 'kostenlos' in text
     assert 'GPL-3.0' in text
-    assert 'Vorsatz und grobe Fahrlässigkeit' in text
+    assert 'haftet' not in text and 'Vorsatz' not in text and 'Fahrlässigkeit' not in text
     assert 'keine Rechtsberatung' in text
     assert haftung.VERSION == 2
 

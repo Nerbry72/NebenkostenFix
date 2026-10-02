@@ -385,9 +385,9 @@ Sicherheitslücken bitte nicht als öffentliches Issue melden, sondern vertrauli
 
 ## Haftung
 
-NebenkostenFix ist kostenlos, quelloffen (GPL-3.0) und wird ohne Gewähr bereitgestellt. Der
-Entwickler haftet nur für Vorsatz und grobe Fahrlässigkeit. Die Anwendung ist keine
-Rechtsberatung. Prüfen Sie jede Abrechnung selbst, bevor Sie sie verschicken.
+NebenkostenFix ist kostenlos, quelloffen (GPL-3.0) und wird ohne Gewähr bereitgestellt. Die
+Anwendung ist keine Rechtsberatung. Prüfen Sie jede Abrechnung selbst, bevor Sie sie
+verschicken.
 
 ## Unterstützen
 

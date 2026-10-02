@@ -17,7 +17,7 @@ Für den Einstieg gibt es eine Beispielimmobilie, den Assistenten „Jahr abrech
 
 NebenkostenFix ist freie Software unter der GPL-3.0. Der Quelltext liegt auf GitHub.
 
-NebenkostenFix ist kostenlos, quelloffen (GPL-3.0) und wird ohne Gewähr bereitgestellt. Der Entwickler haftet nur für Vorsatz und grobe Fahrlässigkeit. Die Anwendung ist keine Rechtsberatung. Prüfen Sie jede Abrechnung selbst, bevor Sie sie verschicken.
+NebenkostenFix ist kostenlos, quelloffen (GPL-3.0) und wird ohne Gewähr bereitgestellt. Die Anwendung ist keine Rechtsberatung. Prüfen Sie jede Abrechnung selbst, bevor Sie sie verschicken.
 
 ## Kurzbeschreibung
 
@@ -25,12 +25,12 @@ Die Nebenkostenabrechnung für private Vermieter. Kostenlos, und Ihre Daten blei
 
 ## Neuerungen in dieser Version
 
-Version 0.12.0: Die Windows-App startet ohne Anmeldung, der Haftungshinweis ist klarer.
+Version 0.12.0: Die Windows-App startet ohne Anmeldung, der Haftungshinweis ist kürzer.
 
 - Die Windows-App öffnet direkt, ohne Benutzername und Passwort. In den Einstellungen unter „Konto“ lässt sich die Anmeldung einschalten.
 - In Docker bleibt die Anmeldung Vorgabe. Sie lässt sich dort ausschalten, eine Warnleiste weist dann darauf hin.
 - Ein Umzug oder eine Sicherung nimmt die Wahl mit. Wer die Anmeldung ausgeschaltet hatte, bleibt auch auf dem neuen Rechner ohne.
-- Der Haftungshinweis nennt die Rechtsgrundlage (§ 521 BGB): kostenlos, quelloffen, Haftung nur für Vorsatz und grobe Fahrlässigkeit. Er erscheint einmal neu und muss bestätigt werden.
+- Der Haftungshinweis ist kürzer gefasst. Er erscheint einmal neu und muss bestätigt werden.
 
 ## Produktmerkmale
 
