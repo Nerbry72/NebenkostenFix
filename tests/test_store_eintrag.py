@@ -60,6 +60,15 @@ def test_haftungshinweis_im_wortlaut_der_app():
     assert ' '.join(haftung.TEXT) in _felder()['Beschreibung']
 
 
+def test_haftungshinweis_im_readme():
+    """Derselbe Wortlaut steht auch im README (Abschnitt „## Haftung“)."""
+    readme = (Path(__file__).resolve().parents[1] / 'README.md').read_text(encoding='utf-8')
+    abschnitt = re.split(r'^## Haftung$', readme, flags=re.M, maxsplit=1)[1]
+    abschnitt = abschnitt.split('\n## ', 1)[0]
+    text = ' '.join(abschnitt.split())
+    assert ' '.join(haftung.TEXT) in text
+
+
 def test_gesiezt():
     text = ' '.join(_felder().values())
     assert not re.search(r'\b(du|dein|deine|dir|dich)\b', text, flags=re.I)
