@@ -10,11 +10,16 @@ richtig, eine negative Menge lässt sich nicht verteilen. Er tat das aber
 Kosten des Allgemeinverbrauchs blieben unbemerkt beim Vermieter.
 
 Jetzt steht die Warnung ``W-ZAEHLER-ALLGEMEIN-NEGATIV`` in der Abrechnung.
-Der Betrag ändert sich nicht — die Methode (NK-097) bleibt, sie wird nur
-sichtbar.
+Der Betrag ändert sich nicht — die Methode bleibt, sie wird nur sichtbar.
 
-*Hätte diesen Fehler gefunden:* ``test_negative_allgemeinmenge_im_fenster_warnt``
-— vor dem Fix gab es dort keine Warnung.
+NK-213 (B6): gemessen wird seither nur zwischen gemeinsamen Ablesungen aller
+Zähler, nicht mehr geschätzt im Fenster. Die Warnung nennt den Abschnitt, der
+negativ misst. Der alte Fall (Hauptzähler geschätzt, Annas Zähler abgelesen)
+warnt nicht mehr, weil dort kein negativer Abschnitt mehr entsteht --
+``test_geschaetzter_hauptzaehler_ist_keine_negative_menge`` hält das fest.
+
+*Hätte diesen Fehler gefunden:* ``test_negative_allgemeinmenge_im_abschnitt_warnt``
+— vor NK-115 gab es dort keine Warnung.
 
 Die Daten sind synthetisch; jede Zahl ist von Hand nachgerechnet.
 """
@@ -94,21 +99,52 @@ def _warnungen(ergebnis):
     return [w for w in ergebnis['warnings'] if KENNUNG in w]
 
 
-def test_negative_allgemeinmenge_im_fenster_warnt():
-    """Erstes Halbjahr (181 Tage): Wohnungszähler 59,9 m³, Hauptzähler 49,6 m³.
+def _gemeinsam_abgelesen():
+    """Alle drei Zähler am 01.07. abgelesen, das erste Halbjahr misst negativ.
 
-    Von Hand: Hauptzähler 100 · 181/365 = 49,589 m³; Anna 45 m³ (Ablesung
-    genau an der Grenze), Bert 30 · 181/365 = 14,877 m³. Allgemein
-    rechnerisch 49,589 − 59,877 = −10,288 m³ → angesetzt 0.
+    Hauptzähler 40 + 60 m³, Anna 45 + 15 m³, Bert 5 + 25 m³. Erstes Halbjahr
+    40 − (45 + 5) = −10 m³, zweites 60 − (15 + 25) = 20 m³, das Jahr 10 m³.
+    """
+    return (
+        _zaehler(10, WASSER, (Stand(JAHR_BEGINN, 0.0), Stand(date(2025, 7, 1), 40.0),
+                              Stand(JAHRSGRENZE, 100.0)), haupt=True),
+        _zaehler(11, WASSER, (Stand(JAHR_BEGINN, 0.0), Stand(date(2025, 7, 1), 45.0),
+                              Stand(JAHRSGRENZE, 60.0)), wohnung_id=1),
+        _zaehler(12, WASSER, (Stand(JAHR_BEGINN, 0.0), Stand(date(2025, 7, 1), 5.0),
+                              Stand(JAHRSGRENZE, 30.0)), wohnung_id=2),
+    )
+
+
+def test_geschaetzter_hauptzaehler_ist_keine_negative_menge():
+    """NK-213: ohne gemeinsame Ablesung wird nicht im Fenster geschätzt.
+
+    Bis NK-213 schätzte der Kern den Hauptzähler im ersten Halbjahr
+    (100 · 181/365 = 49,6 m³) gegen Annas abgelesene 45 m³ und Berts
+    geschätzte 14,9 m³: rechnerisch −10,3 m³, angesetzt 0, Warnung. Anna trug
+    keinen Allgemeinanteil, obwohl das Jahr 10 m³ allgemein misst.
+
+    Jetzt ist die Rechnung ein Abschnitt, Anna trägt ihre 181 von 730
+    Personentagen: 450 EUR Eigenverbrauch + 100 EUR · 181/730 = 474,79 EUR.
     """
     ergebnis = rechne(_vorgang(_wasserzaehler(), ende=date(2025, 6, 30)))
+    posten = ergebnis['line_items'][0]
+
+    assert _warnungen(ergebnis) == []
+    assert posten['tenant_cost'] == Decimal('474.79')
+    assert posten['meter_details']['allgemein_consumption'] == 10.0
+    assert posten['meter_details']['allgemein_anteil'] == 2.5
+
+
+def test_negative_allgemeinmenge_im_abschnitt_warnt():
+    """Erstes Halbjahr, gemeinsam abgelesen: 40 − 50 = −10 m³ → angesetzt 0."""
+    ergebnis = rechne(_vorgang(_gemeinsam_abgelesen(), ende=date(2025, 6, 30)))
 
     warnungen = _warnungen(ergebnis)
     assert len(warnungen) == 1
     assert '„Frischwasser“' in warnungen[0]
     assert 'Z-10' in warnungen[0]
-    assert '01.01.2025 – 30.06.2025' in warnungen[0]
-    assert '-10,3 m³' in warnungen[0]
+    assert 'im Zeitraum 01.01.2025 – 30.06.2025' in warnungen[0]
+    assert '-10,0 m³' in warnungen[0]
 
 
 def test_warnung_empfiehlt_ablesung_am_wechseltag():
@@ -119,7 +155,7 @@ def test_warnung_empfiehlt_ablesung_am_wechseltag():
     Fachbegriff „Zwischenablesung“ fällt nicht, weil die Oberfläche diese
     Ablesungsart nicht setzen kann; die Anrede ist das Sie (Glossar).
     """
-    warnung = _warnungen(rechne(_vorgang(_wasserzaehler(), ende=date(2025, 6, 30))))[0]
+    warnung = _warnungen(rechne(_vorgang(_gemeinsam_abgelesen(), ende=date(2025, 6, 30))))[0]
 
     assert 'Lesen Sie alle Zähler am selben Tag ab' in warnung
     assert 'am Einzugs- bzw. Auszugstag' in warnung
@@ -128,15 +164,27 @@ def test_warnung_empfiehlt_ablesung_am_wechseltag():
     assert 'Lies ' not in warnung
 
 
-def test_der_betrag_bleibt_der_der_methode():
-    """Die Warnung ändert nichts an der Zahl: 45 m³ zu 10 EUR, Allgemein 0.
+def test_der_negative_abschnitt_traegt_nichts():
+    """D-73 je Abschnitt: im ersten Halbjahr trägt Anna keinen Allgemeinanteil.
 
-    Der Preis ist 1000 EUR durch 100 m³ des vollen Rechnungszeitraums.
+    45 m³ zu 10 EUR (1000 EUR durch 100 m³ des Rechnungszeitraums). Die 10 m³
+    des Jahres liegen im zweiten Halbjahr, das nur das andere Fenster trägt.
     """
-    posten = rechne(_vorgang(_wasserzaehler(), ende=date(2025, 6, 30)))['line_items'][0]
+    posten = rechne(_vorgang(_gemeinsam_abgelesen(), ende=date(2025, 6, 30)))['line_items'][0]
 
     assert posten['tenant_cost'] == Decimal('450.00')
-    assert posten['meter_details']['allgemein_consumption'] == 0
+    assert posten['meter_details']['allgemein_quote'] == 0.0
+
+
+def test_das_zweite_halbjahr_traegt_den_allgemeinverbrauch():
+    """Gegenstück: Annas zweites Halbjahr trägt die Hälfte der 20 m³, die der
+    Abschnitt misst, gewogen auf die 10 m³ der Rechnung: 100 EUR · 1/2.
+    Eigenverbrauch 15 m³ zu 10 EUR. Beide Halbjahre zusammen tragen also die
+    Hälfte des Allgemeinbetrags, wie Anna die Hälfte der Personentage hat."""
+    posten = rechne(_vorgang(_gemeinsam_abgelesen(), beginn=date(2025, 7, 1)))['line_items'][0]
+
+    assert posten['tenant_cost'] == Decimal('200.00')
+    assert posten['meter_details']['allgemein_quote'] == 0.5
 
 
 def test_positive_allgemeinmenge_schweigt():
@@ -189,7 +237,7 @@ def test_warnung_nennt_auch_falschen_stand_und_zuordnung():
     """F-134: Ein Hauptzähler unter seinen Wohnungszählern kommt nicht nur von
     verschiedenen Ablesetagen. Die Meldung nennt auch den falsch erfassten
     Stand und die falsche Zuordnung, mit einer Handlung dazu."""
-    warnung = _warnungen(rechne(_vorgang(_wasserzaehler(), ende=date(2025, 6, 30))))[0]
+    warnung = _warnungen(rechne(_vorgang(_gemeinsam_abgelesen(), ende=date(2025, 6, 30))))[0]
 
     assert 'ist ein Stand falsch erfasst' in warnung
     assert 'Prüfen Sie die Stände und die Zuordnung der Zähler.' in warnung

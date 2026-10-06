@@ -46,6 +46,9 @@ AUSNAHMEN = {
     'tCons': 'toFixed(1) in wrapInterpolated',
     'mCons': 'toFixed(1) in wrapInterpolated',
     'aCons': 'toFixed(1) in wrapInterpolated',
+    'prozent': 'toLocaleString der Allgemeinquote (NK-209)',
+    "r.veraltet ? REGELSTAND_HINWEIS : ''": 'fester Hinweistext (NK-217)',
+    "umschlag.veraltet ? REGELSTAND_HINWEIS : ''": 'fester Hinweistext (NK-217)',
     'pfTitle': 'feste Zeichenkette je Ampelstufe',
     'umschlag.version ? `<p style="color: var(--text-muted); marg':
         'Versionsnummer (Zahl), Texte darin maskiert',
@@ -92,7 +95,6 @@ AUSNAHMEN = {
     'dateStr': "toLocaleDateString oder '-'",
     'r.start_date': 'ISO-Datum vom Server (Date-Spalte)',
     'r.end_date': 'ISO-Datum vom Server (Date-Spalte)',
-    "new Date().toISOString().split('T')[0]": 'ISO-Datum des Browsers',
     'accId': 'Kennung aus Zaehlschleife',
     'stepCount++': 'Zaehler',
     'pct': 'Prozentwert (Zahl)',

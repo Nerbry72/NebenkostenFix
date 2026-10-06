@@ -7,9 +7,10 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.platypus import PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from datetime import datetime
+from decimal import Decimal
 from nebenkostenfix import zeit
 from nebenkostenfix.pdf_cover_page import build_cover_page_elements
-from nebenkostenfix.girocode_generator import build_girocode_elements
+from nebenkostenfix.girocode_generator import build_girocode_elements, vermieter_ausweis
 from nebenkostenfix.geld import NULL
 from nebenkostenfix import betrkv
 from nebenkostenfix.zeitraum import HINWEIS_TAGESKONVENTION
@@ -432,6 +433,8 @@ class PDFGenerator:
         
         # Prepend cover page (Deckblatt)
         balance = total_amount - prepaid_amount
+        # NK-210 (B3): der Name aus den Einstellungen statt der Rolle
+        vermieter = vermieter_ausweis()[0]
         cover_elements = build_cover_page_elements(
             property_name=self.property_name,
             apartment_name=self.apartment_name,
@@ -444,6 +447,7 @@ class PDFGenerator:
             # NK-064: das Anschreiben des Vermieters spricht auf dem
             # Deckblatt statt des festen Grußes; ohne Vorlage wie gehabt.
             anschreiben=anschreiben,
+            vermieter_name=vermieter,
         )
         elements.extend(cover_elements)
         
@@ -452,7 +456,7 @@ class PDFGenerator:
         creation_date = zeit.als_ortszeit(zeit.jetzt_utc(), '%d.%m.%Y')
         
         header_data = [
-            [Paragraph(f"<b>{self.property_name}</b><br/>(Hausverwaltung / Vermieter)", self.styles['HeaderNormal']),
+            [Paragraph(f"<b>{self.property_name}</b><br/>{escape(vermieter) or '(Hausverwaltung / Vermieter)'}", self.styles['HeaderNormal']),
              Paragraph(f"Datum: {creation_date}", self.styles['HeaderRight'])]
         ]
         
@@ -749,7 +753,7 @@ class PDFGenerator:
             
                 # Header
                 cat_name = item['category'].upper()
-                meter_num_str = f"Zähler {tm['meter_number']}" if tm and tm.get('meter_number') else "Ohne eigener Zähler"
+                meter_num_str = f"Zähler {tm['meter_number']}" if tm and tm.get('meter_number') else "Ohne eigenen Zähler"
                 box_data.append([Paragraph(f"{cat_name} — {meter_num_str} ({self.apartment_name})", self.styles['MeterHeader']), ''])
             
                 box_style = [
@@ -774,34 +778,62 @@ class PDFGenerator:
                     try: return datetime.fromisoformat(d).strftime('%d.%m.%Y')
                     except (ValueError, TypeError): return d
                 
-                def dt_offset(msg, offset, span):
-                    if offset > 14:
-                        return f"<font color='red'>⚠️ Abweichung: {offset} Tage (Fenster: {span} Tage)</font>"
-                    elif offset > 7:
-                        return f"<font color='#d97706'>Toleranz verwendet (Abweichung: {offset} Tage)</font>"
-                    return ""
+                def dt_offset(stichtag, offset):
+                    # NK-218 (V1): ein Satz statt „Abweichung X Tage (Fenster Y
+                    # Tage)“; das Warnzeichen davor kannte die Schrift nicht.
+                    if offset <= 7:
+                        return ""
+                    farbe = 'red' if offset > 14 else '#d97706'
+                    am = f" {format_date(stichtag)}" if stichtag else ""
+                    return (f"<font color='{farbe}'>Zum Stichtag{am} liegt die nächste Ablesung "
+                            f"{offset} Tage entfernt. Der Verbrauch dieser {offset} Tage ist geschätzt.</font>")
             
                 # Tenant Meter Readings
                 if tm and tm.get('status') != 'no_data':
-                    s_date = format_date(tm['r_start']['date'])
-                    e_date = format_date(tm['r_end']['date'])
-                    s_val = tm['r_start']['total']
-                    e_val = tm['r_end']['total']
-                    cons = md.get('tenant_consumption')
-                    cons_str = f"{cons:.1f}" if cons is not None else "N/A"
-                
-                    box_data.append([Paragraph(f"Ablesung Anfang: {s_date}", self.styles['MeterText']), Paragraph(f"{s_val:.1f} {unit}", self.styles['MeterTextRight'] if 'MeterTextRight' in self.styles else self.styles['MeterText'])])
-                    box_data.append([Paragraph(f"Ablesung Ende: {e_date}", self.styles['MeterText']), Paragraph(f"{e_val:.1f} {unit}", self.styles['MeterTextRight'] if 'MeterTextRight' in self.styles else self.styles['MeterText'])])
-                    box_data.append([Paragraph(f"Eigenverbrauch:", self.styles['MeterTextBold']), Paragraph(f"{cons_str} {unit}", self.styles['MeterTextBold'])])
-                
+                    rechts = self.styles['MeterTextRight']
+                    if 'stand_beginn' in tm:
+                        # NK-208: die Staende an den Grenzen des Zeitraums, nicht
+                        # die Stuetzstellen dahinter -- Ende minus Anfang ist der
+                        # Eigenverbrauch. Gerechnet wird mit den angezeigten,
+                        # auf drei Stellen gerundeten Zahlen, damit die Zeile
+                        # auf dem Papier aufgeht.
+                        drei = Decimal('0.001')
+                        anfang = Decimal(str(tm['stand_beginn'])).quantize(drei)
+                        verbrauch = Decimal(str(tm['consumption'])).quantize(drei)
+                        ende = anfang + verbrauch
+
+                        def wie(abgelesen):
+                            return "abgelesen" if abgelesen else "berechnet"
+
+                        box_data.append([Paragraph(f"Zählerstand Beginn {format_date(tm.get('target_start_date'))} ({wie(tm.get('beginn_abgelesen'))}):", self.styles['MeterText']), Paragraph(f"{self._deutsch(anfang, 3)} {unit}", rechts)])
+                        box_data.append([Paragraph(f"Zählerstand Ende {format_date(tm.get('target_end_date'))} ({wie(tm.get('ende_abgelesen'))}):", self.styles['MeterText']), Paragraph(f"{self._deutsch(ende, 3)} {unit}", rechts)])
+                        box_data.append([Paragraph("Eigenverbrauch (Ende − Beginn):", self.styles['MeterTextBold']), Paragraph(f"{self._deutsch(verbrauch, 3)} {unit}", self.styles['MeterTextBold'])])
+                        ablesungen = [
+                            f"{format_date(b['date'])}: {self._deutsch(b['total'], 3)}"
+                            + (" (Zwischenablesung)" if b.get('zwischenablesung') else "")
+                            for b in tm.get('basis_readings') or []
+                        ]
+                        if ablesungen:
+                            box_data.append([Paragraph("<i>Zugrunde liegende Ablesungen: " + " · ".join(ablesungen) + "</i>", self.styles['SubTableCell']), ''])
+                            box_style.append(('SPAN', (0, len(box_data) - 1), (-1, len(box_data) - 1)))
+                            row_idx += 1
+                    else:
+                        # Gespeicherte Abrechnungen von vor NK-208 kennen die
+                        # Stichtagswerte nicht; sie zeigen die Ablesungen wie damals.
+                        cons = md.get('tenant_consumption')
+                        cons_str = f"{cons:.1f}" if cons is not None else "N/A"
+                        box_data.append([Paragraph(f"Ablesung: {format_date(tm['r_start']['date'])}", self.styles['MeterText']), Paragraph(f"{tm['r_start']['total']:.1f} {unit}", rechts)])
+                        box_data.append([Paragraph(f"Ablesung: {format_date(tm['r_end']['date'])}", self.styles['MeterText']), Paragraph(f"{tm['r_end']['total']:.1f} {unit}", rechts)])
+                        box_data.append([Paragraph("Eigenverbrauch:", self.styles['MeterTextBold']), Paragraph(f"{cons_str} {unit}", self.styles['MeterTextBold'])])
+
                     # Check for interpolation warning
                     if tm.get('is_interpolated'):
                         off_msg = ""
                         if tm['start_offset_days'] > 1:
-                            off_msg += dt_offset("Start", tm['start_offset_days'], tm['reading_span_days'])
+                            off_msg += dt_offset(tm.get('target_start_date'), tm['start_offset_days'])
                         if tm['end_offset_days'] > 1:
                             if off_msg: off_msg += "<br/>"
-                            off_msg += dt_offset("Ende", tm['end_offset_days'], tm['reading_span_days'])
+                            off_msg += dt_offset(tm.get('target_end_date'), tm['end_offset_days'])
                         if off_msg:
                             box_data.append([Paragraph(f"<i>Hinweis: {stichtag_hinweis(tm)}<br/>{off_msg}</i>", self.styles['SubTableCell']), ''])
                             box_style.append(('SPAN', (0, row_idx+3), (-1, row_idx+3)))
@@ -818,32 +850,36 @@ class PDFGenerator:
                     main_c = md.get('main_consumption', 0)
                     sum_sub = md.get('sum_sub_consumption', 0)
                     allg = md.get('allgemein_consumption', 0)
-                    pers = md.get('active_tenants')
-                    if not pers:
-                        pers = 1
-                
+                    quote = md.get('allgemein_quote')
+                    zeilen = 3 if quote is None else 4
+
                     box_data.append([Paragraph(f"Gesamtverbrauch Haus (Hauptzähler):", self.styles['MeterText']), Paragraph(f"{main_c:.1f} {unit}", self.styles['MeterText'])])
                     box_data.append([Paragraph(f"Summe aller Wohnungen:", self.styles['MeterText']), Paragraph(f"{sum_sub:.1f} {unit}", self.styles['MeterText'])])
                     box_data.append([Paragraph(f"Allgemeinverbrauch (Haus − Wohnungen):", self.styles['MeterText']), Paragraph(f"{allg:.1f} {unit}", self.styles['MeterTextBold'])])
-                    box_data.append([Paragraph(f"Ihr Anteil am Allgemeinverbrauch (1/{pers}):", self.styles['MeterText']), Paragraph(f"{(allg/pers):.1f} {unit}", self.styles['MeterTextBold'])])
+                    # NK-209 (B2): der Anteil, mit dem gerechnet wurde -- nach
+                    # Personentagen, nicht 1/Zahl der Mieter. Gespeicherte
+                    # Abrechnungen von davor kennen ihn nicht; dort fehlt die
+                    # Zeile lieber, als dass sie etwas Falsches sagt.
+                    if quote is not None:
+                        box_data.append([Paragraph(f"Ihr Anteil am Allgemeinverbrauch ({self._deutsch(quote * 100)} %):", self.styles['MeterText']), Paragraph(f"{self._deutsch(md.get('allgemein_anteil'), 1)} {unit}", self.styles['MeterTextBold'])])
                 
                     if mm.get('is_interpolated'):
                         off_msg = ""
                         if mm['start_offset_days'] > 1:
-                            off_msg += dt_offset("Start", mm['start_offset_days'], mm['reading_span_days'])
+                            off_msg += dt_offset(mm.get('target_start_date'), mm['start_offset_days'])
                         if mm['end_offset_days'] > 1:
                             if off_msg: off_msg += "<br/>"
-                            off_msg += dt_offset("Ende", mm['end_offset_days'], mm['reading_span_days'])
+                            off_msg += dt_offset(mm.get('target_end_date'), mm['end_offset_days'])
                         if off_msg:
                             box_data.append([Paragraph(f"<i>Hinweis Hauptzähler: {stichtag_hinweis(mm)}<br/>{off_msg}</i>", self.styles['SubTableCell']), ''])
-                            box_style.append(('SPAN', (0, row_idx+4), (-1, row_idx+4)))
+                            box_style.append(('SPAN', (0, row_idx+zeilen), (-1, row_idx+zeilen)))
                             row_idx += 1
                         
                     box_style.extend([
-                        ('LINEBELOW', (0, row_idx+3), (-1, row_idx+3), 0.5, colors.HexColor('#d1d5db')),
-                        ('BOTTOMPADDING', (0, row_idx+3), (-1, row_idx+3), 8),
+                        ('LINEBELOW', (0, row_idx+zeilen-1), (-1, row_idx+zeilen-1), 0.5, colors.HexColor('#d1d5db')),
+                        ('BOTTOMPADDING', (0, row_idx+zeilen-1), (-1, row_idx+zeilen-1), 8),
                     ])
-                    row_idx += 4
+                    row_idx += zeilen
                 
                 # Costs breakdown
                 box_data.append([Paragraph("Kostenberechnung:", self.styles['MeterTextBold']), ''])

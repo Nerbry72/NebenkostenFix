@@ -82,6 +82,14 @@
                 </div>
             </header>
 
+            <!-- NK-201: Warnung im offenen Modus, sichtbar nur in Docker. NK-214:
+                 unter dem Kopf im Fluss, nicht schwebend über Kopf und Dialogen. -->
+            <div id="ohne-anmeldung-hinweis" class="hinweis-leiste hinweis-band" role="status" hidden>
+                <i class="ph ph-eye" aria-hidden="true"></i>
+                <span>Die Anmeldung ist ausgeschaltet. Jeder in Ihrem Netz kann alle Daten sehen.</span>
+                <a class="btn-primary" id="ohne-anmeldung-einschalten" href="/einrichtung">Anmeldung einschalten</a>
+            </div>
+
             <!-- TAB: DASHBOARD -->
             <section class="content-section tab-content active" id="tab-dashboard">
                 <div class="section-header">
@@ -2263,12 +2271,6 @@
         <i class="ph ph-clock" aria-hidden="true"></i>
         <span id="leerlauf-text"></span>
         <button type="button" class="btn-primary" onclick="angemeldetBleiben()">Angemeldet bleiben</button>
-    </div>
-    <!-- NK-201: Warnung im offenen Modus, sichtbar nur in Docker. -->
-    <div id="ohne-anmeldung-hinweis" class="hinweis-leiste" role="status" hidden>
-        <i class="ph ph-eye" aria-hidden="true"></i>
-        <span>Die Anmeldung ist ausgeschaltet. Jeder in Ihrem Netz kann alle Daten sehen.</span>
-        <a class="btn-primary" id="ohne-anmeldung-einschalten" href="/einrichtung">Anmeldung einschalten</a>
     </div>
     <div id="entwurf-hinweis" class="hinweis-leiste" role="status" hidden>
         <i class="ph ph-floppy-disk" aria-hidden="true"></i>
