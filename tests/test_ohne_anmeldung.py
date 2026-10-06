@@ -206,7 +206,7 @@ def test_windows_mit_schalter_false(app_ctx, monkeypatch):
 @pytest.mark.parametrize('desktop', [True, False])
 def test_bestand_mit_konto_bleibt_gesperrt(app_ctx, monkeypatch, desktop):
     desktop_setzen(app_ctx, monkeypatch, desktop)
-    user = User(username='fabi')
+    user = User(username='vermieter')
     user.set_password('langgenug12345')
     db.session.add(user)
     db.session.commit()
@@ -217,7 +217,7 @@ def test_bestand_mit_konto_bleibt_gesperrt(app_ctx, monkeypatch, desktop):
 def test_schalter_true_plus_konto_gesperrt(app_ctx, monkeypatch):
     desktop_setzen(app_ctx, monkeypatch, True)
     schalter_setzen(True)
-    user = User(username='fabi')
+    user = User(username='vermieter')
     user.set_password('langgenug12345')
     db.session.add(user)
     db.session.commit()
@@ -229,7 +229,7 @@ def test_schalter_true_plus_stillgelegtes_konto_gesperrt(app_ctx,
                                                          monkeypatch):
     desktop_setzen(app_ctx, monkeypatch, True)
     schalter_setzen(True)
-    user = User(username='fabi')
+    user = User(username='vermieter')
     user.set_password('langgenug12345')
     user.is_active = False
     db.session.add(user)
@@ -277,7 +277,7 @@ def test_kontoanlage_im_offenen_modus_windows(app_ctx, monkeypatch):
     desktop_setzen(app_ctx, monkeypatch, True)
     client = app_ctx.app.test_client()
     assert client.post('/einrichtung', json={
-        'username': 'fabi',
+        'username': 'vermieter',
         'password': 'langgenug12345',
         'password2': 'langgenug12345'}).status_code == 201
     assert schalter() is False
@@ -295,7 +295,7 @@ def test_kontoanlage_im_offenen_modus_docker_mit_code(app_ctx, monkeypatch,
         client.get('/einrichtung')
         code = code_aus_protokoll(caplog)
     assert client.post('/einrichtung', json={
-        'username': 'fabi', 'password': 'langgenug12345',
+        'username': 'vermieter', 'password': 'langgenug12345',
         'password2': 'langgenug12345',
         'code': code}).status_code == 201
     assert schalter() is False
@@ -317,13 +317,13 @@ def test_auth_me_offen(app_ctx, monkeypatch):
 
 
 def test_auth_me_angemeldet(app_ctx, monkeypatch):
-    user = User(username='fabi')
+    user = User(username='vermieter')
     user.set_password('langgenug12345')
     db.session.add(user)
     db.session.commit()
     client = app_ctx.app.test_client()
     assert client.post('/login', json={
-        'username': 'fabi',
+        'username': 'vermieter',
         'password': 'langgenug12345'}).status_code == 200
     antwort = client.get('/api/auth/me')
     assert antwort.status_code == 200
@@ -354,7 +354,7 @@ PFAD_AUS = '/api/anmeldung/aus'
 PASSWORT = 'langgenug12345'
 
 
-def konto(name='fabi'):
+def konto(name='vermieter'):
     user = User(username=name)
     user.set_password(PASSWORT)
     db.session.add(user)
@@ -362,7 +362,7 @@ def konto(name='fabi'):
     return user
 
 
-def angemeldet(app_ctx, name='fabi'):
+def angemeldet(app_ctx, name='vermieter'):
     client = app_ctx.app.test_client()
     assert client.post('/login', json={
         'username': name, 'password': PASSWORT}).status_code == 200
@@ -496,7 +496,7 @@ def test_nach_ausschalten_neues_konto_sperrt_wieder(app_ctx, monkeypatch,
         client.get('/einrichtung')
         code = code_aus_protokoll(caplog)
     assert client.post('/einrichtung', json={
-        'username': 'fabi', 'password': PASSWORT,
+        'username': 'vermieter', 'password': PASSWORT,
         'password2': PASSWORT, 'code': code}).status_code == 201
     assert schalter() is False
     assert app_ctx.app.test_client().get('/api/properties').status_code == 401
@@ -538,7 +538,7 @@ def test_cli_users_add_schaltet_auf_anmeldung(app_ctx, monkeypatch):
     desktop_setzen(app_ctx, monkeypatch, True)
     runner = app_ctx.app.test_cli_runner()
     resultat = runner.invoke(
-        args=['users', 'add', 'fabi', '--password', 'langgenug12345'])
+        args=['users', 'add', 'vermieter', '--password', 'langgenug12345'])
     assert resultat.exit_code == 0, resultat.output
     assert schalter() is False
     assert app_ctx.app.test_client().get('/api/properties').status_code == 401
