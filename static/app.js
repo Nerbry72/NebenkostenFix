@@ -5908,13 +5908,18 @@ async function generateBillPreview(tenantId, startDate, endDate, categoryIds = n
                     const isAllgInterpolated = md.main_meter.is_interpolated || (md.tenant_meter && md.tenant_meter.is_interpolated);
                     if (aCons !== 'N/A') aCons = window.wrapInterpolated(aCons, isAllgInterpolated, md.main_meter);
                     
-                    mdStr += `<div><span style="font-weight:bold;">Hauptzähler:</span> ${mCons} ${escapeHtml(md.unit)}</div>`;
+                    // Haus und Allgemein gelten fuer die ganze Rechnung (NK-213).
+                    const mm = md.main_meter;
+                    const hzZeitraum = mm.target_start_date && mm.target_end_date
+                        ? ` (${new Date(mm.target_start_date).toLocaleDateString('de-DE')} bis ${new Date(mm.target_end_date).toLocaleDateString('de-DE')})`
+                        : '';
+                    mdStr += `<div><span style="font-weight:bold;">Hauptzähler${hzZeitraum}:</span> ${mCons} ${escapeHtml(md.unit)}</div>`;
                     mdStr += `<div><span style="font-weight:bold;">Allgemeinverbrauch:</span> ${aCons} ${escapeHtml(md.unit)}</div>`;
                     // NK-209 (B2): der Anteil, mit dem gerechnet wurde (Personentage)
                     if (md.allgemein_quote != null && md.allgemein_anteil != null) {
                         const prozent = (md.allgemein_quote * 100).toLocaleString('de-DE',
                             { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                        mdStr += `<div><span style="font-weight:bold;">Ihr Anteil am Allgemeinverbrauch:</span> ${md.allgemein_anteil.toFixed(1)} ${escapeHtml(md.unit)} (${prozent} %)</div>`;
+                        mdStr += `<div><span style="font-weight:bold;">Ihr Anteil am Allgemeinverbrauch:</span> ${md.allgemein_anteil.toFixed(1)} ${escapeHtml(md.unit)} (${prozent} %${md.preis_ht != null ? ', nach den Kosten von HT und NT gewichtet' : ''})</div>`;
                     }
                 }
                 mdStr += `</div>`;

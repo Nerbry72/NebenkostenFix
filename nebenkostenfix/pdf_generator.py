@@ -853,15 +853,22 @@ class PDFGenerator:
                     quote = md.get('allgemein_quote')
                     zeilen = 3 if quote is None else 4
 
-                    box_data.append([Paragraph(f"Gesamtverbrauch Haus (Hauptzähler):", self.styles['MeterText']), Paragraph(f"{main_c:.1f} {unit}", self.styles['MeterText'])])
+                    # Haus und Allgemein gelten fuer die ganze Rechnung (NK-213),
+                    # nicht fuer den Zeitraum des Mieters -- der Kasten sagt es.
+                    zeitraum = (f", {format_date(mm['target_start_date'])} bis {format_date(mm['target_end_date'])}"
+                                if mm.get('target_start_date') and mm.get('target_end_date') else "")
+                    box_data.append([Paragraph(f"Gesamtverbrauch Haus (Hauptzähler{zeitraum}):", self.styles['MeterText']), Paragraph(f"{main_c:.1f} {unit}", self.styles['MeterText'])])
                     box_data.append([Paragraph(f"Summe aller Wohnungen:", self.styles['MeterText']), Paragraph(f"{sum_sub:.1f} {unit}", self.styles['MeterText'])])
                     box_data.append([Paragraph(f"Allgemeinverbrauch (Haus − Wohnungen):", self.styles['MeterText']), Paragraph(f"{allg:.1f} {unit}", self.styles['MeterTextBold'])])
                     # NK-209 (B2): der Anteil, mit dem gerechnet wurde -- nach
                     # Personentagen, nicht 1/Zahl der Mieter. Gespeicherte
                     # Abrechnungen von davor kennen ihn nicht; dort fehlt die
                     # Zeile lieber, als dass sie etwas Falsches sagt.
+                    # Beim Dualtarif wiegt die Quote die Abschnitte nach ihren
+                    # Kosten in HT und NT, nicht nach der Menge (NK-213).
                     if quote is not None:
-                        box_data.append([Paragraph(f"Ihr Anteil am Allgemeinverbrauch ({self._deutsch(quote * 100)} %):", self.styles['MeterText']), Paragraph(f"{self._deutsch(md.get('allgemein_anteil'), 1)} {unit}", self.styles['MeterTextBold'])])
+                        gewichtet = ", nach den Kosten von HT und NT gewichtet" if md.get('preis_ht') is not None else ""
+                        box_data.append([Paragraph(f"Ihr Anteil am Allgemeinverbrauch ({self._deutsch(quote * 100)} %{gewichtet}):", self.styles['MeterText']), Paragraph(f"{self._deutsch(md.get('allgemein_anteil'), 1)} {unit}", self.styles['MeterTextBold'])])
                 
                     if mm.get('is_interpolated'):
                         off_msg = ""

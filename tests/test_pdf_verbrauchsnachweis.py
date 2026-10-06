@@ -147,3 +147,29 @@ def test_abweichung_vom_stichtag_ist_ein_satz(unkomprimiert):
     assert ('ZumStichtag31.12.2024liegtdienächsteAblesung32Tageentfernt.'
             'DerVerbrauchdieser32Tageistgeschätzt.') in text
     assert 'Fenster' not in text and 'Abweichung' not in text
+
+
+def test_dualtarif_nennt_die_gewichtung_der_quote(unkomprimiert):
+    """Review PR 26 (8): beim Dualtarif wiegt die Quote nach Kosten von HT und
+    NT (NK-213); vorher stand sie da, als teile sie die Menge."""
+    zeile = allgemeinzeile(allgemein_quote=0.25, allgemein_anteil=10.0,
+                           preis_ht=Decimal('0.3'), preis_nt=Decimal('0.2'))
+    text = _geklebt(_erzeuge([zeile], detailliert=True))
+    assert 'IhrAnteilamAllgemeinverbrauch(25,00%,nachdenKostenvonHTundNTgewichtet):10,0' in text
+
+    einheit = _geklebt(_erzeuge([allgemeinzeile(allgemein_quote=0.25, allgemein_anteil=10.0)],
+                                detailliert=True))
+    assert 'gewichtet' not in einheit
+
+
+def test_hauptzaehler_nennt_seinen_zeitraum(unkomprimiert):
+    """Review PR 26 (9): Haus und Allgemein gelten für die ganze Rechnung, der
+    Mieter wohnte vielleicht nur einen Teil davon -- das Blatt sagte es nicht."""
+    zeile = allgemeinzeile(allgemein_quote=0.25, allgemein_anteil=10.0)
+    zeile['meter_details']['main_meter'].update(
+        target_start_date='2024-01-01', target_end_date='2024-12-31')
+    text = _geklebt(_erzeuge([zeile], detailliert=True))
+    assert 'GesamtverbrauchHaus(Hauptzähler,01.01.2024bis31.12.2024):100.0m³' in text
+
+    alt = _geklebt(_erzeuge([allgemeinzeile()], detailliert=True))
+    assert 'GesamtverbrauchHaus(Hauptzähler):100.0m³' in alt
