@@ -143,14 +143,14 @@ def vergleichen(erwartet: dict, angekommen: dict) -> list[str]:
         fehler.append(f'Vermieterwerte nicht festgeschrieben: {angekommen.get("vermieter")}')
     if not angekommen.get('logo'):
         fehler.append('Logo fehlt')
-    # NK-197: nur die gemeinsamen Schluessel vergleichen -- alte Releases
-    # kennen den neuen Schalter nicht. Mit einem solchen Zwilling soll die
-    # Probe bestehen; die Pflichtschluessel muessen aber da sein.
+    # NK-197: ein Paket aus einem alten Release kennt den neuen Schalter
+    # nicht; was drueben zusaetzlich steht, ist erlaubt. Jeder Schluessel
+    # des Pakets muss aber mit seinem Wert ankommen, und die
+    # Pflichtschluessel muessen da sein.
     einst = erwartet.get('einstellungen') or {}
     angek = angekommen.get('einstellungen') or {}
-    gemeinsam = set(einst) & set(angek)
-    if not {'haftung', 'updates_automatisch'} <= gemeinsam \
-            or {k: einst[k] for k in gemeinsam} != {k: angek[k] for k in gemeinsam}:
+    if not ({'haftung', 'updates_automatisch'} | set(einst)) <= set(angek) \
+            or {k: angek[k] for k in einst} != einst:
         fehler.append(f'Einstellungen nicht übernommen: {angekommen.get("einstellungen")}')
     return fehler
 

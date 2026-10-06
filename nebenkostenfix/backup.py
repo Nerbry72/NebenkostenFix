@@ -880,6 +880,7 @@ def _einspielen_klartext(app, archiv, sicherheitskopie_nach=None,
                 herrichten(belege=False)
             _verbindungen_schliessen(app)
         zusatz = _zusatz_anwenden(app, entpackt, manifest)
+        # Erst hier importiert: auth -> umzug -> backup -> auth waere ein Kreis.
         from nebenkostenfix import auth
         bleibt_an = auth.import_absichern(app, vorher_offen)
 
@@ -903,7 +904,7 @@ def _offen(app) -> bool:
     """Lief die Instanz vor dem Einspielen offen? Ohne Kontentabelle nicht."""
     from sqlalchemy.exc import SQLAlchemyError
 
-    from nebenkostenfix import auth
+    from nebenkostenfix import auth  # spaet: auth -> umzug -> backup -> auth
     try:
         with app.app_context():
             return auth.ohne_anmeldung_aktiv(app)

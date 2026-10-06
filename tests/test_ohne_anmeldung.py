@@ -144,6 +144,19 @@ def test_docker_knopf_braucht_code(app_ctx, monkeypatch, caplog):
     assert client.get('/api/properties').status_code == 200
 
 
+def test_docker_knopf_falscher_code_antwortet_json(app_ctx, monkeypatch):
+    """Review PR 26: der Zweig ohne_anmeldung antwortete auf einen
+    falschen Code auch einem JSON-Aufrufer mit der HTML-Seite."""
+    desktop_setzen(app_ctx, monkeypatch, False)
+    client = app_ctx.app.test_client()
+    client.get('/einrichtung')
+    antwort = client.post('/einrichtung', json={'ohne_anmeldung': True,
+                                                'code': '0000-0000-0000-0000'})
+    assert antwort.status_code == 400
+    assert 'Einmal-Code stimmt nicht' in antwort.get_json()['error']
+    assert schalter() is not True
+
+
 # --- Die Warnung: einmal je Prozess, nur in Docker --------------------------------
 
 def test_warnung_genau_einmal_in_docker(app_ctx, monkeypatch, caplog):
@@ -386,6 +399,33 @@ def test_ausschalten_falsches_passwort_403(app_ctx, monkeypatch):
     assert schalter() is None
 
 
+@pytest.mark.parametrize('methode, pfad, feld', [
+    ('post', PFAD_AUS, 'password'),
+    ('put', '/api/konto/passwort', 'altes_passwort'),
+])
+def test_passwortprobe_in_der_sitzung_wird_gesperrt(app_ctx, monkeypatch,
+                                                    methode, pfad, feld):
+    """Review PR 26: in einer uebernommenen Sitzung liess sich das Passwort
+    hier beliebig oft durchprobieren -- danach Konten loeschen oder den
+    Zugang behalten. Jetzt zaehlt jeder Fehlversuch wie bei der Anmeldung."""
+    from nebenkostenfix import anmeldeschutz
+    desktop_setzen(app_ctx, monkeypatch, True)
+    konto()
+    client = angemeldet(app_ctx)
+    senden = getattr(client, methode)
+    for _ in range(anmeldeschutz.GRENZE_KONTO):
+        antwort = senden(pfad, json={feld: 'falschespasswort1',
+                                     'neues_passwort': 'ganzneuespasswort1'})
+        assert antwort.status_code in (400, 403)
+    antwort = senden(pfad, json={feld: PASSWORT,
+                                 'neues_passwort': 'ganzneuespasswort1'})
+    assert antwort.status_code == 429
+    assert antwort.get_json()['code'] == 'anmeldung_gesperrt'
+    assert int(antwort.headers['Retry-After']) > 0
+    assert User.query.count() == 1
+    assert User.query.first().check_password(PASSWORT)
+
+
 def test_ausschalten_windows(app_ctx, monkeypatch):
     desktop_setzen(app_ctx, monkeypatch, True)
     konto()
@@ -468,14 +508,16 @@ def test_sperre_von_vorher_gilt_nach_aus_nicht_mehr(app_ctx, monkeypatch):
     konto()
     client = angemeldet(app_ctx)
     ordner = auth._anmeldeschutz_ordner()
+    # Gesperrt ist ein anderer Name: eine Sperre auf dem eigenen Konto
+    # haelt auch das Ausschalten auf (Review PR 26, Test oben).
     for _ in range(5):
-        anmeldeschutz.fehlversuch(ordner, 'fabi', '127.0.0.1')
-    assert anmeldeschutz.gesperrt_fuer(ordner, 'fabi', '127.0.0.1') > 0
+        anmeldeschutz.fehlversuch(ordner, 'zweit', '10.0.0.9')
+    assert anmeldeschutz.gesperrt_fuer(ordner, 'zweit', '10.0.0.9') > 0
     assert client.post(PFAD_AUS, json={'password': PASSWORT}).status_code == 200
     assert client.post('/einrichtung', json={
-        'username': 'fabi', 'password': PASSWORT,
+        'username': 'zweit', 'password': PASSWORT,
         'password2': PASSWORT}).status_code == 201
-    assert anmeldeschutz.gesperrt_fuer(ordner, 'fabi', '127.0.0.1') == 0
+    assert anmeldeschutz.gesperrt_fuer(ordner, 'zweit', '10.0.0.9') == 0
 
 
 # --- Die Huelle ohne Passwort --------------------------------------------------------
