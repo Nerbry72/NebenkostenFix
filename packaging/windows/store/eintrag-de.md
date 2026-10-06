@@ -25,12 +25,16 @@ Die Nebenkostenabrechnung für private Vermieter. Kostenlos, und Ihre Daten blei
 
 ## Neuerungen in dieser Version
 
-Version 0.12.0: Die Windows-App startet ohne Anmeldung, der Haftungshinweis ist kürzer.
+Version 0.12.0: Die Windows-App startet ohne Anmeldung, der Haftungshinweis ist kürzer. Der Allgemeinverbrauch wird genauer aufgeteilt, dadurch können sich Beträge ändern.
 
 - Die Windows-App öffnet direkt, ohne Benutzername und Passwort. In den Einstellungen unter „Konto“ lässt sich die Anmeldung einschalten.
 - In Docker bleibt die Anmeldung Vorgabe. Sie lässt sich dort ausschalten, eine Warnleiste weist dann darauf hin.
 - Ein Umzug oder eine Sicherung nimmt die Wahl mit. Wer die Anmeldung ausgeschaltet hatte, bleibt auch auf dem neuen Rechner ohne.
 - Der Haftungshinweis ist kürzer gefasst. Er erscheint einmal neu und muss bestätigt werden.
+- Der Allgemeinverbrauch (Hauptzähler abzüglich der Wohnungszähler) wird zwischen Tagen gemessen, an denen alle Zähler abgelesen sind. Bei einem Mieterwechsel im Jahr kann das Beträge ändern.
+- Der Verbrauchsnachweis zeigt die Zählerstände an den Stichtagen, mit denen gerechnet wird, und den Anteil am Allgemeinverbrauch in Prozent.
+- Ein Zählerstand unter dem vorigen oder ein zweiter am selben Tag wird vor dem Speichern nachgefragt.
+- Abrechnungen nach älterem Regelstand sind gekennzeichnet. „Korrektur erstellen“ zeigt vorher, was sich ändert.
 
 ## Produktmerkmale
 
