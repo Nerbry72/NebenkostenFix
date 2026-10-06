@@ -205,25 +205,41 @@ def _anwendung_im_paket(archiv: Path) -> dict:
         return json.loads(z.read(backup.EINSTELLUNGEN_IM_ARCHIV))['anwendung']
 
 
+def _konten_weg(app):
+    from nebenkostenfix.models import User, db
+
+    with app.app_context():
+        User.query.delete()
+        db.session.commit()
+
+
+@pytest.mark.parametrize('konto', [True, False], ids=['mit-konto', 'ohne-konto'])
 @pytest.mark.parametrize('desktop', [False, True], ids=['docker', 'windows'])
 @pytest.mark.parametrize('vorwahl', ['nichts', True, False])
-def test_export_traegt_den_wirksamen_wert(bestand, tmp_path, monkeypatch, desktop, vorwahl):
-    """Sicherung und Umzugspaket schreiben den wirksamen Wert, nie None."""
+def test_export_traegt_den_wirksamen_wert(bestand, tmp_path, monkeypatch, desktop,
+                                          vorwahl, konto):
+    """Sicherung und Umzugspaket schreiben den wirksamen Wert, nie None.
+    NK-206: mit Konto ist er immer False -- das Konto gewinnt."""
     from nebenkostenfix import datenordner
     from nebenkostenfix import einstellungen
 
     monkeypatch.setitem(bestand.app.config, 'DESKTOP', desktop)
+    if not konto:
+        _konten_weg(bestand.app)
     ordner = datenordner.datenordner()
     if vorwahl == 'nichts':
         erwartet = desktop
     else:
         einstellungen.schreiben(ordner, ohne_anmeldung=vorwahl)
         erwartet = vorwahl
+    erwartet = erwartet and not konto
     for bauen in (lambda: backup.sicherung_erstellen(bestand.app, tmp_path),
                   lambda: umzug.paket_erstellen(
                       bestand.app, tmp_path / 'NebenkostenFix-test.nkfix')):
         paket = bauen()
         assert _anwendung_im_paket(paket)['ohne_anmeldung'] == erwartet, (desktop, vorwahl)
+    assert umzug.bestandsbericht(bestand.app)['einstellungen']['ohne_anmeldung'] \
+        == erwartet, (desktop, vorwahl)
 
 
 def test_paket_mit_true_setzt_den_schalter(bestand, tmp_path, monkeypatch):
@@ -232,8 +248,8 @@ def test_paket_mit_true_setzt_den_schalter(bestand, tmp_path, monkeypatch):
 
     ordner = datenordner.datenordner()
     monkeypatch.setitem(bestand.app.config, 'DESKTOP', True)
+    _konten_weg(bestand.app)
     paket = _paket(bestand, tmp_path)
-    monkeypatch.setitem(bestand.app.config, 'DESKTOP', False)
     bericht = umzug.uebernehmen(bestand.app, paket)
     assert einstellungen.lesen(ordner)['ohne_anmeldung'] is True
     assert 'ohne_anmeldung' in bericht['zusatz']['einstellungen']

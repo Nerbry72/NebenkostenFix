@@ -34,10 +34,11 @@ def ohne_anmeldung_gewuenscht(stand: dict, desktop) -> bool:
     return wert if isinstance(wert, bool) else bool(desktop)
 
 
-def uebertragbar(stand: dict, desktop) -> dict:
-    """Nur die Schluessel, die im Paket mitwandern; der Schalter wirksam."""
+def uebertragbar(stand: dict, desktop, hat_konto: bool) -> dict:
+    """Nur die Schluessel, die im Paket mitwandern; der Schalter wirksam --
+    mit Konto also False (NK-206)."""
     wert = {k: stand.get(k) for k in UEBERTRAGBAR}
-    wert['ohne_anmeldung'] = ohne_anmeldung_gewuenscht(stand, desktop)
+    wert['ohne_anmeldung'] = not hat_konto and ohne_anmeldung_gewuenscht(stand, desktop)
     return wert
 
 

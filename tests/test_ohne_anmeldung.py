@@ -683,38 +683,50 @@ def _daten_da(app):
     return HAUS in namen
 
 
+class _Sammler(logging.Handler):
+    """Hört direkt am Anwendungs-Logger mit: die Wanderung eines Pakets
+    konfiguriert das Protokoll neu (alembic fileConfig) und nimmt den
+    pytest-Sammler von der Wurzel weg."""
+
+    def __init__(self):
+        super().__init__()
+        self.zeilen = []
+
+    def emit(self, satz):
+        self.zeilen.append(satz.getMessage())
+
+
 def test_umzug_1_windows_bestand_ohne_konto_zu_docker_frisch(
-        app_ctx, umzug_statt, monkeypatch, tmp_path, caplog):
-    """Windows-Bestand ohne Konto (Schalter None) geht an frisches Docker
-    über die Einrichtungsseite mit Code -- und dort ist es danach offen,
-    mit der Warnung im Protokoll."""
+        app_ctx, umzug_statt, monkeypatch, tmp_path):
+    """Windows-Bestand ohne Konto (exportiert True) geht an frisches Docker
+    über die Einrichtungsseite mit Code. NK-206: der Import öffnet Docker
+    nicht von selbst -- die Anmeldung bleibt an, das Protokoll sagt es, und
+    offen wird es erst mit dem Knopf und einem neuen Einmal-Code."""
+    from nebenkostenfix import auth
+
     desktop_setzen(app_ctx, monkeypatch, True)
     _haus()
     paket = _quellpaket(app_ctx.app, tmp_path)
     _ziel_einstellen(app_ctx, monkeypatch, False)
-    bericht = _ueber_die_einrichtung(app_ctx.app, paket)
-    assert bericht['anmelden'] is False, bericht
-    assert bericht['ohne_anmeldung'] is True, bericht
-    # Die Wanderung des Pakets konfiguriert das Protokoll neu (alembic
-    # fileConfig) und nimmt den pytest-Sammler von der Wurzel weg; deshalb
-    # hoeren wir direkt am Anwendungs-Logger mit.
-    class _Sammler(logging.Handler):
-        def __init__(self):
-            super().__init__()
-            self.zeilen = []
-
-        def emit(self, satz):
-            self.zeilen.append(satz.getMessage())
-
     sammler = _Sammler()
     app_ctx.app.logger.addHandler(sammler)
     try:
-        client = app_ctx.app.test_client()
-        assert client.get('/api/properties').status_code == 200
-        assert any('ausgeschaltet' in z for z in sammler.zeilen), sammler.zeilen
+        bericht = _ueber_die_einrichtung(app_ctx.app, paket)
     finally:
         app_ctx.app.logger.removeHandler(sammler)
+    assert bericht['anmelden'] is False, bericht
+    assert bericht['ohne_anmeldung'] is False, bericht
+    assert bericht['anmeldung_bleibt_an'] is True, bericht
+    assert schalter() is False
+    assert any('bleibt die Anmeldung an' in z for z in sammler.zeilen), sammler.zeilen
     assert _daten_da(app_ctx.app)
+    client = app_ctx.app.test_client()
+    assert client.get('/api/properties').status_code == 401
+    client.get('/einrichtung')
+    code = auth._einmal_code_legen(app_ctx.app)
+    offen = client.post('/einrichtung', json={'ohne_anmeldung': True, 'code': code})
+    assert offen.status_code == 200, offen.get_data(as_text=True)
+    assert client.get('/api/properties').status_code == 200
 
 
 def test_umzug_2_docker_bestand_mit_konto_zu_windows_frisch(
@@ -786,7 +798,8 @@ def test_umzug_4_docker_offen_zu_windows_offen(app_ctx, umzug_statt,
 def test_umzug_5_ziel_mit_konto_paket_ohne_konto_true(app_ctx, umzug_statt,
                                                       monkeypatch, tmp_path,
                                                       desktop):
-    """Ziel mit Konto, Paket ohne Konto mit True (ERSETZEN): offen."""
+    """Ziel mit Konto, Paket ohne Konto mit True (ERSETZEN): Windows offen;
+    Docker bleibt angemeldet (NK-206), bis die Einrichtung es anders will."""
     desktop_setzen(app_ctx, monkeypatch, True)
     _haus()
     paket = _quellpaket(app_ctx.app, tmp_path)
@@ -803,8 +816,9 @@ def test_umzug_5_ziel_mit_konto_paket_ohne_konto_true(app_ctx, umzug_statt,
     assert antwort.status_code == 200, antwort.get_data(as_text=True)
     bericht = antwort.get_json()
     assert bericht['anmelden'] is False, bericht
-    assert bericht['ohne_anmeldung'] is True, bericht
-    assert client.get('/api/properties').status_code == 200
+    assert bericht['ohne_anmeldung'] is desktop, bericht
+    assert bericht['anmeldung_bleibt_an'] is not desktop, bericht
+    assert client.get('/api/properties').status_code == (200 if desktop else 401)
 
 
 def test_umzug_6_ziel_offen_paket_mit_konto(app_ctx, umzug_statt, monkeypatch,
@@ -964,6 +978,42 @@ def test_umzug_12_export_offen_docker_ohne_code(app_ctx, umzug_statt,
     inhalt = antwort.get_data()
     antwort.close()
     assert zipfile.is_zipfile(io.BytesIO(inhalt))
+
+
+def test_umzug_13_sicherung_ohne_konto_oeffnet_docker_nicht(
+        app_ctx, umzug_statt, monkeypatch):
+    """NK-206: auch eine zurückgespielte Sicherung ohne Konto mit True
+    öffnet eine angemeldete Docker-Instanz nicht -- die Anmeldung bleibt an."""
+    from nebenkostenfix import backup
+
+    desktop_setzen(app_ctx, monkeypatch, True)
+    _haus()
+    alt = backup.sicherung_erstellen(app_ctx.app, backup.standardziel(app_ctx.app))
+    _ziel_einstellen(app_ctx, monkeypatch, False)
+    _konto(ZIEL_USER, ZIEL_PASS)
+    client = app_ctx.app.test_client()
+    assert client.post('/login', json={'username': ZIEL_USER,
+                                       'password': ZIEL_PASS}).status_code == 200
+    einspiel = client.post('/api/backup/einspielen', json={'name': alt.name})
+    assert einspiel.status_code == 200, einspiel.get_data(as_text=True)
+    assert schalter() is False
+    assert User.query.count() == 0
+    assert app_ctx.app.test_client().get('/api/properties').status_code == 401
+
+
+def test_konto_liest_keine_einstellungsdatei(app_ctx, monkeypatch):
+    """NK-206: mit Konto entscheidet die Abfrage allein; die Einstellungsdatei
+    bleibt je Anfrage ungelesen."""
+    from nebenkostenfix import auth
+
+    _konto(QUER_USER, QUER_PASS)
+
+    def laut(*args, **kwargs):
+        raise RuntimeError('Mit Konto darf die Einstellungsdatei nicht gelesen werden.')
+
+    monkeypatch.setattr(auth.einstellungen, 'lesen', laut)
+    assert auth.ohne_anmeldung_aktiv(app_ctx.app) is False
+    assert app_ctx.app.test_client().get('/api/properties').status_code == 401
 
 
 

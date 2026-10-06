@@ -354,6 +354,7 @@ def uebernehmen(app, archiv: Path, passphrase: str | None = None) -> dict:
         datenbank.session.remove()
         ergebnis['anmelden'] = datenbank.session.query(User.id).first() is not None
         ergebnis['ohne_anmeldung'] = auth.ohne_anmeldung_aktiv(app)
+    ergebnis['anmeldung_bleibt_an'] = bericht['anmeldung_bleibt_an']
     return ergebnis
 
 
@@ -384,7 +385,7 @@ def bestandsbericht(app) -> dict:
         'logo': vermieter_logo.pfad(ordner) is not None,
         # NK-197: der Schalter wandert als wirksamer Wert mit, nie als None.
         'einstellungen': einstellungen.uebertragbar(
-            einstellungen.lesen(ordner), app.config.get('DESKTOP')),
+            einstellungen.lesen(ordner), app.config.get('DESKTOP'), bool(konten)),
         'konten': konten,
     }
 

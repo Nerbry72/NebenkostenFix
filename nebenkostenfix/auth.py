@@ -219,6 +219,26 @@ def ohne_anmeldung_aktiv(app) -> bool:
         einstellungen.lesen(), app.config.get('DESKTOP'))
 
 
+def import_absichern(app, vorher_offen: bool) -> bool:
+    """NK-206: ein Import (Umzug, Sicherung) oeffnet Docker nie von selbst.
+
+    Bringt das Paket kein Konto und den Schalter True mit, war die Instanz
+    vorher aber angemeldet oder frisch, bleibt die Anmeldung an. Offen wird
+    sie erst ueber die Einrichtung (Knopf mit Einmal-Code). Die Windows-App
+    ist ab Werk offen, dort aendert sich nichts."""
+    if app.config.get('DESKTOP') or vorher_offen:
+        return False
+    with app.app_context():
+        if not ohne_anmeldung_aktiv(app):
+            return False
+    einstellungen.schreiben(ohne_anmeldung=False)
+    app.logger.warning(
+        'Das eingespielte Paket war ohne Anmeldung gespeichert. Hier bleibt '
+        'die Anmeldung an; ohne Konto arbeiten: Einrichtung, „Ohne Anmeldung '
+        'fortfahren“.')
+    return True
+
+
 def _offen_warnen(app, immer=False):
     """Die Warnung des offenen Modus, nur in Docker (NK-198).
 
