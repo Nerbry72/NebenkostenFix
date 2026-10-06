@@ -5362,7 +5362,7 @@ function berichtVersionenBlock(id, umschlag) {
 
 // NK-217 (F2): die Abrechnung bleibt, wie sie zugegangen ist; der Hinweis
 // sagt nur, dass eine Korrektur heute anders rechnen kann.
-const REGELSTAND_HINWEIS = `<p class="regelstand-hinweis" style="margin: 4px 0 0 0; color: var(--warning-color); font-size: 0.9rem;"><i class="ph ph-warning"></i> Nach älterem Regelstand erstellt. Eine Korrektur rechnet nach dem heutigen.</p>`;
+const REGELSTAND_HINWEIS = `<p class="regelstand-hinweis" style="margin: 4px 0 0 0; color: var(--warning-color); font-size: 0.9rem;"><i class="ph ph-warning"></i> Nach älterem Regelstand erstellt. „Korrektur erstellen“ prüft, ob der heutige anders rechnet.</p>`;
 
 /* NK-217 (F2): vor dem Bestätigen steht da, was die Korrektur ändert. */
 function korrekturVorschauText(v) {
@@ -5379,6 +5379,20 @@ async function korrekturErstellen(id) {
         const vorschau = await fetch(`/api/billing/reports/${id}/korrektur/vorschau`);
         if (!vorschau.ok) throw await serverFehler(vorschau);
         const v = await vorschau.json();
+        if (v.unveraendert && v.veraltet) {
+            // Gleiches Ergebnis nach heutigem Regelstand: der Server haelt das
+            // fest, damit der Hinweis nicht fuer immer stehen bleibt.
+            const res = await fetch(`/api/billing/reports/${id}/korrektur`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({})
+            });
+            if (!res.ok) throw await serverFehler(res);
+            showSuccess((await res.json()).message);
+            await fetchBillingHistory();
+            openReportDetails(id);
+            return;
+        }
         if (v.unveraendert) {
             showSuccess('Die Abrechnung rechnet mit den heutigen Daten gleich. Eine Korrektur ist nicht nötig.');
             return;

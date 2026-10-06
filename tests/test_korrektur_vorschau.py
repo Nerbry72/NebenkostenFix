@@ -106,3 +106,25 @@ def test_die_korrektur_hebt_den_regelstand(auth_client, app_ctx):
     assert auth_client.post(f'/api/billing/reports/{bericht_id}/korrektur').status_code == 201
 
     assert _kennzeichen(auth_client, bericht_id) == (False, False)
+
+
+def test_gleiches_ergebnis_erledigt_den_hinweis(auth_client, app_ctx):
+    """Rechnet der heutige Regelstand gleich, entfällt der Hinweis ohne neue Version.
+
+    *Hätte den Fehler gefunden:* vorher blieb ``veraltet`` für immer stehen --
+    die Korrektur lehnte eine unveränderte Abrechnung mit 400 ab.
+    """
+    mieter_id, _, _ = _welt(app_ctx)
+    bericht_id = _finalisiere(auth_client, mieter_id).id
+    _bericht(bericht_id).aktuelle_version.regel_version = '2026-08-28'
+    db.session.commit()
+    assert _vorschau(auth_client, bericht_id)['unveraendert'] is True
+
+    antwort = auth_client.post(f'/api/billing/reports/{bericht_id}/korrektur')
+
+    assert antwort.status_code == 200, antwort.get_data(as_text=True)
+    assert antwort.get_json()['unveraendert'] is True
+    assert _kennzeichen(auth_client, bericht_id) == (False, False)
+    assert BillingReportVersion.query.filter_by(report_id=bericht_id).count() == 1
+    # Ein zweiter Versuch ist wieder die bloße Kopie und wird abgelehnt.
+    assert auth_client.post(f'/api/billing/reports/{bericht_id}/korrektur').status_code == 400

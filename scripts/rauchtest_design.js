@@ -757,6 +757,13 @@ async function korrekturPruefen() {
     const gleich = await lauf({ ...geaendert, unveraendert: true }, true);
     pruefe('NK-217: unverändert fragt nicht und legt nichts an',
         gleich.fragen.length === 0 && gleich.aufrufe.length === 1 && gleich.meldungen.length === 1);
+    // Review PR 26 (1): gleich nach heutigem Regelstand -- der Server haelt es
+    // fest, sonst stuende der Hinweis fuer immer da.
+    const erledigt = await lauf({ ...geaendert, unveraendert: true, veraltet: true }, true);
+    pruefe('NK-217: unverändert bei älterem Regelstand erledigt den Hinweis ohne Frage',
+        erledigt.fragen.length === 0
+        && erledigt.aufrufe.join('|') === '/api/billing/reports/7/korrektur/vorschau GET|/api/billing/reports/7/korrektur POST'
+        && erledigt.meldungen.join('|') === 'Korrektur erstellt');
     pruefe('NK-217: Liste und Details zeigen den älteren Regelstand',
         /\$\{r\.veraltet \? REGELSTAND_HINWEIS : ''\}/.test(appQuelle)
         && /\$\{umschlag\.veraltet \? REGELSTAND_HINWEIS : ''\}/.test(appQuelle)

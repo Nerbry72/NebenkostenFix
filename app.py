@@ -3288,10 +3288,13 @@ def _regelstand_veraltet(report) -> bool:
 
     Die Abrechnung bleibt, wie sie zugegangen ist (R-DOC-02); der Vermieter
     soll nur sehen, dass eine Korrektur heute anders rechnen kann. Altbestand
-    ohne Version rechnet ohnehin live und ist darum nie veraltet.
+    ohne Version rechnet ohnehin live und ist darum nie veraltet. Rechnete
+    sie nach dem heutigen Regelstand schon einmal gleich, ist der Hinweis
+    erledigt (``regelstand_geprueft``).
     """
     version = report.aktuelle_version
-    return version is not None and (version.regel_version or '') < REGEL_VERSION
+    stand = max(version.regel_version or '', report.regelstand_geprueft or '') if version else ''
+    return version is not None and stand < REGEL_VERSION
 
 
 def _neu_gerechnet(report):
@@ -3359,7 +3362,9 @@ def korrigiere_billing_report(id):
     die PDFs der Abrechnung neu erzeugen -- das Blatt, das der Mieter
     bekommt, muss die korrigierten Zahlen tragen. Hat sich an den Daten
     nichts geaendert, gibt es keine Korrektur: eine neue Version waere
-    nur eine Kopie.
+    nur eine Kopie. Stammt die Version von einem aelteren Regelstand, haelt
+    die Abrechnung dann fest, dass sie nach dem heutigen gleich rechnet --
+    sonst stuende der Hinweis darauf fuer immer da.
     """
     report = TenantBillingReport.query.get_or_404(id)
     try:
@@ -3370,6 +3375,12 @@ def korrigiere_billing_report(id):
     ersetzt = report.aktuelle_version
     neue_ergebnis = json_sicher(bill_data)
     if ersetzt is not None and ersetzt.ergebnis == neue_ergebnis:
+        if _regelstand_veraltet(report):
+            report.regelstand_geprueft = REGEL_VERSION
+            db.session.commit()
+            return jsonify({'unveraendert': True, 'message':
+                'Die Abrechnung rechnet nach dem heutigen Regelstand gleich. '
+                'Eine Korrektur ist nicht nötig; der Hinweis entfällt.'}), 200
         return jsonify({'error':
             'Die Abrechnung ist unverändert; eine neue Version wäre '
             'nur eine Kopie der alten.'}), 400
