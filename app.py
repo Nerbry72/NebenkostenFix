@@ -1445,7 +1445,8 @@ def _ablesung_pruefen(meter_id: int, datum: date, wert: float, wert_nt, eigene_i
         raise EingabeFehler('Ein Zählerstand kann nicht negativ sein.', 'value')
     if wert_nt is not None and wert_nt < 0:
         raise EingabeFehler('Ein Zählerstand kann nicht negativ sein.', 'value_nt')
-    if datum > date.today():
+    # Der Tag, den der Vermieter in Berlin liest -- nicht der des Servers.
+    if datum > zeit.als_ortsdatum(zeit.jetzt_utc()):
         raise EingabeFehler('Das Ablesedatum liegt in der Zukunft.', 'reading_date')
 
     andere = [r for r in MeterReading.query.filter_by(meter_id=meter_id).all() if r.id != eigene_id]
@@ -1454,14 +1455,18 @@ def _ablesung_pruefen(meter_id: int, datum: date, wert: float, wert_nt, eigene_i
                 'Trotzdem einen zweiten speichern?')
     vorher = max((r for r in andere if r.reading_date < datum), key=lambda r: r.reading_date, default=None)
     nachher = min((r for r in andere if r.reading_date > datum), key=lambda r: r.reading_date, default=None)
-    if vorher and wert < vorher.value:
-        return (f'Der Stand {_stand_text(wert)} ist kleiner als der vorige vom '
-                f'{vorher.reading_date.strftime("%d.%m.%Y")} ({_stand_text(vorher.value)}). '
-                'Ein Zähler läuft nicht rückwärts. Trotzdem speichern?')
-    if nachher and wert > nachher.value:
-        return (f'Der Stand {_stand_text(wert)} ist größer als der folgende vom '
-                f'{nachher.reading_date.strftime("%d.%m.%Y")} ({_stand_text(nachher.value)}). '
-                'Trotzdem speichern?')
+    # Beim Zweitarifzaehler laeuft das NT-Zaehlwerk genauso nur vorwaerts.
+    for stand, feld, name in ((wert, 'value', 'Stand'), (wert_nt, 'value_nt', 'NT-Stand')):
+        frueher = getattr(vorher, feld, None)
+        spaeter = getattr(nachher, feld, None)
+        if stand is not None and frueher is not None and stand < frueher:
+            return (f'Der {name} {_stand_text(stand)} ist kleiner als der vorige vom '
+                    f'{vorher.reading_date.strftime("%d.%m.%Y")} ({_stand_text(frueher)}). '
+                    'Ein Zähler läuft nicht rückwärts. Trotzdem speichern?')
+        if stand is not None and spaeter is not None and stand > spaeter:
+            return (f'Der {name} {_stand_text(stand)} ist größer als der folgende vom '
+                    f'{nachher.reading_date.strftime("%d.%m.%Y")} ({_stand_text(spaeter)}). '
+                    'Trotzdem speichern?')
     return None
 
 
@@ -1519,6 +1524,7 @@ def update_reading(id):
     reading = MeterReading.query.get_or_404(id)
     
     eingabe = Eingabe.aus_request()
+    stand_vorher = (reading.reading_date, reading.value, reading.value_nt)
 
     if eingabe.vorhanden('reading_date'):
         reading.reading_date = eingabe.datum('reading_date', pflicht=True)
@@ -1544,12 +1550,16 @@ def update_reading(id):
                 f'{", ".join(ABLESUNGSARTEN)}.', 'ablesungsart')
         reading.ablesungsart = art
 
-    try:
-        frage = _ablesung_pruefen(reading.meter_id, reading.reading_date, reading.value,
-                                  reading.value_nt, eigene_id=reading.id)
-    except EingabeFehler:
-        db.session.rollback()
-        raise
+    # Geprueft wird nur, was sich am Stand aendert: wer nur Foto, Ablesungsart oder
+    # Anbieter nachtraegt, soll nicht die alte Rueckfrage noch einmal sehen.
+    frage = None
+    if (reading.reading_date, reading.value, reading.value_nt) != stand_vorher:
+        try:
+            frage = _ablesung_pruefen(reading.meter_id, reading.reading_date, reading.value,
+                                      reading.value_nt, eigene_id=reading.id)
+        except EingabeFehler:
+            db.session.rollback()
+            raise
     if frage and not eingabe.wahrheit('trotzdem'):
         db.session.rollback()
         return jsonify({'error': frage, 'nachfrage': True}), 409

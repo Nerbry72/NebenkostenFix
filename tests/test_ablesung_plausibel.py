@@ -15,8 +15,14 @@ from datetime import date, timedelta
 
 import pytest
 
+from nebenkostenfix import zeit
 from nebenkostenfix.models import MeterReading
 from tests import billing_factories as f
+
+
+def _heute():
+    # Der Tag in Berlin, wie die Route ihn liest (nicht der des Servers).
+    return zeit.als_ortsdatum(zeit.jetzt_utc())
 
 
 @pytest.fixture
@@ -53,12 +59,12 @@ def test_negativer_stand_ist_ein_fehler(auth_client, zaehler):
 
 
 def test_datum_in_der_zukunft_ist_ein_fehler(auth_client, zaehler):
-    morgen = (date.today() + timedelta(days=1)).isoformat()
+    morgen = (_heute() + timedelta(days=1)).isoformat()
     antwort = _neu(auth_client, zaehler, morgen, '300', trotzdem='1')
     assert antwort.status_code == 400
     assert antwort.get_json()['feld'] == 'reading_date'
     # Heute ist erlaubt
-    assert _neu(auth_client, zaehler, date.today().isoformat(), '300').status_code == 201
+    assert _neu(auth_client, zaehler, _heute().isoformat(), '300').status_code == 201
 
 
 @pytest.mark.parametrize('datum, wert, text', [
@@ -103,7 +109,7 @@ def test_aendern_prueft_gegen_die_anderen_staende(auth_client, zaehler):
 
 def test_aendern_in_die_zukunft_ist_ein_fehler(auth_client, zaehler):
     stand = MeterReading.query.filter_by(meter_id=zaehler.id).first()
-    morgen = (date.today() + timedelta(days=1)).isoformat()
+    morgen = (_heute() + timedelta(days=1)).isoformat()
     antwort = auth_client.put(f'/api/readings/{stand.id}', data={'reading_date': morgen})
     assert antwort.status_code == 400
     assert MeterReading.query.get(stand.id).reading_date == date(2025, 1, 1)
@@ -112,3 +118,29 @@ def test_aendern_in_die_zukunft_ist_ein_fehler(auth_client, zaehler):
 def test_andere_zaehler_zaehlen_nicht(auth_client, zaehler):
     anderer = f.meter(f.house('Nachbarhaus'), f.category('Strom'), 'SZ-1', is_main=False)
     assert _neu(auth_client, anderer, '2025-06-30', '5').status_code == 201
+
+
+def test_nt_zaehlwerk_laeuft_nicht_rueckwaerts(auth_client, app_ctx):
+    """Review PR 26: die Monotonie galt nur fuer HT; ein NT-Stand unter dem
+    vorigen ging ohne Frage durch."""
+    z = f.meter(f.house(), f.category('Strom'), 'SZ-2', is_main=False)
+    f.reading(z, date(2025, 1, 1), 100.0, value_nt=50.0)
+    antwort = _neu(auth_client, z, '2025-06-30', '150', value_nt='40')
+    assert antwort.status_code == 409
+    assert antwort.get_json()['error'] == (
+        'Der NT-Stand 40 ist kleiner als der vorige vom 01.01.2025 (50). '
+        'Ein Zähler läuft nicht rückwärts. Trotzdem speichern?')
+    assert _neu(auth_client, z, '2025-06-30', '150', value_nt='60').status_code == 201
+
+
+def test_aendern_ohne_neuen_stand_fragt_nicht(auth_client, zaehler):
+    """Review PR 26: wer an einem bestaetigten Ausreisser nur die
+    Ablesungsart berichtigt, bekam die Rueckfrage erneut (409)."""
+    ausreisser = f.reading(zaehler, date(2025, 6, 30), 250.0)
+    antwort = auth_client.put(f'/api/readings/{ausreisser.id}',
+                              data={'ablesungsart': 'zwischenablesung'})
+    assert antwort.status_code == 200
+    assert MeterReading.query.get(ausreisser.id).ablesungsart == 'zwischenablesung'
+    # Ein neuer Wert wird weiter geprueft.
+    antwort = auth_client.put(f'/api/readings/{ausreisser.id}', data={'value': '260'})
+    assert antwort.status_code == 409
