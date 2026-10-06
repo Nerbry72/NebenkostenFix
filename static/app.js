@@ -5911,9 +5911,9 @@ async function generateBillPreview(tenantId, startDate, endDate, categoryIds = n
                     // Haus und Allgemein gelten fuer die ganze Rechnung (NK-213).
                     const mm = md.main_meter;
                     const hzZeitraum = mm.target_start_date && mm.target_end_date
-                        ? ` (${new Date(mm.target_start_date).toLocaleDateString('de-DE')} bis ${new Date(mm.target_end_date).toLocaleDateString('de-DE')})`
+                        ? ` (${datumText(mm.target_start_date)} bis ${datumText(mm.target_end_date)})`
                         : '';
-                    mdStr += `<div><span style="font-weight:bold;">Hauptzähler${hzZeitraum}:</span> ${mCons} ${escapeHtml(md.unit)}</div>`;
+                    mdStr += `<div><span style="font-weight:bold;">Hauptzähler${escapeHtml(hzZeitraum)}:</span> ${mCons} ${escapeHtml(md.unit)}</div>`;
                     mdStr += `<div><span style="font-weight:bold;">Allgemeinverbrauch:</span> ${aCons} ${escapeHtml(md.unit)}</div>`;
                     // NK-209 (B2): der Anteil, mit dem gerechnet wurde (Personentage)
                     if (md.allgemein_quote != null && md.allgemein_anteil != null) {
