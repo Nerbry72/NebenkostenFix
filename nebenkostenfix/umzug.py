@@ -329,7 +329,7 @@ def uebernehmen(app, archiv: Path, passphrase: str | None = None) -> dict:
     vorher = bericht.get('zaehlwerte') or {}
     abweichend = {t: {'paket': n, 'hier': nachher.get(t)}
                   for t, n in vorher.items() if nachher.get(t) != n}
-    return {
+    ergebnis = {
         'sicherheitskopie': bericht['sicherheitskopie'],
         'schemastand_paket': bericht['alembic_revision'],
         'schemastand_nachher': bericht['schemastand_nachher'],
@@ -344,6 +344,18 @@ def uebernehmen(app, archiv: Path, passphrase: str | None = None) -> dict:
         'zusatz': bericht.get('zusatz') or {},
         'nicht_im_paket': NICHT_IM_PAKET,
     }
+    # NK-200: der Bericht sagt, wie es weitergeht -- melden, wenn das Paket
+    # ein Konto mitbringt, und ob die App danach offen läuft. Umzugs-Werkzeuge
+    # wie die Kreuzprobe rufen das außerhalb eines App-Kontexts auf.
+    from nebenkostenfix import auth
+    from nebenkostenfix.models import User
+    from nebenkostenfix.models import db as datenbank
+    with app.app_context():
+        datenbank.session.remove()
+        ergebnis['anmelden'] = datenbank.session.query(User.id).first() is not None
+        ergebnis['ohne_anmeldung'] = auth.ohne_anmeldung_aktiv(app)
+    ergebnis['anmeldung_bleibt_an'] = bericht['anmeldung_bleibt_an']
+    return ergebnis
 
 
 def bestandsbericht(app) -> dict:
@@ -371,8 +383,9 @@ def bestandsbericht(app) -> dict:
         'vermieter': {'name': zeile.name if zeile else None,
                       'iban': zeile.iban if zeile else None},
         'logo': vermieter_logo.pfad(ordner) is not None,
-        'einstellungen': {k: einstellungen.lesen(ordner)[k]
-                          for k in einstellungen.UEBERTRAGBAR},
+        # NK-197: der Schalter wandert als wirksamer Wert mit, nie als None.
+        'einstellungen': einstellungen.uebertragbar(
+            einstellungen.lesen(ordner), app.config.get('DESKTOP'), bool(konten)),
         'konten': konten,
     }
 
@@ -395,6 +408,9 @@ def init_umzug(app):
     def _zugang():
         """None, wenn die Anfrage darf; sonst die Ablehnung."""
         if auth.current_user() is not None:
+            return None
+        if auth.ohne_anmeldung_aktiv(app):
+            # NK-200: der offene Modus braucht weder Sitzung noch Einmal-Code.
             return None
         if not _vor_der_einrichtung():
             return _fehler('Bitte melden Sie sich an.', 401)
@@ -498,7 +514,10 @@ def init_umzug(app):
         if abgelehnt:
             return abgelehnt
         daten = request.get_json(silent=True) or {}
-        frisch = _vor_der_einrichtung()
+        frisch = _vor_der_einrichtung() and not auth.ohne_anmeldung_aktiv(app)
+        # NK-200: auch eine frische, offene Windows-App verlangt ERSETZEN --
+        # sie kann schon Daten haben, und wer offen schaltet, entscheidet
+        # bewusst.
         if not frisch and (daten.get('bestaetigung') or '').strip() != BESTAETIGUNG:
             return _fehler(f'Bitte bestätigen Sie mit „{BESTAETIGUNG}“: die Übernahme '
                            'ersetzt alle Daten dieser Installation.')
@@ -515,7 +534,6 @@ def init_umzug(app):
         session.clear()
         app.logger.info('Umzugspaket übernommen: %s Zeilen, %s Belege.',
                         bericht['zeilen'], bericht['belege'])
-        bericht['anmelden'] = True
         return jsonify(bericht)
 
     umzug_cli = AppGroup('umzug', help='Umzugspaket exportieren und übernehmen (NK-164).')

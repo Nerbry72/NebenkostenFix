@@ -507,6 +507,9 @@ class TenantBillingReport(db.Model):
     zugestellt_am = db.Column(db.Date, nullable=True)
     document_path = db.Column(db.String(500), nullable=True)           # Simple PDF
     document_path_detailed = db.Column(db.String(500), nullable=True)  # Detailed PDF
+    # NK-217: gegen diesen Regelstand rechnete die Abrechnung ohne
+    # Unterschied nach -- der Hinweis „älterer Regelstand“ entfaellt dann.
+    regelstand_geprueft = db.Column(db.String(50), nullable=True)
 
     tenant = db.relationship('Tenant', backref=db.backref('billing_reports', lazy=True, cascade="all, delete-orphan"))
 

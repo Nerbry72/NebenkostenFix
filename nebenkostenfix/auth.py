@@ -54,6 +54,7 @@ from functools import wraps
 from flask import abort, jsonify, make_response, redirect, request, session, url_for
 
 from nebenkostenfix import anmeldeschutz
+from nebenkostenfix import einstellungen
 from nebenkostenfix import marke
 from nebenkostenfix import umzug
 from nebenkostenfix.dateisperre import datei_einmalig_anlegen, dateisperre
@@ -207,6 +208,54 @@ def current_user():
     return user
 
 
+def ohne_anmeldung_aktiv(app) -> bool:
+    """Der offene Modus (NK-198, D-118): kein Konto in der Datenbank und der
+    Schalter will es -- die Windows-App ab Werk, Docker nur auf ausdrueck-
+    lichen Wunsch. Ein Konto gewinnt immer, deshalb zuerst die Abfrage; die
+    Einstellungsdatei wird nur ohne Konto gelesen."""
+    if db.session.query(User.id).first() is not None:
+        return False
+    return einstellungen.ohne_anmeldung_gewuenscht(
+        einstellungen.lesen(), app.config.get('DESKTOP'))
+
+
+def import_absichern(app, vorher_offen: bool) -> bool:
+    """NK-206: ein Import (Umzug, Sicherung) oeffnet Docker nie von selbst.
+
+    Bringt das Paket kein Konto und den Schalter True mit, war die Instanz
+    vorher aber angemeldet oder frisch, bleibt die Anmeldung an. Offen wird
+    sie erst ueber die Einrichtung (Knopf mit Einmal-Code). Die Windows-App
+    ist ab Werk offen, dort aendert sich nichts."""
+    if app.config.get('DESKTOP') or vorher_offen:
+        return False
+    with app.app_context():
+        if not ohne_anmeldung_aktiv(app):
+            return False
+    einstellungen.schreiben(ohne_anmeldung=False)
+    app.logger.warning(
+        'Das eingespielte Paket war ohne Anmeldung gespeichert. Hier bleibt '
+        'die Anmeldung an; ohne Konto arbeiten: Einrichtung, „Ohne Anmeldung '
+        'fortfahren“.')
+    return True
+
+
+def _offen_warnen(app, immer=False):
+    """Die Warnung des offenen Modus, nur in Docker (NK-198).
+
+    In der Windows-App gehoert das Fenster dem Nutzer (E-1), dort warnt
+    nichts. In Docker steht der Server im Netz: die Warnung kommt einmal
+    je Prozess, der Merker liegt an der App, damit Tests ihn je App frisch
+    haben. Mit ``immer`` warnt sie auch beim Einschalten durch den Knopf."""
+    if app.config.get('DESKTOP'):
+        return
+    if not immer and app.extensions.get('_ohne_anmeldung_gewarnt'):
+        return
+    app.logger.warning(
+        'Die Anmeldung ist ausgeschaltet. Jeder, der diesen Server '
+        'erreicht, sieht alle Daten. Einschalten: Einstellungen, Konto.')
+    app.extensions['_ohne_anmeldung_gewarnt'] = True
+
+
 def _wants_json():
     """True, wenn der Aufrufer eine API-Antwort erwartet, keine Seite."""
     if request.path.startswith('/api/'):
@@ -322,6 +371,7 @@ ERSTEINRICHTUNG_PAGE = _seitenkopf('Einrichtung') + """<form method="post" class
         autocomplete="new-password" required>
  __CODEFELD__
  <button type="submit">Konto anlegen</button>
+__OHNE__
  __FEHLER__
 </form>
 __UMZUG__
@@ -368,15 +418,33 @@ CODE_FELD = """ <label for="code">Einmal-Code</label>
  Er sieht aus wie <code>a3f9-72b1-0c4d-9e21</code>.</p>"""
 
 
-def _einrichtungsseite(fehler=None, mit_code=True):
+# NK-198: der zweite Weg der Einrichtung in der Windows-App -- ohne Konto
+# fortfahren (D-118). Der Knopf umgeht die Pflichtfelder (formnovalidate);
+# in Docker bleibt der Einmal-Code trotzdem Pflicht, die Route prueft ihn.
+OHNE_KNOPF = """ <button type="submit" name="ohne_anmeldung" value="1" formnovalidate class="zweitknopf">Ohne Anmeldung fortfahren</button>
+ <p class="hilfe">Jeder, der dieses Programm öffnen kann, sieht dann alle Daten. Sie können die Anmeldung später in den Einstellungen einschalten.</p>"""
+
+
+# NK-198: die gemeinsame Ablehnung der Konto-Routen im offenen Modus.
+FEHLTEXT_KONTO = ('Die Anmeldung ist ausgeschaltet. Schalten Sie sie in den '
+                  'Einstellungen unter „Konto“ ein.')
+
+
+def _einrichtungsseite(fehler=None, mit_code=True, mit_umzug=True,
+                       mit_ohne=True):
     """Die Einrichtungsseite. In der Windows-App (NK-079) ohne Code: wer am
-    eigenen Rechner das Programmfenster bedient, ist berechtigt (E-1)."""
+    eigenen Rechner das Programmfenster bedient, ist berechtigt (E-1). Im
+    offenen Modus (NK-198) ohne Umzugskarte und ohne den Knopf."""
     block = f'<p class="fehler">{html.escape(fehler)}</p>' if fehler else ''
     seite = ERSTEINRICHTUNG_PAGE.replace('__FEHLER__', block)
     seite = seite.replace('__CODEHINWEIS__', CODE_HINWEIS if mit_code else '')
     seite = seite.replace('__CODEFELD__', CODE_FELD if mit_code else '')
-    umzug_karte = UMZUG_KARTE.replace('__DESKTOP__', '0' if mit_code else '1')
-    umzug_karte = umzug_karte.replace('__UMZUGCODE__', UMZUG_CODE_FELD if mit_code else '')
+    seite = seite.replace('__OHNE__', OHNE_KNOPF if mit_ohne else '')
+    if mit_umzug:
+        umzug_karte = UMZUG_KARTE.replace('__DESKTOP__', '0' if mit_code else '1')
+        umzug_karte = umzug_karte.replace('__UMZUGCODE__', UMZUG_CODE_FELD if mit_code else '')
+    else:
+        umzug_karte = ''
     return seite.replace('__UMZUG__', umzug_karte)
 
 
@@ -695,6 +763,33 @@ def _anmeldeschutz_ordner():
     return ordner
 
 
+def _passwort_bestaetigen(user, passwort, fehltext, status):
+    """Die Passwortprobe in einer Sitzung: Passwort wechseln, Anmeldung
+    ausschalten. Liefert None, wenn das Passwort stimmt, sonst die Antwort.
+
+    Wer eine offene Sitzung uebernimmt, koennte hier das Passwort
+    durchprobieren und danach den Zugang behalten oder alle Konten
+    loeschen. Darum zaehlt ein Fehlversuch wie bei der Anmeldung (NK-128),
+    auf dasselbe Konto: gesperrt ist dann beides.
+    """
+    ordner = _anmeldeschutz_ordner()
+    adresse = request.remote_addr
+    rest = anmeldeschutz.gesperrt_fuer(ordner, user.username, adresse)
+    if rest:
+        minuten = max(1, (rest + 59) // 60)
+        antwort = make_response(jsonify({
+            'error': f'Zu viele Fehlversuche. Bitte warten Sie {minuten} Minuten.',
+            'code': 'anmeldung_gesperrt'}), 429)
+        antwort.headers['Retry-After'] = str(rest)
+        return antwort
+    if not user.check_password(passwort):
+        anzahl = anmeldeschutz.fehlversuch(ordner, user.username, adresse)
+        time.sleep(anmeldeschutz.wartezeit(anzahl))
+        return jsonify({'error': fehltext}), status
+    anmeldeschutz.erfolg(ordner, user.username, adresse)
+    return None
+
+
 def _sitzung_beginnen(user):
     session.clear()
     session[SESSION_USER_KEY] = user.id
@@ -754,7 +849,17 @@ def init_auth(app):
             return jsonify({
                 'error': 'Anfrage von einer fremden Seite abgelehnt.',
                 'code': 'fremder_ursprung'}), 403
+        # NK-204: die öffentlichen Wege vor dem offenen Modus beantworten —
+        # /api/health soll ohne Datenbankabfrage antworten.
         if request.endpoint in PUBLIC_ENDPOINTS:
+            return None
+        if ohne_anmeldung_aktiv(app):
+            # NK-198 (D-118): der offene Modus. Eine alte Sitzung mit
+            # user_id wird geleert -- ein Konto gewinnt immer, und wo
+            # keines existiert, sitzt niemand.
+            _offen_warnen(app)
+            if session.get(SESSION_USER_KEY) is not None:
+                session.clear()
             return None
         if (request.endpoint in umzug.VOR_DER_EINRICHTUNG and current_user() is None
                 and (app.config.get('DESKTOP') or request.headers.get('X-Einmal-Code')
@@ -789,7 +894,11 @@ def init_auth(app):
 
     @app.route('/login', methods=['GET', 'POST'])
     def login():
+        offen = ohne_anmeldung_aktiv(app)
         if request.method == 'GET':
+            if offen:
+                # NK-198: im offenen Modus gibt es nichts anzumelden.
+                return redirect('/')
             if current_user() is not None:
                 return redirect('/')
             if db.session.query(User.id).first() is None:
@@ -799,6 +908,10 @@ def init_auth(app):
             return _login_page()
 
         data = request.get_json(silent=True) or request.form
+        if offen:
+            # NK-198: im offenen Modus nimmt die Anmeldung nichts an.
+            return (jsonify({'error': 'Die Anmeldung ist ausgeschaltet.'}), 409) \
+                if _wants_json() else (_login_page('Die Anmeldung ist ausgeschaltet.'), 409)
         username = (data.get('username') or '').strip()
         password = data.get('password') or ''
 
@@ -852,28 +965,53 @@ def init_auth(app):
             return redirect(url_for('login'))
 
         desktop = bool(app.config.get('DESKTOP'))
+        offen = ohne_anmeldung_aktiv(app)
         if request.method == 'GET':
             if not desktop:
                 _einmal_code_legen(app)
-            return _einrichtungsseite(mit_code=not desktop)
-
-        data = request.get_json(silent=True) or request.form
-        username = (data.get('username') or '').strip()
-        password = data.get('password') or ''
-        wiederholung = data.get('password2') or ''
+            return _einrichtungsseite(mit_code=not desktop,
+                                      mit_umzug=not offen, mit_ohne=not offen)
 
         def ablehnung(text):
             if _wants_json():
                 return jsonify({'error': text}), 400
-            return _einrichtungsseite(text, mit_code=not desktop), 400
+            return _einrichtungsseite(text, mit_code=not desktop,
+                                      mit_umzug=not offen,
+                                      mit_ohne=not offen), 400
+
+        falscher_code = (
+            'Der Einmal-Code stimmt nicht. Er steht im Protokoll des '
+            'Servers (Docker: docker compose logs web). Nach '
+            f'{EINMAL_CODE_VERSUCHE} Fehlversuchen steht dort ein neuer.')
+
+        data = request.get_json(silent=True) or request.form
+        if data.get('ohne_anmeldung'):
+            # NK-198 (D-118): ohne Konto fortfahren. Im offenen Modus ist
+            # nichts zu tun; sonst schaltet der Knopf den Schalter um --
+            # in Docker nur mit dem Einmal-Code (Fehlversuch zaehlt).
+            if offen:
+                if _wants_json():
+                    return jsonify({'ohne_anmeldung': True}), 200
+                return redirect('/')
+            if not desktop and not _einmal_code_pruefen(app, data.get('code')):
+                return ablehnung(falscher_code)
+            einstellungen.schreiben(ohne_anmeldung=True)
+            _einmal_code_verfallen()
+            app.logger.info('Anmeldung ausgeschaltet: es wird ohne Konto '
+                            'gearbeitet.')
+            _offen_warnen(app, immer=True)
+            if _wants_json():
+                return jsonify({'ohne_anmeldung': True}), 200
+            return redirect('/')
+
+        username = (data.get('username') or '').strip()
+        password = data.get('password') or ''
+        wiederholung = data.get('password2') or ''
 
         # NK-079: in der Windows-App gilt der lokale Zugriff als Berechtigung
         # (E-1) -- das Fenster erreicht nur, wer den Start-Token der Huelle hat.
         if not desktop and not _einmal_code_pruefen(app, data.get('code')):
-            return ablehnung(
-                'Der Einmal-Code stimmt nicht. Er steht im Protokoll des '
-                'Servers (Docker: docker compose logs web). Nach '
-                f'{EINMAL_CODE_VERSUCHE} Fehlversuchen steht dort ein neuer.')
+            return ablehnung(falscher_code)
         if not username:
             return ablehnung('Bitte geben Sie einen Benutzernamen ein.')
         if len(username) > 40:
@@ -890,6 +1028,8 @@ def init_auth(app):
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
+        # NK-198: ein Konto gewinnt immer -- der Schalter wird ausdruecklich.
+        einstellungen.schreiben(ohne_anmeldung=False)
         _einmal_code_verfallen()
         app.logger.info("Ersteinrichtung abgeschlossen: Konto '%s' angelegt.",
                         username)
@@ -916,8 +1056,23 @@ def init_auth(app):
     @app.route('/api/auth/me', methods=['GET'])
     def auth_me():
         user = current_user()
+        offen = ohne_anmeldung_aktiv(app)
+        if user is None and offen:
+            # NK-198: im offenen Modus sitzt niemand -- die Oberflaeche
+            # soll es merken, nicht mit 500 brechen.
+            return jsonify({
+                'username': None,
+                'ohne_anmeldung': True,
+                'last_login_at': None,
+                'entwicklung': entwicklung_angemeldet(app),
+                'desktop': bool(app.config.get('DESKTOP')),
+                'leerlauf_s': None,
+            }), 200
+        if user is None:
+            return _deny()
         return jsonify({
             'username': user.username,
+            'ohne_anmeldung': False,
             'last_login_at': zeit.als_ortszeit(user.last_login_at),
             # Nur so viel, wie die Oberflaeche braucht, um den Knopf zu
             # verbergen: ob die Entwicklerroute da ist (NK-123).
@@ -935,13 +1090,18 @@ def init_auth(app):
         Zugang dauerhaft uebernehmen koennen.
         """
         user = current_user()
+        if ohne_anmeldung_aktiv(app):
+            # NK-198: im offenen Modus gibt es kein Konto, dessen Passwort
+            # man wechseln koennte.
+            return jsonify({'error': FEHLTEXT_KONTO}), 409
         if user is None:
             return _deny()
         data = request.get_json(silent=True) or {}
         alt = data.get('altes_passwort') or ''
         neu = data.get('neues_passwort') or ''
-        if not user.check_password(alt):
-            return jsonify({'error': 'Das alte Passwort stimmt nicht.'}), 400
+        abgelehnt = _passwort_bestaetigen(user, alt, 'Das alte Passwort stimmt nicht.', 400)
+        if abgelehnt:
+            return abgelehnt
         if len(neu) < 10:
             return jsonify(
                 {'error': 'Das neue Passwort muss mindestens 10 Zeichen haben.'}), 400
@@ -949,9 +1109,49 @@ def init_auth(app):
         db.session.commit()
         return jsonify({'status': 'Passwort geändert'}), 200
 
+    @app.route('/api/anmeldung/aus', methods=['POST'])
+    def anmeldung_ausschalten():
+        """Die Anmeldung im Betrieb ausschalten (NK-199, beide Plattformen).
+
+        Der angemeldete Nutzer bestaetigt mit seinem Passwort; darauf
+        verschwinden alle Konten und die Anwendung arbeitet offen. Im
+        offenen Modus gibt es nichts mehr auszuschalten. Ein falsches
+        Passwort zaehlt als Fehlversuch im Anmeldeschutz (wie bei
+        ``/api/konto/passwort``): die Sitzung allein beweist nicht, dass
+        hier der richtige Nutzer sitzt.
+        """
+        offen = ohne_anmeldung_aktiv(app)
+        if offen:
+            # NK-198: was offen ist, kann nicht zweimal ausgeschaltet werden.
+            return jsonify(
+                {'error': 'Die Anmeldung ist schon ausgeschaltet.'}), 409
+        user = current_user()
+        if user is None:
+            return _deny()
+        data = request.get_json(silent=True) or {}
+        abgelehnt = _passwort_bestaetigen(user, data.get('password') or '',
+                                          'Das Passwort stimmt nicht.', 403)
+        if abgelehnt:
+            return abgelehnt
+        # NK-204: erst den Schalter, dann die Konten — schlägt das Schreiben
+        # fehl, bleiben die Konten bestehen und es bleibt angemeldet.
+        einstellungen.schreiben(ohne_anmeldung=True)
+        geloescht = User.query.delete()
+        db.session.commit()
+        # Wer das Passwort kannte, war drin; Zaehler und Sperren sind wertlos.
+        anmeldeschutz.zuruecksetzen(_anmeldeschutz_ordner())
+        session.clear()
+        app.logger.info('Anmeldung ausgeschaltet: %d Konto(s) geloescht, '
+                        'es wird ohne Konto gearbeitet.', geloescht)
+        _offen_warnen(app, immer=True)
+        return jsonify({'ohne_anmeldung': True, 'geloescht': geloescht}), 200
+
     @app.route('/api/konten', methods=['GET'])
     def konten_auflisten():
         """Die Konten dieser Instanz fuer die Oberflaeche (NK-127)."""
+        if ohne_anmeldung_aktiv(app):
+            # NK-198: im offenen Modus gibt es keine Konten.
+            return jsonify([]), 200
         zeilen = []
         for user in User.query.order_by(User.username).all():
             zeilen.append({
@@ -971,6 +1171,9 @@ def init_auth(app):
             return jsonify(
                 {'error': 'Zwei Konten reichen: eins für Sie, eins für den '
                           'Partner. Mehr braucht keine Wohnung.'}), 400
+        if ohne_anmeldung_aktiv(app):
+            # NK-198: im offenen Modus wird kein Konto angelegt.
+            return jsonify({'error': FEHLTEXT_KONTO}), 409
         data = request.get_json(silent=True) or {}
         username = (data.get('username') or '').strip()
         password = data.get('password') or ''
@@ -1024,6 +1227,13 @@ def _huelle_routen(app):
     def huelle_passwort():
         if not app.config.get('DESKTOP'):
             abort(404)
+        if ohne_anmeldung_aktiv(app):
+            # NK-198: ohne Konto gibt es nichts zurueckzusetzen.
+            return _seitenkopf('Passwort zurücksetzen') + (
+                '<form method="post" class="anmelde-karte">'
+                '<h1>Passwort zurücksetzen</h1>'
+                '<p class="hinweis">Die Anmeldung ist ausgeschaltet, '
+                'es gibt kein Passwort.</p></form></body></html>')
         konten = User.query.order_by(User.username).all()
         meldung = ''
         if request.method == 'POST':
@@ -1070,6 +1280,8 @@ def _register_cli(app):
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
+        # NK-198: mit Konto gibt es wieder eine Anmeldung.
+        einstellungen.schreiben(ohne_anmeldung=False)
         click.echo(f"Konto '{username}' angelegt.")
 
     @users_cli.command('passwd')

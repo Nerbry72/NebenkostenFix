@@ -78,7 +78,35 @@ def test_uebersicht_zaehlt_den_auszugstag_noch_mit(auth_client, app_ctx):
     assert kpis['open_tasks'] == 1
 
 
-# --- H8: ohne Kostenprofil, ohne Rechnungen -----------------------------------------
+def test_uebersicht_zaehlt_fehlende_endabrechnungen(auth_client, app_ctx):
+    """NK-211 (B4): ausgezogen und nicht bis zum Auszug abgerechnet ist offen.
+
+    Vorher zaehlten nur Mieter, die heute wohnen -- die Endabrechnung nach
+    einem Auszug fehlte in der Kachel. Wer vor mehr als zwei Jahren auszog,
+    liegt hinter jeder Abrechnungsfrist und zaehlt nicht mehr.
+    """
+    heute = date.today()
+    haus = f.house()
+    wohnung = f.apt(haus, 'EG', 50)
+    lang = heute - timedelta(days=2000)
+    aktiv = f.tenant(f.apt(haus, 'OG', 50), 'Aktiv', move_in=lang)
+    aktiv.last_billed_until = heute - timedelta(days=10)
+    erledigt = f.tenant(wohnung, 'Erledigt', move_in=lang)
+    erledigt.move_out_date = heute - timedelta(days=100)
+    _abrechnung(erledigt, heute - timedelta(days=400), erledigt.move_out_date)
+    offen = f.tenant(wohnung, 'Offen', move_in=lang)
+    offen.move_out_date = heute - timedelta(days=50)
+    _abrechnung(offen, heute - timedelta(days=400), heute - timedelta(days=60))
+    alt = f.tenant(wohnung, 'Alt', move_in=lang)
+    alt.move_out_date = heute - timedelta(days=731)
+    db.session.commit()
+
+    kpis = auth_client.get(f'/api/analytics/building/{haus.id}').get_json()['kpis']
+
+    assert kpis['open_tasks'] == 1
+
+
+# --- H8:ohne Kostenprofil, ohne Rechnungen -----------------------------------------
 
 def test_ohne_kostenprofil_wird_nach_flaeche_umgelegt(app_ctx):
     haus = f.house()

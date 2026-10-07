@@ -202,6 +202,7 @@ AUSNAHMEN = {
         'end_date': 'Entsteht mit der Festsetzung (R-DOC-02).',
         'created_at': 'Setzt die Anwendung.',
         'frist_ende': 'Entsteht mit der Festsetzung (R-FRIST-02): AZ-Ende + 12 Monate.',
+        'regelstand_geprueft': 'Setzt die Korrektur, wenn der heutige Regelstand gleich rechnet (NK-217).',
     },
     'AnschreibenVorlage': {
         'id': 'Schlüssel.',

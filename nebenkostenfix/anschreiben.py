@@ -33,7 +33,7 @@ VORGABE = (
     'Monaten nach ihrem Zugang bei mir geltend machen. Die Belege können '
     'Sie auf Verlangen einsehen.\n\n'
     'Mit freundlichen Grüßen\n'
-    '{objekt_name}'
+    '{vermieter_name}'
 )
 
 # Was es zu füllen gibt -- die Route nennt dem Vermieter dieselbe Liste.
@@ -41,6 +41,8 @@ PLATZHALTER = {
     'mieter_name': 'Name des Mieters',
     'wohnung_name': 'Name der Wohnung',
     'objekt_name': 'Name des Objekts',
+    'vermieter_name': ('Name des Vermieters aus den Einstellungen -- leer, '
+                       'solange keiner hinterlegt ist'),
     'zeitraum': 'Abrechnungszeitraum, etwa „01.01.2025 bis 31.12.2025“',
     'gesamtsumme': 'Summe aller Kostenpositionen',
     'vorauszahlungen': 'Summe der geleisteten Vorauszahlungen',
@@ -93,8 +95,13 @@ def _aufforderung(saldo: Decimal) -> str:
 def text_fuer(vorlage: str, *, mieter_name: str, wohnung_name: str,
               objekt_name: str, zeitraum: str, gesamtsumme: Decimal,
               vorauszahlungen: Decimal, saldo: Decimal,
-              einwendungsfrist: str | None = None) -> str:
+              einwendungsfrist: str | None = None,
+              vermieter_name: str = '') -> str:
     """Füllt die Vorlage aus dem Ergebnis einer Abrechnung.
+
+    ``vermieter_name`` unterschreibt den Gruß (NK-210). Ohne Namen bleibt
+    er leer: ein Gruß ohne Unterschrift ist ehrlicher als der Name des
+    Hauses an ihrer Stelle.
 
     ``einwendungsfrist`` ist das Ende der Einwendungsfrist des Mieters --
     bekannt erst mit dem Zustelldatum; ohne es bleibt der Platzhalter
@@ -104,6 +111,7 @@ def text_fuer(vorlage: str, *, mieter_name: str, wohnung_name: str,
         'mieter_name': mieter_name,
         'wohnung_name': wohnung_name,
         'objekt_name': objekt_name,
+        'vermieter_name': vermieter_name,
         'zeitraum': zeitraum,
         'gesamtsumme': euro_text(gesamtsumme),
         'vorauszahlungen': euro_text(vorauszahlungen),

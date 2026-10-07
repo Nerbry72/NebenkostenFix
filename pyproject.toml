@@ -81,4 +81,4 @@ select = ["E9", "F63", "F7", "F82"]
 # mit Nutzereingaben. Jede Ausnahme im Code steht als `# nosec Bxxx` mit
 # einer Kommentarzeile "Bandit-Ausnahme: <Grund>" direkt darueber.
 [tool.bandit]
-exclude_dirs = ["tests", "scripts", "migrations", "packaging", ".git"]
+exclude_dirs = ["tests", "scripts", "migrations", "packaging", ".git", ".venv"]

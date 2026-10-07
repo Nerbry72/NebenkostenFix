@@ -19,12 +19,11 @@ from datetime import datetime, timezone
 
 from nebenkostenfix import einstellungen
 
-VERSION = 1
+VERSION = 2
 TITEL = 'Bevor es losgeht'
 TEXT = (
-    'NebenkostenFix ist kostenlos und wird ohne Gewähr bereitgestellt.',
-    'Der Entwickler übernimmt keine Haftung für die Richtigkeit Ihrer '
-    'Abrechnungen, soweit das Gesetz das zulässt.',
+    'NebenkostenFix ist kostenlos, quelloffen (GPL-3.0) und wird ohne '
+    'Gewähr bereitgestellt.',
     'Die Anwendung ist keine Rechtsberatung.',
     'Prüfen Sie jede Abrechnung selbst, bevor Sie sie verschicken.',
 )

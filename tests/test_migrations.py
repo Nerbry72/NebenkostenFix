@@ -37,7 +37,8 @@ BASISREVISION = "63738d5329b4"
 # NK-153: ``c7d8e9f0a1b2`` fuegt ``tenants.gesperrt_bis`` hinzu (D-89).
 # NK-188: ``a4d7e1c9b3f5`` fuegt ``properties.abrechnungsjahr_beginn`` hinzu (D-114).
 # F-137: ``e3c5a7f9b1d2`` fuegt ``cost_invoices.grundpreis`` hinzu.
-KOPFREVISION = "e3c5a7f9b1d2"
+# NK-217: ``670627ef0699`` fuegt ``tenant_billing_reports.regelstand_geprueft`` hinzu.
+KOPFREVISION = "670627ef0699"
 
 
 def _umgebung(dbdatei: Path, tmp_path: Path) -> dict:

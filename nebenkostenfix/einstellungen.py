@@ -5,7 +5,10 @@ Hier steht, was keine Tabelle braucht (NK-174, NK-175):
 - ``haftung``: welche Fassung des Haftungshinweises bestätigt wurde und wann;
 - ``updates_automatisch``: ob die App beim Start nach Updates sucht (ab Werk an);
 - ``update_geprueft``: wann zuletzt gesucht wurde (nur für diesen Rechner);
-- ``update_gefunden``: was diese Suche Neues gefunden hat, sonst ``None``.
+- ``update_gefunden``: was diese Suche Neues gefunden hat, sonst ``None``;
+- ``ohne_anmeldung`` (NK-197): ob die App ohne Anmeldung läuft. ``None``
+  heißt „nie gewählt, es gilt die Vorgabe der Plattform“ (Windows ja,
+  Docker nein), ``True``/``False`` heißt „ausdrücklich gewählt“.
 
 ``UEBERTRAGBAR`` wandert im ``.nkfix`` mit (D-96), die letzte Suche nicht --
 auf dem neuen Rechner wird einfach wieder gesucht.
@@ -21,8 +24,22 @@ from nebenkostenfix.dateisperre import dateisperre
 
 DATEINAME = 'app-einstellungen.json'
 STANDARD = {'haftung': None, 'updates_automatisch': True, 'update_geprueft': None,
-            'update_gefunden': None}
-UEBERTRAGBAR = ('haftung', 'updates_automatisch')
+            'update_gefunden': None, 'ohne_anmeldung': None}
+UEBERTRAGBAR = ('haftung', 'updates_automatisch', 'ohne_anmeldung')
+
+
+def ohne_anmeldung_gewuenscht(stand: dict, desktop) -> bool:
+    """Der wirksame Wert: ausdrücklich gewählt, sonst die Plattform-Vorgabe."""
+    wert = stand.get('ohne_anmeldung')
+    return wert if isinstance(wert, bool) else bool(desktop)
+
+
+def uebertragbar(stand: dict, desktop, hat_konto: bool) -> dict:
+    """Nur die Schluessel, die im Paket mitwandern; der Schalter wirksam --
+    mit Konto also False (NK-206)."""
+    wert = {k: stand.get(k) for k in UEBERTRAGBAR}
+    wert['ohne_anmeldung'] = not hat_konto and ohne_anmeldung_gewuenscht(stand, desktop)
+    return wert
 
 
 def _datei(ordner: str | os.PathLike | None) -> Path:
@@ -40,7 +57,8 @@ def lesen(ordner: str | os.PathLike | None = None) -> dict:
         gelesen = {}
     if not isinstance(gelesen, dict):
         gelesen = {}
-    return {**STANDARD, **{k: v for k, v in gelesen.items() if k in STANDARD}}
+    return {**STANDARD, **{k: v for k, v in gelesen.items() if k in STANDARD
+                           and (k != 'ohne_anmeldung' or v is None or isinstance(v, bool))}}
 
 
 def schreiben(ordner: str | os.PathLike | None = None, **aenderungen) -> dict:

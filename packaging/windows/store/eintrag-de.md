@@ -17,7 +17,7 @@ Für den Einstieg gibt es eine Beispielimmobilie, den Assistenten „Jahr abrech
 
 NebenkostenFix ist freie Software unter der GPL-3.0. Der Quelltext liegt auf GitHub.
 
-NebenkostenFix ist kostenlos und wird ohne Gewähr bereitgestellt. Der Entwickler übernimmt keine Haftung für die Richtigkeit Ihrer Abrechnungen, soweit das Gesetz das zulässt. Die Anwendung ist keine Rechtsberatung. Prüfen Sie jede Abrechnung selbst, bevor Sie sie verschicken.
+NebenkostenFix ist kostenlos, quelloffen (GPL-3.0) und wird ohne Gewähr bereitgestellt. Die Anwendung ist keine Rechtsberatung. Prüfen Sie jede Abrechnung selbst, bevor Sie sie verschicken.
 
 ## Kurzbeschreibung
 
@@ -25,16 +25,16 @@ Die Nebenkostenabrechnung für private Vermieter. Kostenlos, und Ihre Daten blei
 
 ## Neuerungen in dieser Version
 
-Version 0.11.0: Die Abrechnung rechnet Zeiträume, Leerstand und Mieterwechsel genauer.
+Version 0.12.0: Die Windows-App startet ohne Anmeldung, der Haftungshinweis ist kürzer. Der Allgemeinverbrauch wird genauer aufgeteilt, dadurch können sich Beträge ändern.
 
-- Zeiträume über zwölf Monate werden vollständig gerechnet, mit Hinweis auf § 556 BGB.
-- Der Auszugstag ist der letzte Miettag. Der Nachmieter beginnt am Tag danach.
-- Vorschlag für den Abrechnungszeitraum, mit Begründung und der Schaltfläche „Übernehmen“.
-- Das Abrechnungsjahr kann je Immobilie an einem anderen Tag als dem 01.01. beginnen.
-- Leerstand: Den Anteil einer leeren Wohnung trägt der Vermieter, auch bei Zählern und beim Grundpreis.
-- Fehlt der Stand des Wärmezählers am Stichtag, wird er nach Gradtagszahlen geschätzt.
-- Meldungen sind kürzer, höchstens drei auf einmal, jede mit „Was tun:“.
-- Stromzähler heißen in der Oberfläche „Strom“.
+- Die Windows-App öffnet direkt, ohne Benutzername und Passwort. In den Einstellungen unter „Konto“ lässt sich die Anmeldung einschalten.
+- In Docker bleibt die Anmeldung Vorgabe. Sie lässt sich dort ausschalten, eine Warnleiste weist dann darauf hin.
+- Ein Umzug oder eine Sicherung nimmt die Wahl mit. Wer die Anmeldung ausgeschaltet hatte, bleibt auch auf dem neuen Rechner ohne.
+- Der Haftungshinweis ist kürzer gefasst. Er erscheint einmal neu und muss bestätigt werden.
+- Der Allgemeinverbrauch (Hauptzähler abzüglich der Wohnungszähler) wird zwischen Tagen gemessen, an denen alle Zähler abgelesen sind. Bei einem Mieterwechsel im Jahr kann das Beträge ändern.
+- Der Verbrauchsnachweis zeigt die Zählerstände an den Stichtagen, mit denen gerechnet wird, und den Anteil am Allgemeinverbrauch in Prozent.
+- Ein Zählerstand unter dem vorigen oder ein zweiter am selben Tag wird vor dem Speichern nachgefragt.
+- Abrechnungen nach älterem Regelstand sind gekennzeichnet. „Korrektur erstellen“ zeigt vorher, was sich ändert.
 
 ## Produktmerkmale
 

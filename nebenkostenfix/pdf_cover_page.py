@@ -18,6 +18,8 @@ from nebenkostenfix import zeit
 
 from nebenkostenfix.geld import NULL
 from nebenkostenfix.anschreiben import absaetze
+# Bandit-Ausnahme: maskiert Text fuer reportlab, parst kein XML
+from xml.sax.saxutils import escape  # nosec B406
 
 
 # --- Color Palette ---
@@ -137,6 +139,7 @@ def build_cover_page_elements(
     prepaid_amount,
     balance,
     anschreiben=None,
+    vermieter_name='',
 ):
     """
     Build a list of reportlab Flowable elements for the billing cover page.
@@ -150,6 +153,7 @@ def build_cover_page_elements(
         total_amount: Total costs for the period
         prepaid_amount: Total prepayments made
         balance: Final balance (positive = Nachzahlung, negative = Guthaben)
+        vermieter_name: Name des Vermieters (NK-210); leer zeigt die Rolle
     
     Returns:
         List of reportlab Flowable elements (including a trailing PageBreak)
@@ -192,8 +196,9 @@ def build_cover_page_elements(
     elements.append(Spacer(1, 8))
     
     # Subtitle
+    # NK-210 (B3): der Vermieter mit Namen, sonst seine Rolle
     elements.append(Paragraph(
-        f"Hausverwaltung / Vermieter",
+        escape(vermieter_name) or "Hausverwaltung / Vermieter",
         styles['SubHeader']
     ))
     

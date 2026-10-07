@@ -50,7 +50,8 @@ kern:
 	  tests/test_allgemein_belegungsabschnitte.py tests/test_leerstand_einzige_wohnung.py \
 	  tests/test_leerstand_zaehlerzweig.py tests/test_wohnungsrechnung_leerstand.py \
 	  tests/test_rechnungen_bestand.py tests/test_rechnungsabdeckung.py \
-	  tests/test_grundpreis_leerstand.py \
+	  tests/test_grundpreis_leerstand.py tests/test_stichtagswerte.py \
+	  tests/test_allgemein_messabschnitte.py tests/test_allgemein_negativ.py \
 	  -q --no-header \
 	  --cov=nebenkostenfix.rechenkern --cov-branch --cov-report=term-missing --cov-fail-under=95
 

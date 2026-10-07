@@ -31,12 +31,14 @@ from decimal import Decimal
 # Die einzige Stelle der Versionsnummer (x.y.z). Docker-Abbild, Windows-
 # Installer und GitHub-Release lesen sie von hier; jeder Merge nach main
 # braucht eine neue Nummer, sonst lehnt die CI den Pull Request ab.
-SOFTWARE_VERSION = '0.11.0'
+SOFTWARE_VERSION = '0.12.0'
 
 # Der Stand der rechtlichen Grundlage (BetrKV, HeizkostenV, CO2KostAufG),
 # gegen den die Rechenregeln geprüft sind. Wer eine Regel nach neuer
-# Rechtslage ändert, hebt diese Konstante im selben Zug mit.
-REGEL_VERSION = '2026-08-28'
+# Rechtslage ändert, hebt diese Konstante im selben Zug mit. Seit NK-217 hebt
+# sie auch eine Änderung, die Zahlen einer Abrechnung ändert (NK-208, NK-213):
+# daran erkennt die Anwendung Abrechnungen nach älterem Stand.
+REGEL_VERSION = '2026-10-06'
 
 
 def json_sicher(objekt):

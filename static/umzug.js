@@ -184,7 +184,14 @@
                 const bericht = await umzugPaket.uebernehmen(quelle, {code, passphrase});
                 melden(`Übernommen: ${umzugPaket.anzahl(bericht.zeilen, 'Datensatz', 'Datensätze')} und ` +
                     `${umzugPaket.anzahl(bericht.belege, 'Beleg', 'Belege')}. ` +
-                    'Melden Sie sich jetzt mit Ihrem bisherigen Benutzernamen und Passwort an.', 'ok');
+                    // NK-201: das Paket kann ohne Konto liegen — dann faehrt
+                    // die App offen weiter, sonst meldet sie sich wie bisher an.
+                    (bericht.anmelden
+                        ? 'Melden Sie sich jetzt mit Ihrem bisherigen Benutzernamen und Passwort an.'
+                        : bericht.ohne_anmeldung
+                            ? 'Das Paket enthält kein Konto. Die App öffnet sich ohne Anmeldung.'
+                            : 'Das Paket enthält kein Konto. Legen Sie jetzt eines an oder fahren Sie ohne Anmeldung fort.'),
+                    'ok');
                 const weiter = document.getElementById('umzug-weiter');
                 weiter.hidden = false;
                 weiter.focus();

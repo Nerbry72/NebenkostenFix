@@ -25,29 +25,33 @@ PREISWARNUNG = 'W-ZAEHLER-PREIS-HOCHGERECHNET'
 
 #: Je Mieter: Zeitraum, Summe je Kostenart, Gesamt, Vorauszahlung, Saldo,
 #: Meldungen (Kennung, Inhalt), Teile der Vorschlagsgründe, Teile des PDFs.
+#: NK-213: Haupt- und Wohnungszähler haben keinen gemeinsamen Ablesetag, der
+#: Allgemeinverbrauch der Wasserrechnung WA-33 ist also ein Abschnitt und geht
+#: nach Personentagen: 1562,90 € / 282,3 m³ · 93,2 m³ · 275/1460 = 97,18 €.
+#: Bis dahin schnitt F-122 am Einzug von Mieter 3 und schätzte den Hauptzähler.
 ERWARTUNG = {
     'Mieter 1': dict(
         zeitraum=('2033-04-01', '2033-12-31'),
-        kosten={'Wasserversorgung': 466.48, 'Heizung': 1269.11,
+        kosten={'Wasserversorgung': 466.33, 'Heizung': 1269.11,
                 'Beleuchtung (Allgemeinstrom)': 477.66, 'Sach- und Haftpflichtversicherung': 211.39},
-        gesamt=2424.64, voraus=1305.0, saldo=1119.64,
+        gesamt=2424.49, voraus=1305.0, saldo=1119.49,
         meldungen=[(PREISWARNUNG, 'HS-1')],
         gruende=['Abgerechnet ist bis 31.03.2033', 'WMZ-EG', 'Beleuchtung (Allgemeinstrom)'],
         pdf=['01.04.2033 bis 31.12.2033', 'Ihre Nachzahlung', 'WA-33', 'HZ-33', 'ST-33', 'VG-33',
              f'3371.9 kWh, {GESCHAETZT}']),
     'Mieter 2': dict(
         zeitraum=('2033-04-01', '2033-12-31'),
-        kosten={'Wasserversorgung': 281.46, 'Heizung': 0.0,
+        kosten={'Wasserversorgung': 281.31, 'Heizung': 0.0,
                 'Beleuchtung (Allgemeinstrom)': 26.37, 'Sach- und Haftpflichtversicherung': 116.78},
-        gesamt=424.61, voraus=765.0, saldo=-340.39,
+        gesamt=424.46, voraus=765.0, saldo=-340.54,
         meldungen=[(PREISWARNUNG, 'HS-1')],
         gruende=['Abgerechnet ist bis 31.03.2033', 'Beleuchtung (Allgemeinstrom)'],
         pdf=['01.04.2033 bis 31.12.2033', 'Ihr Guthaben', 'WA-33', 'VG-33']),
     'Mieter 3': dict(
         zeitraum=('2033-10-01', '2033-12-31'),
-        kosten={'Wasserversorgung': 106.89, 'Heizung': 580.51,
+        kosten={'Wasserversorgung': 107.04, 'Heizung': 580.51,
                 'Beleuchtung (Allgemeinstrom)': 109.29, 'Sach- und Haftpflichtversicherung': 57.37},
-        gesamt=854.06, voraus=330.0, saldo=524.06,
+        gesamt=854.21, voraus=330.0, saldo=524.21,
         meldungen=[(PREISWARNUNG, 'HS-1')],
         gruende=['WMZ-W3', 'Den Rest bis zum Auszug (01.01.2034–31.07.2034)'],
         pdf=['01.10.2033 bis 31.12.2033', 'Ihre Nachzahlung', GESCHAETZT]),

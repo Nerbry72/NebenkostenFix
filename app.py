@@ -30,6 +30,7 @@ Anmeldung, Ersteinrichtung und Konto -- alles in auth.py, nicht hier
   GET         /api/konten                                  -> konten_auflisten
   POST        /api/konten                                  -> konto_anlegen
   PUT         /api/konto/passwort                          -> konto_passwort_aendern
+  POST        /api/anmeldung/aus                           -> anmeldung_ausschalten
   GET,POST    /huelle/passwort                             -> huelle_passwort
 
 Oberflaeche und Betrieb
@@ -206,6 +207,7 @@ Abrechnung -- der Weg von den Rechnungen zum Schreiben an den Mieter
   GET         /api/properties/<int:property_id>/anschreiben -> get_anschreiben_vorlage
   PUT         /api/properties/<int:property_id>/anschreiben -> setze_anschreiben_vorlage
   DELETE      /api/properties/<int:property_id>/anschreiben -> loesche_anschreiben_vorlage
+  GET         /api/billing/reports/<int:id>/korrektur/vorschau -> korrektur_vorschau
   POST        /api/billing/reports/<int:id>/korrektur      -> korrigiere_billing_report
   GET         /api/billing/reports/<int:id>/download       -> download_billing_report
   POST        /api/billing/reports/<int:id>/zustellung     -> zustellung_melden
@@ -260,6 +262,7 @@ from flask.json.provider import DefaultJSONProvider
 from dotenv import load_dotenv
 from nebenkostenfix.geld import NULL, runde
 from nebenkostenfix import betrkv
+from nebenkostenfix.rechenkern import einheit_fuer
 from nebenkostenfix import mieter_daten
 from nebenkostenfix import beispielimmobilie
 from nebenkostenfix import zeitleiste
@@ -272,7 +275,7 @@ from nebenkostenfix.heizung import (
     pruefe_warmwasserweg,
 )
 from nebenkostenfix.models import db, User, Property, Apartment, Tenant, Haushaltsgroesse, CostCategory, CostInvoice, Meter, MeterReading, TenantCostProfile, InvoiceDocument, Provider, TenantBillingReport, BillingReportCategory, BillingReportVersion, AnschreibenVorlage, Vermieterdaten, Heizungsanlage
-from nebenkostenfix.girocode_generator import iban_pruefen, iban_saeubern
+from nebenkostenfix.girocode_generator import iban_pruefen, iban_saeubern, vermieter_ausweis
 from nebenkostenfix.abrechnung_version import schnappschuss, json_sicher, SOFTWARE_VERSION, REGEL_VERSION
 from nebenkostenfix.anschreiben import VORGABE, PLATZHALTER, text_fuer
 from nebenkostenfix.ablage import Ablage
@@ -1331,6 +1334,8 @@ def get_meters():
             'id': m.id,
             'category_id': m.category_id,
             'category_name': m.category.name,
+            # NK-220 (V3): dieselbe Einheit, mit der die Abrechnung rechnet
+            'einheit': einheit_fuer(m.category.name, m.category.betrkv_nr),
             'property_id': m.property_id,
             'property_name': m.property.name,
             'apartment_id': m.apartment_id,
@@ -1388,6 +1393,7 @@ def get_readings():
             'meter_id': r.meter_id,
             'meter_number': r.meter.meter_number,
             'category_name': r.meter.category.name,
+            'einheit': einheit_fuer(r.meter.category.name, r.meter.category.betrkv_nr),
             'property_name': r.meter.property.name,
             'apartment_name': r.meter.apartment.name if r.meter.apartment else None,
             'reading_date': r.reading_date.isoformat(),
@@ -1422,6 +1428,48 @@ def get_readings():
         result.append(data)
     return jsonify(result), 200
 
+def _stand_text(wert: float) -> str:
+    return f'{wert:.3f}'.rstrip('0').rstrip('.').replace('.', ',')
+
+
+def _ablesung_pruefen(meter_id: int, datum: date, wert: float, wert_nt, eigene_id=None):
+    """NK-216 (F1): was nie stimmen kann, ist ein Fehler; was selten stimmt, eine Frage.
+
+    Negative Staende und Ablesungen in der Zukunft gibt es nicht (400). Ein
+    Stand unter dem vorigen oder ueber dem folgenden und ein zweiter Stand
+    am selben Tag sind fast immer Tippfehler -- der Kern rechnet sie aber
+    klaglos in jede Abrechnung. Dafuer liefert die Funktion den Text der
+    Rueckfrage; die Route antwortet 409, ausser der Nutzer hat bestaetigt.
+    """
+    if wert < 0:
+        raise EingabeFehler('Ein Zählerstand kann nicht negativ sein.', 'value')
+    if wert_nt is not None and wert_nt < 0:
+        raise EingabeFehler('Ein Zählerstand kann nicht negativ sein.', 'value_nt')
+    # Der Tag, den der Vermieter in Berlin liest -- nicht der des Servers.
+    if datum > zeit.als_ortsdatum(zeit.jetzt_utc()):
+        raise EingabeFehler('Das Ablesedatum liegt in der Zukunft.', 'reading_date')
+
+    andere = [r for r in MeterReading.query.filter_by(meter_id=meter_id).all() if r.id != eigene_id]
+    if any(r.reading_date == datum for r in andere):
+        return (f'Für diesen Zähler gibt es am {datum.strftime("%d.%m.%Y")} schon einen Stand. '
+                'Trotzdem einen zweiten speichern?')
+    vorher = max((r for r in andere if r.reading_date < datum), key=lambda r: r.reading_date, default=None)
+    nachher = min((r for r in andere if r.reading_date > datum), key=lambda r: r.reading_date, default=None)
+    # Beim Zweitarifzaehler laeuft das NT-Zaehlwerk genauso nur vorwaerts.
+    for stand, feld, name in ((wert, 'value', 'Stand'), (wert_nt, 'value_nt', 'NT-Stand')):
+        frueher = getattr(vorher, feld, None)
+        spaeter = getattr(nachher, feld, None)
+        if stand is not None and frueher is not None and stand < frueher:
+            return (f'Der {name} {_stand_text(stand)} ist kleiner als der vorige vom '
+                    f'{vorher.reading_date.strftime("%d.%m.%Y")} ({_stand_text(frueher)}). '
+                    'Ein Zähler läuft nicht rückwärts. Trotzdem speichern?')
+        if stand is not None and spaeter is not None and stand > spaeter:
+            return (f'Der {name} {_stand_text(stand)} ist größer als der folgende vom '
+                    f'{nachher.reading_date.strftime("%d.%m.%Y")} ({_stand_text(spaeter)}). '
+                    'Trotzdem speichern?')
+    return None
+
+
 @app.route('/api/readings', methods=['POST'])
 def create_reading():
     eingabe = Eingabe.aus_request()
@@ -1441,6 +1489,9 @@ def create_reading():
             f'{", ".join(ABLESUNGSARTEN)}.', 'ablesungsart')
 
     meter = Meter.query.get_or_404(meter_id)
+    frage = _ablesung_pruefen(meter_id, reading_date, value, value_nt)
+    if frage and not eingabe.wahrheit('trotzdem'):
+        return jsonify({'error': frage, 'nachfrage': True}), 409
 
     document_path = None
     foto = eingabe.datei('file')
@@ -1473,6 +1524,7 @@ def update_reading(id):
     reading = MeterReading.query.get_or_404(id)
     
     eingabe = Eingabe.aus_request()
+    stand_vorher = (reading.reading_date, reading.value, reading.value_nt)
 
     if eingabe.vorhanden('reading_date'):
         reading.reading_date = eingabe.datum('reading_date', pflicht=True)
@@ -1497,6 +1549,20 @@ def update_reading(id):
                 f'Die Ablesungsart „{art}“ gibt es nicht. Erlaubt sind: '
                 f'{", ".join(ABLESUNGSARTEN)}.', 'ablesungsart')
         reading.ablesungsart = art
+
+    # Geprueft wird nur, was sich am Stand aendert: wer nur Foto, Ablesungsart oder
+    # Anbieter nachtraegt, soll nicht die alte Rueckfrage noch einmal sehen.
+    frage = None
+    if (reading.reading_date, reading.value, reading.value_nt) != stand_vorher:
+        try:
+            frage = _ablesung_pruefen(reading.meter_id, reading.reading_date, reading.value,
+                                      reading.value_nt, eigene_id=reading.id)
+        except EingabeFehler:
+            db.session.rollback()
+            raise
+    if frage and not eingabe.wahrheit('trotzdem'):
+        db.session.rollback()
+        return jsonify({'error': frage, 'nachfrage': True}), 409
 
     foto = eingabe.datei('file')
     if foto:
@@ -2845,7 +2911,8 @@ def get_all_billing_reports():
             'end_date': r.end_date.isoformat(),
             'created_at': zeit.als_ortszeit(r.created_at),
             'document_path': r.document_path,
-            'document_path_detailed': r.document_path_detailed
+            'document_path_detailed': r.document_path_detailed,
+            'veraltet': _regelstand_veraltet(r),
         })
     return jsonify(res)
 
@@ -2969,6 +3036,7 @@ def _anschreiben_fuer(mieter, bill_data, report=None):
         vorauszahlungen=vorauszahlungen,
         saldo=bill_data['total_amount'] - vorauszahlungen,
         einwendungsfrist=frist_text,
+        vermieter_name=vermieter_ausweis()[0],
     )
 
 
@@ -3009,6 +3077,7 @@ def get_billing_report_details(id):
             'version': version.nummer,
             'software_version': version.software_version,
             'regel_version': version.regel_version,
+            'veraltet': _regelstand_veraltet(report),
             'ergebnis': version.ergebnis,
             # NK-124: die Umschlagdaten und die Versionen, damit die
             # Oberflaeche Zustellung, Frist und Korrektur an diesem Ort
@@ -3214,6 +3283,75 @@ def get_billing_report_csv(id):
                      download_name=dateiname(report))
 
 
+def _regelstand_veraltet(report) -> bool:
+    """NK-217 (F2): die gueltige Version stammt von einem aelteren Regelstand.
+
+    Die Abrechnung bleibt, wie sie zugegangen ist (R-DOC-02); der Vermieter
+    soll nur sehen, dass eine Korrektur heute anders rechnen kann. Altbestand
+    ohne Version rechnet ohnehin live und ist darum nie veraltet. Rechnete
+    sie nach dem heutigen Regelstand schon einmal gleich, ist der Hinweis
+    erledigt (``regelstand_geprueft``).
+    """
+    version = report.aktuelle_version
+    stand = max(version.regel_version or '', report.regelstand_geprueft or '') if version else ''
+    return version is not None and stand < REGEL_VERSION
+
+
+def _neu_gerechnet(report):
+    """Die Abrechnung gegen die heutigen Daten -- fuer Korrektur und Vorschau."""
+    from nebenkostenfix.billing_engine import BillingEngine
+    engine = BillingEngine(
+        tenant_id=report.tenant_id,
+        start_date=report.start_date,
+        end_date=report.end_date,
+        category_ids=[c.category_id for c in report.categories] or None
+    )
+    return engine, engine.calculate_bill()
+
+
+def _je_kostenart(ergebnis) -> dict:
+    summen = {}
+    for zeile in (ergebnis or {}).get('line_items', []):
+        summen[zeile['category']] = summen.get(zeile['category'], Decimal('0')) + Decimal(str(zeile['tenant_cost']))
+    return summen
+
+
+@app.route('/api/billing/reports/<int:id>/korrektur/vorschau', methods=['GET'])
+def korrektur_vorschau(id):
+    """NK-217 (F2): was eine Korrektur aendern wuerde, ohne sie anzulegen.
+
+    Rechnet wie die Korrektur, speichert nichts und stellt je Kostenart und
+    fuer Summe, Vorauszahlungen und Saldo den alten Wert (Schnappschuss der
+    gueltigen Version) neben den neuen. Beim Altbestand ohne Version gibt es
+    keinen festgehaltenen alten Wert; ``alt`` ist dann null.
+    """
+    report = TenantBillingReport.query.get_or_404(id)
+    try:
+        neu = json_sicher(_neu_gerechnet(report)[1])
+    except BillingDataError as e:
+        return jsonify({'error': str(e)}), 400
+    version = report.aktuelle_version
+    alt = version.ergebnis if version is not None else None
+
+    def paar(feld):
+        return {'alt': str(alt[feld]) if alt and alt.get(feld) is not None else None,
+                'neu': str(neu[feld]) if neu.get(feld) is not None else None}
+
+    alt_je, neu_je = _je_kostenart(alt), _je_kostenart(neu)
+    kostenarten = list(dict.fromkeys([*alt_je, *neu_je]))
+    return jsonify({
+        'unveraendert': alt is not None and alt == neu,
+        'veraltet': _regelstand_veraltet(report),
+        'positionen': [{'kostenart': k,
+                        'alt': str(alt_je[k]) if alt is not None and k in alt_je else None,
+                        'neu': str(neu_je[k]) if k in neu_je else None}
+                       for k in kostenarten],
+        'summe': paar('total_amount'),
+        'vorauszahlungen': paar('prepaid_amount'),
+        'saldo': paar('balance'),
+    })
+
+
 @app.route('/api/billing/reports/<int:id>/korrektur', methods=['POST'])
 def korrigiere_billing_report(id):
     """Die Korrektur legt eine neue Version an (R-DOC-02, NK-061).
@@ -3224,26 +3362,25 @@ def korrigiere_billing_report(id):
     die PDFs der Abrechnung neu erzeugen -- das Blatt, das der Mieter
     bekommt, muss die korrigierten Zahlen tragen. Hat sich an den Daten
     nichts geaendert, gibt es keine Korrektur: eine neue Version waere
-    nur eine Kopie.
+    nur eine Kopie. Stammt die Version von einem aelteren Regelstand, haelt
+    die Abrechnung dann fest, dass sie nach dem heutigen gleich rechnet --
+    sonst stuende der Hinweis darauf fuer immer da.
     """
     report = TenantBillingReport.query.get_or_404(id)
-
-    category_ids = [c.category_id for c in report.categories] or None
-    from nebenkostenfix.billing_engine import BillingEngine
-    engine = BillingEngine(
-        tenant_id=report.tenant_id,
-        start_date=report.start_date,
-        end_date=report.end_date,
-        category_ids=category_ids
-    )
     try:
-        bill_data = engine.calculate_bill()
+        engine, bill_data = _neu_gerechnet(report)
     except BillingDataError as e:
         return jsonify({'error': str(e)}), 400
     
     ersetzt = report.aktuelle_version
     neue_ergebnis = json_sicher(bill_data)
     if ersetzt is not None and ersetzt.ergebnis == neue_ergebnis:
+        if _regelstand_veraltet(report):
+            report.regelstand_geprueft = REGEL_VERSION
+            db.session.commit()
+            return jsonify({'unveraendert': True, 'message':
+                'Die Abrechnung rechnet nach dem heutigen Regelstand gleich. '
+                'Eine Korrektur ist nicht nötig; der Hinweis entfällt.'}), 200
         return jsonify({'error':
             'Die Abrechnung ist unverändert; eine neue Version wäre '
             'nur eine Kopie der alten.'}), 400
@@ -3665,7 +3802,21 @@ def analytics_building(property_id):
         bis = abgerechnet_bis(t)
         if not bis or bis < one_year_ago:
             open_tasks += 1
-            
+
+    # NK-211 (B4): wer ausgezogen ist, braucht eine Endabrechnung bis zum
+    # Auszug. Zwei Jahre nach dem Auszug ist auch die Frist des Zeitraums
+    # vorbei, in dem er liegt (§ 556 Abs. 3 BGB: zwölf Monate nach dessen
+    # Ende) -- aelterer Bestand zaehlt nicht mehr als Aufgabe.
+    ausgezogene = Tenant.query.join(Apartment).filter(
+        Apartment.property_id == property_id,
+        Tenant.move_out_date < today,
+        Tenant.move_out_date >= today - datetime.timedelta(days=730),
+    ).order_by(Tenant.id).all()
+    for t in ausgezogene:
+        bis = abgerechnet_bis(t)
+        if not bis or bis < t.move_out_date:
+            open_tasks += 1
+
     kpis = {
         'reference_year': reference_year,
         'cashflow_ytd': round(cashflow_ytd, 2),

@@ -149,7 +149,7 @@ def test_der_fuss_traegt_software_und_rechenstand(unkomprimiert):
     Stände, die NK-061 in die Version der finalisierten Abrechnung
     schreibt."""
     erwartet = _fuss(SOFTWARE_VERSION, REGEL_VERSION)
-    assert erwartet == (f'ErstelltmitNebenkostenFix{SOFTWARE_VERSION}·RechenstandderRegeln:28.08.2026'
+    assert erwartet == (f'ErstelltmitNebenkostenFix{SOFTWARE_VERSION}·RechenstandderRegeln:06.10.2026'
                         '·github.com/Nerbry72/NebenkostenFix')
 
     for detailliert in (False, True):

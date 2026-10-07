@@ -129,6 +129,25 @@ async function abmelden() {
 }
 window.abmelden = abmelden;
 
+// NK-201: die Anmeldung ausschalten — POST /api/anmeldung/aus mit dem
+// Passwort als Bestaetigung; danach ist die App offen und neu geladen.
+async function anmeldungAusschalten() {
+    const feld = document.getElementById('konto-anmeldung-passwort');
+    if (!feld) return;
+    try {
+        const res = await fetch('/api/anmeldung/aus', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: feld.value })
+        });
+        if (!res.ok) throw await serverFehler(res);
+        window.location.assign('/');
+    } catch (e) {
+        showError(meldungZu(e, 'Die Anmeldung konnte nicht ausgeschaltet werden.'));
+    }
+}
+window.anmeldungAusschalten = anmeldungAusschalten;
+
 async function zeigeAngemeldetenBenutzer() {
     try {
         const antwort = await fetch('/api/auth/me');
@@ -136,6 +155,24 @@ async function zeigeAngemeldetenBenutzer() {
         const daten = await antwort.json();
         const feld = document.getElementById('angemeldeterBenutzer');
         if (feld) feld.textContent = daten.username;
+        // NK-201: im offenen Modus gehoert weder Name noch Abmelden in den
+        // Kopf, und die Konto-Karte zeigt keinen Bestand mehr -- sie
+        // erklaert stattdessen den offenen Zustand und haelt den Rueckweg
+        // ueber die Einrichtung offen.
+        const offen = !!daten.ohne_anmeldung;
+        ['angemeldeterBenutzer', 'kopf-abmelden', 'konto-liste',
+            'konto-passwort-bereich'].forEach(kennung => {
+            const teil = document.getElementById(kennung);
+            if (teil) teil.hidden = offen;
+        });
+        const einschalten = document.getElementById('konto-anmeldung-einschalten-bereich');
+        if (einschalten) einschalten.hidden = !offen;
+        const ausschalten = document.getElementById('konto-anmeldung-ausschalten-bereich');
+        if (ausschalten) ausschalten.hidden = offen;
+        const netzhinweis = document.getElementById('konto-anmeldung-netzhinweis');
+        if (netzhinweis) netzhinweis.hidden = !!daten.desktop;
+        const leiste = document.getElementById('ohne-anmeldung-hinweis');
+        if (leiste) leiste.hidden = !(offen && !daten.desktop);
         // NK-123: die Gefahrenzone gehoert nur in den Entwicklungsstapel.
         // Sie bleibt im HTML verborgen, bis /api/auth/me meldet, dass die
         // Entwicklerroute angemeldet ist -- im Auslieferungsbuild bleibt
@@ -964,6 +1001,11 @@ async function initLeerlauf() {
         const res = await fetch('/api/auth/me');
         if (res.ok) {
             const ich = await res.json();
+            if (ich.leerlauf_s === null) {
+                // NK-201: offener Modus — es gibt keine Sitzung, die
+                // ablaufen koennte; also keine Warnung, kein Abmelden.
+                return;
+            }
             if (ich.leerlauf_s) leerlaufMs = ich.leerlauf_s * 1000;
         }
     } catch (e) {
@@ -1603,6 +1645,12 @@ async function deleteApartment(id) {
 }
 
 
+// NK-212 (B5): aktiv wie beim Server (F-118) -- der Auszugstag ist der
+// letzte Miettag, wer davor auszog, zählt nicht mehr. ``heute`` als ISO-Tag.
+function istAktiverMieter(t, heute) {
+    return !t.ist_beispiel && (!t.move_out_date || t.move_out_date >= heute);
+}
+
 // API Calls - Tenants
 async function fetchTenants() {
     try {
@@ -1610,7 +1658,9 @@ async function fetchTenants() {
         if (!response.ok) throw await serverFehler(response);
         tenants = await response.json();
         
-        statTenantsCount.textContent = tenants.filter(t => !t.ist_beispiel).length;
+        // Ortszeit, nicht UTC: kurz nach Mitternacht waere sonst noch gestern
+        const heute = new Date().toLocaleDateString('sv-SE');
+        statTenantsCount.textContent = tenants.filter(t => istAktiverMieter(t, heute)).length;
         zeigeErsteSchritte();
         
         const container = document.getElementById('tenants-container');
@@ -2381,13 +2431,10 @@ function zaehlerArtName(name) {
     return ZAEHLER_ANZEIGENAMEN[name] || name;
 }
 
-function getReadingHtml(r, categoryName) {
-    let unit = '';
-    if (categoryName) {
-        const lower = categoryName.toLowerCase();
-        if (lower.includes('strom')) unit = ' kWh';
-        else if (lower.includes('gas') || lower.includes('wasser')) unit = ' m³';
-    }
+function getReadingHtml(r, einheit) {
+    // NK-220 (V3): die Einheit kommt vom Server (einheit_fuer im Rechenkern),
+    // nicht mehr aus dem Namen der Kostenart; Heizung bekam vorher keine.
+    const unit = einheit ? ' ' + einheit : '';
 
     const fmt = new Intl.NumberFormat('de-DE');
     const formatVal = (val) => val !== null && val !== undefined ? fmt.format(val) : '';
@@ -2481,7 +2528,8 @@ function renderMeters() {
             
             const tdNum = document.createElement('td');
             tdNum.style.padding = "12px 8px";
-            tdNum.innerHTML = m.meter_number + (
+            // NK-219 (V2): die Nummer tippt der Nutzer ein, sie kommt maskiert ins HTML.
+            tdNum.innerHTML = escapeHtml(m.meter_number) + (
                 m.is_official 
                 ? ' <span style="font-size: 13px; padding: 2px 6px; background: var(--primary); color: white; border-radius: 4px; margin-left: 8px;" title="Offizieller Zähler des Versorgers"><i class="ph ph-check-circle"></i> Versorger</span>' 
                 : ' <span style="font-size: 13px; padding: 2px 6px; background: var(--border-color); color: var(--text-color); border-radius: 4px; margin-left: 8px;" title="Privater Zwischenzähler">Privat</span>'
@@ -2498,21 +2546,33 @@ function renderMeters() {
             tdRead.className = "tabular-nums";
             if (meterReadings.length > 0) {
                 const latest = meterReadings[0];
-                tdRead.innerHTML = getReadingHtml(latest, m.category_name);
+                tdRead.innerHTML = getReadingHtml(latest, m.einheit);
             } else {
                 tdRead.textContent = "-";
             }
             
             const tdActions = document.createElement('td');
             tdActions.style.padding = "12px 8px";
+            // Verlauf, Stift und Papierkorb bleiben in einer Zeile
+            tdActions.style.whiteSpace = 'nowrap';
             tdActions.onclick = (e) => e.stopPropagation();
             
+            // NK-219 (V2): der Verlauf war nur über einen Klick auf die Zeile
+            // zu finden; der Stift sagt jetzt, dass er nur den letzten Stand ändert.
+            const verlaufBtn = document.createElement('button');
+            verlaufBtn.className = 'btn-secondary';
+            verlaufBtn.style.cssText = 'font-size: 0.85rem; padding: 4px 10px; margin-right: 8px;';
+            verlaufBtn.innerHTML = '<i class="ph ph-clock-counter-clockwise"></i> Verlauf';
+            verlaufBtn.title = 'Alle Stände dieses Zählers ansehen';
+            verlaufBtn.onclick = () => openHistoryModal(m.id);
+            tdActions.appendChild(verlaufBtn);
+
             if (meterReadings.length > 0) {
                 const latest = meterReadings[0];
                 const editReadBtn = document.createElement('button');
                 editReadBtn.className = 'btn-icon';
                 editReadBtn.innerHTML = '<i class="ph ph-pencil-simple"></i>';
-                editReadBtn.title = "Letzten Zählerstand bearbeiten";
+                editReadBtn.title = "Letzten Stand bearbeiten";
                 editReadBtn.style.marginRight = "8px";
                 editReadBtn.onclick = () => openAddReadingModal(null, latest.id);
                 tdActions.appendChild(editReadBtn);
@@ -2521,6 +2581,7 @@ function renderMeters() {
             const delBtn = document.createElement('button');
             delBtn.className = 'btn-icon';
             delBtn.innerHTML = '<i class="ph ph-trash"></i>';
+            delBtn.title = 'Zähler löschen';
             delBtn.onclick = () => deleteMeter(m.id);
             tdActions.appendChild(delBtn);
             
@@ -3086,7 +3147,7 @@ function openHistoryModal(meterId) {
         const tdRead = document.createElement('td');
         tdRead.style.padding = "12px 8px";
         tdRead.className = "tabular-nums";
-        tdRead.innerHTML = getReadingHtml(r, meter.category_name);
+        tdRead.innerHTML = getReadingHtml(r, meter.einheit);
         
         const tdActions = document.createElement('td');
         tdActions.style.padding = "12px 8px";
@@ -3200,6 +3261,19 @@ function openAddReadingModal(meterId = null, editReadingId = null) {
 
 function closeAddReadingModal() { document.getElementById('reading-modal').classList.remove('active'); }
 
+// NK-216: ein Stand unter dem vorigen, über dem folgenden oder ein zweiter
+// am selben Tag kommt mit 409 und einer Frage zurück. Wer bestätigt, schickt
+// dasselbe noch einmal mit `trotzdem`; wer abbricht, bekommt null.
+async function sendeMitNachfrage(url, method, formData) {
+    const res = await fetch(url, { method, body: formData });
+    if (res.status !== 409) return res;
+    const daten = await res.json().catch(() => ({}));
+    if (!daten.nachfrage) return { ok: false, status: 409, json: async () => daten };
+    if (!await frage(daten.error, 'Trotzdem speichern', false, 'Zählerstand prüfen')) return null;
+    formData.append('trotzdem', '1');
+    return fetch(url, { method, body: formData });
+}
+
 async function saveReading() {
     const editId = document.getElementById('reading-id').value;
     const meterId = document.getElementById('reading-meter').value;
@@ -3241,10 +3315,8 @@ async function saveReading() {
     try {
         const url = editId ? `/api/readings/${editId}` : '/api/readings';
         const method = editId ? 'PUT' : 'POST';
-        const res = await fetch(url, {
-            method: method,
-            body: formData
-        });
+        const res = await sendeMitNachfrage(url, method, formData);
+        if (!res) return;
         if(!res.ok) throw await serverFehler(res);
         closeAddReadingModal();
         fetchReadings();
@@ -4292,7 +4364,13 @@ async function umzugUebernehmen() {
         });
         meldung.textContent = `Übernommen: ${window.umzugPaket.anzahl(bericht.zeilen, 'Datensatz', 'Datensätze')} und ` +
             `${window.umzugPaket.anzahl(bericht.belege, 'Beleg', 'Belege')}. ` +
-            'Sie werden gleich zur Anmeldung geleitet — melden Sie sich mit dem Konto aus dem Paket an.';
+            // NK-201: das Paket kann ohne Konto liegen — dann faehrt die
+            // App offen weiter, sonst meldet sie sich wie bisher an.
+            (bericht.anmelden
+                ? 'Sie werden gleich zur Anmeldung geleitet — melden Sie sich mit dem Konto aus dem Paket an.'
+                : bericht.ohne_anmeldung
+                    ? 'Das Paket enthält kein Konto. Die App öffnet sich ohne Anmeldung.'
+                    : 'Das Paket enthält kein Konto. Legen Sie jetzt eines an oder fahren Sie ohne Anmeldung fort.');
         setTimeout(() => { location.href = '/login'; }, 3500);
     } catch (e) {
         meldung.textContent = '';
@@ -5136,6 +5214,7 @@ async function fetchBillingHistory() {
                     <p style="margin: 8px 0 0 0; color: var(--text-muted);">
                         Zeitraum: ${startFmt} - ${endFmt} | Erstellt am: ${createdFmt}
                     </p>
+                    ${r.veraltet ? REGELSTAND_HINWEIS : ''}
                 </div>
                 <div class="historie-knoepfe">
                     <button class="btn-primary" onclick="openReportDetails(${r.id})" title="Einzelheiten und Belege dieser Abrechnung ansehen">
@@ -5214,6 +5293,8 @@ function berichtZustellungsBlock(id, umschlag) {
                 </p>
             </div>`;
     }
+    // NK-221 (V4): das Feld startet leer; ein vorbelegtes Heute wurde
+    // ungelesen gespeichert, und die Einwendungsfrist lief ab falschem Tag.
     return `
         <div class="dashboard-card glass-panel" style="margin-bottom: 20px; padding: 16px;">
             <h4 style="margin: 0 0 8px 0; display: flex; align-items: center; gap: 8px;">
@@ -5226,7 +5307,7 @@ function berichtZustellungsBlock(id, umschlag) {
             <div style="display: flex; gap: 12px; align-items: end; flex-wrap: wrap;">
                 <div class="form-group" style="margin: 0;">
                     <label for="zustellung-datum-${id}">Zugestellt am</label>
-                    <input type="date" id="zustellung-datum-${id}" value="${new Date().toISOString().split('T')[0]}">
+                    <input type="date" id="zustellung-datum-${id}">
                 </div>
                 <button class="btn-primary" onclick="zustellungMelden(${id})">Zustellung speichern</button>
             </div>
@@ -5279,9 +5360,44 @@ function berichtVersionenBlock(id, umschlag) {
         </div>`;
 }
 
+// NK-217 (F2): die Abrechnung bleibt, wie sie zugegangen ist; der Hinweis
+// sagt nur, dass eine Korrektur heute anders rechnen kann.
+const REGELSTAND_HINWEIS = `<p class="regelstand-hinweis" style="margin: 4px 0 0 0; color: var(--warning-color); font-size: 0.9rem;"><i class="ph ph-warning"></i> Nach älterem Regelstand erstellt. „Korrektur erstellen“ prüft, ob der heutige anders rechnet.</p>`;
+
+/* NK-217 (F2): vor dem Bestätigen steht da, was die Korrektur ändert. */
+function korrekturVorschauText(v) {
+    const zeile = (name, p) => `${name}: ${p.alt === null ? 'bisher ohne Wert' : euroText(p.alt)} → ${euroText(p.neu)}`;
+    const zeilen = v.positionen.filter(p => p.alt !== p.neu)
+        .map(p => zeile(p.kostenart, {alt: p.alt, neu: p.neu ?? 0}));
+    zeilen.push(zeile('Summe', v.summe), zeile('Saldo', v.saldo));
+    return 'Eine Korrektur rechnet diese Abrechnung gegen die aktuellen Daten neu und legt eine neue Version an.\n\n'
+        + 'Das ändert sich:\n' + zeilen.join('\n') + '\n\nKorrektur erstellen?';
+}
+
 async function korrekturErstellen(id) {
-    if (!await frage('Eine Korrektur rechnet diese Abrechnung gegen die aktuellen Daten neu und legt eine neue Version an. Fortfahren?', 'Erstellen')) return;
     try {
+        const vorschau = await fetch(`/api/billing/reports/${id}/korrektur/vorschau`);
+        if (!vorschau.ok) throw await serverFehler(vorschau);
+        const v = await vorschau.json();
+        if (v.unveraendert && v.veraltet) {
+            // Gleiches Ergebnis nach heutigem Regelstand: der Server haelt das
+            // fest, damit der Hinweis nicht fuer immer stehen bleibt.
+            const res = await fetch(`/api/billing/reports/${id}/korrektur`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({})
+            });
+            if (!res.ok) throw await serverFehler(res);
+            showSuccess((await res.json()).message);
+            await fetchBillingHistory();
+            openReportDetails(id);
+            return;
+        }
+        if (v.unveraendert) {
+            showSuccess('Die Abrechnung rechnet mit den heutigen Daten gleich. Eine Korrektur ist nicht nötig.');
+            return;
+        }
+        if (!await frage(korrekturVorschauText(v), 'Erstellen', false, 'Korrektur prüfen')) return;
         const res = await fetch(`/api/billing/reports/${id}/korrektur`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -5322,6 +5438,7 @@ async function openReportDetails(id) {
                 <h3 style="margin: 0 0 8px 0; font-size: 1.25rem;">Details zur Abrechnung</h3>
                 <p style="color: var(--text-muted); margin: 0;">Zeitraum: ${new Date(umschlag.start_date || data.start_date).toLocaleDateString('de-DE')} - ${new Date(umschlag.end_date || data.end_date).toLocaleDateString('de-DE')}</p>
                 ${umschlag.version ? `<p style="color: var(--text-muted); margin: 4px 0 0 0; font-size: 0.9rem;">Version ${umschlag.version} · erstellt mit Software ${escapeHtml(umschlag.software_version || '')}, Regelstand ${escapeHtml(umschlag.regel_version || '')}</p>` : ''}
+                ${umschlag.veraltet ? REGELSTAND_HINWEIS : ''}
             </div>
             <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;">
                 <a class="btn-secondary" href="/api/billing/reports/${id}/belege" download
@@ -5791,8 +5908,19 @@ async function generateBillPreview(tenantId, startDate, endDate, categoryIds = n
                     const isAllgInterpolated = md.main_meter.is_interpolated || (md.tenant_meter && md.tenant_meter.is_interpolated);
                     if (aCons !== 'N/A') aCons = window.wrapInterpolated(aCons, isAllgInterpolated, md.main_meter);
                     
-                    mdStr += `<div><span style="font-weight:bold;">Hauptzähler:</span> ${mCons} ${escapeHtml(md.unit)}</div>`;
+                    // Haus und Allgemein gelten fuer die ganze Rechnung (NK-213).
+                    const mm = md.main_meter;
+                    const hzZeitraum = mm.target_start_date && mm.target_end_date
+                        ? ` (${datumText(mm.target_start_date)} bis ${datumText(mm.target_end_date)})`
+                        : '';
+                    mdStr += `<div><span style="font-weight:bold;">Hauptzähler${escapeHtml(hzZeitraum)}:</span> ${mCons} ${escapeHtml(md.unit)}</div>`;
                     mdStr += `<div><span style="font-weight:bold;">Allgemeinverbrauch:</span> ${aCons} ${escapeHtml(md.unit)}</div>`;
+                    // NK-209 (B2): der Anteil, mit dem gerechnet wurde (Personentage)
+                    if (md.allgemein_quote != null && md.allgemein_anteil != null) {
+                        const prozent = (md.allgemein_quote * 100).toLocaleString('de-DE',
+                            { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        mdStr += `<div><span style="font-weight:bold;">Ihr Anteil am Allgemeinverbrauch:</span> ${md.allgemein_anteil.toFixed(1)} ${escapeHtml(md.unit)} (${prozent} %${md.preis_ht != null ? ', nach den Kosten von HT und NT gewichtet' : ''})</div>`;
+                    }
                 }
                 mdStr += `</div>`;
                 detailsHtml += mdStr;

@@ -520,6 +520,264 @@ async function haushaltPruefen() {
         && gut.liste.zeilen.length === 1 && gut.meldungen.length === 0);
 }
 
-haushaltPruefen()
-    .catch(e => pruefe('NK-118: Haushaltsprüfung lief durch — ' + e.message, false))
-    .then(() => process.exit(fehler ? 1 : 0));
+// --- NK-201: Warnleiste im offenen Modus -------------------------------------
+// Der Rauchtest gibt die Antwort von /api/auth/me vor: offen in Docker zeigt
+// die Warnleiste, offen in der Windows-App bleibt sie verborgen.
+async function warnLeistePruefen() {
+    // Funktion mit Klammernzaehler herausschneiden — der Rueckgabewert am
+    // Ende der Funktion hat die gleiche Zeile wie ihre schliessende Klammer,
+    // eine Regexp auf "\n}" waere hier zu fahrlaessig.
+    const anfang = appQuelle.indexOf('async function zeigeAngemeldetenBenutzer() {');
+    if (anfang < 0) throw new Error('zeigeAngemeldetenBenutzer nicht gefunden');
+    let tiefe = 0, ende = -1;
+    for (let i = anfang; i < appQuelle.length; i++) {
+        if (appQuelle[i] === '{') tiefe++;
+        else if (appQuelle[i] === '}') { tiefe--; if (!tiefe) { ende = i + 1; break; } }
+    }
+    const quelltext = appQuelle.slice(anfang, ende);
+    const lauf = (daten) => {
+        const teile = {};
+        const dokument = {
+            getElementById(id) {
+                if (!(id in teile)) teile[id] = { textContent: '', hidden: undefined };
+                return teile[id];
+            },
+        };
+        const holen = () => Promise.resolve({ ok: true, json: () => Promise.resolve(daten) });
+        return new Function('document', 'fetch', 'showError', 'serverFehler', 'meldungZu',
+            quelltext + '; return zeigeAngemeldetenBenutzer();')(
+            dokument, holen, () => {}, async () => new Error('Server'), (e, e2) => e2)
+            .then(() => teile);
+    };
+    const docker = await lauf({ username: null, ohne_anmeldung: true, leerlauf_s: null, desktop: false });
+    pruefe('NK-201: offen in Docker zeigt die Warnleiste',
+        docker['ohne-anmeldung-hinweis'].hidden === false
+        && docker['konto-anmeldung-einschalten-bereich'].hidden === false
+        && docker['kopf-abmelden'].hidden === true
+        && docker['konto-liste'].hidden === true);
+    const windows = await lauf({ username: null, ohne_anmeldung: true, leerlauf_s: null, desktop: true });
+    pruefe('NK-201: offen in der Windows-App bleibt die Warnleiste verborgen',
+        windows['ohne-anmeldung-hinweis'].hidden === true
+        && windows['kopf-abmelden'].hidden === true);
+}
+
+// --- NK-204: Ausschalter schickt das Feld so, wie der Server es liest --------
+// Befund: der Knopf „Anmeldung ausschalten" schickte `passwort`, der Server
+// liest `password` — der Knopf scheiterte immer mit 403. Hier geht der ganze
+// Weg: Konto vorhanden, Passwort eingegeben, Knopf drücken, Anfrage geht mit
+// "password" raus.
+async function ausschalterPruefen() {
+    const anfang = appQuelle.indexOf('async function anmeldungAusschalten() {');
+    if (anfang < 0) throw new Error('anmeldungAusschalten nicht gefunden');
+    let tiefe = 0, ende = -1;
+    for (let i = anfang; i < appQuelle.length; i++) {
+        if (appQuelle[i] === '{') tiefe++;
+        else if (appQuelle[i] === '}') { tiefe--; if (!tiefe) { ende = i + 1; break; } }
+    }
+    const quelltext = appQuelle.slice(anfang, ende);
+    const aufrufe = [];
+    const dokument = {
+        getElementById() { return { value: 'meinlangespasswort' }; },
+    };
+    const fns = new Function('document', 'fetch', 'showError', 'serverFehler', 'meldungZu',
+        quelltext + '; return anmeldungAusschalten();')(
+        dokument, (url, opt = {}) => {
+            aufrufe.push({ url, methode: opt.method || 'GET', koerper: opt.body });
+            return Promise.resolve({ ok: true });
+        }, () => {}, async () => new Error('Server'), (e, ersatz) => ersatz);
+    await fns;
+    const aufruf = aufrufe[0] || {};
+    pruefe('NK-204: Ausschalter schickt POST /api/anmeldung/aus mit "password"',
+        aufruf.methode === 'POST'
+        && aufruf.url === '/api/anmeldung/aus'
+        && aufruf.koerper === JSON.stringify({ password: 'meinlangespasswort' }));
+}
+
+// --- NK-214 (B7): die Warnung im offenen Modus verdeckt nichts ------------
+// Vorher lag sie fest oben (position: fixed, z-index 1300) über Kopf,
+// Knöpfen und Dialogtiteln.
+{
+    const band = (css.match(/\.hinweis-leiste\.hinweis-band\s*\{([^}]*)\}/) || [, ''])[1];
+    pruefe('NK-214: das Band steht im Fluss, ohne eigene Ebene',
+        /position:\s*relative/.test(band) && /z-index:\s*auto/.test(band)
+        && /transform:\s*none/.test(band));
+    const stelle = html.indexOf('id="ohne-anmeldung-hinweis"');
+    pruefe('NK-214: die Warnung ist ein Band unter dem Kopf',
+        stelle > html.indexOf('</header>') && stelle < html.indexOf('id="tab-dashboard"')
+        && /id="ohne-anmeldung-hinweis" class="hinweis-leiste hinweis-band"/.test(html));
+}
+
+// --- NK-212 (B5): „Aktive Mieter“ zählt keine Ausgezogenen ---------------
+// Vorher zählte die Kachel jeden Mieter, auch wer vor Jahren auszog.
+{
+    const m = appQuelle.match(/function istAktiverMieter\([\s\S]*?\n\}/);
+    const aktiv = m && new Function(m[0] + '; return istAktiverMieter;')();
+    const heute = '2026-10-07';
+    pruefe('NK-212: aktiv ohne Auszug, am Auszugstag und danach nicht mehr',
+        !!aktiv
+        && aktiv({ move_out_date: null }, heute)
+        && aktiv({ move_out_date: '2026-10-07' }, heute)
+        && !aktiv({ move_out_date: '2026-10-06' }, heute)
+        && !aktiv({ move_out_date: null, ist_beispiel: true }, heute));
+    pruefe('NK-212: die Kachel zählt mit istAktiverMieter',
+        /statTenantsCount\.textContent = tenants\.filter\(t => istAktiverMieter\(t, heute\)\)/.test(appQuelle));
+}
+
+// --- NK-219 (V2): Zählerliste mit Knopf „Verlauf“ und klarem Stift --------
+// Vorher war der Verlauf nur per Klick auf die Zeile zu finden, der Stift
+// hieß „Ablesung bearbeiten“ und die Zählernummer kam roh ins HTML.
+{
+    const m = appQuelle.match(/function renderMeters\([\s\S]*?\n\}/);
+    const r = m ? m[0] : '';
+    pruefe('NK-219: die Zählernummer wird maskiert',
+        /tdNum\.innerHTML = escapeHtml\(m\.meter_number\)/.test(r)
+        && !/tdNum\.innerHTML = m\.meter_number/.test(r));
+    pruefe('NK-219: eigener Knopf „Verlauf“ öffnet den Verlauf',
+        /verlaufBtn\.innerHTML = '[^']*> Verlauf'/.test(r)
+        && /verlaufBtn\.onclick = \(\) => openHistoryModal\(m\.id\)/.test(r));
+    pruefe('NK-219: der Stift heißt „Letzten Stand bearbeiten“',
+        /editReadBtn\.title = "Letzten Stand bearbeiten"/.test(r));
+    pruefe('NK-219: Verlauf, Stift und Papierkorb bleiben in einer Zeile',
+        /tdActions\.style\.whiteSpace = 'nowrap'/.test(r));
+}
+
+// --- NK-220 (V3): die Einheit kommt vom Server, auch für die Heizung ------
+// Vorher riet getReadingHtml aus dem Namen; ein Wärmezähler bekam keine.
+{
+    const m = appQuelle.match(/function getReadingHtml\([\s\S]*?\n\}/);
+    const esc = appQuelle.match(/function escapeHtml\([\s\S]*?\n\}/);
+    const zeige = m && esc && new Function('dateiAdresse',
+        esc[0] + m[0] + '; return getReadingHtml;')(() => '');
+    const stand = { id: 1, value: 1234.5, value_nt: null, reading_date: '2025-12-31' };
+    const html = einheit => zeige({ ...stand }, einheit);
+    pruefe('NK-220: die Einheit des Servers steht hinter dem Stand',
+        !!zeige && html('kWh').includes('1.234,5 kWh</strong>')
+        && html('m³').includes('1.234,5 m³</strong>'));
+    pruefe('NK-220: ohne Einheit kein Rest',
+        !!zeige && html(undefined).includes('1.234,5</strong>'));
+    pruefe('NK-220: Liste und Verlauf geben die Einheit des Zählers mit',
+        /getReadingHtml\(latest, m\.einheit\)/.test(appQuelle)
+        && /getReadingHtml\(r, meter\.einheit\)/.test(appQuelle)
+        && !/getReadingHtml\([^)]*category_name\)/.test(appQuelle));
+}
+
+// --- NK-221 (V4): „Zugestellt am“ startet leer -----------------------------
+// Vorher stand dort das heutige Datum und wurde ungelesen gespeichert.
+{
+    const m = appQuelle.match(/function berichtZustellungsBlock\([\s\S]*?\n\}/);
+    const block = m && new Function(m[0] + '; return berichtZustellungsBlock;')();
+    const html = block ? block(7, { zugestellt_am: null }) : '';
+    const feld = html.match(/<input[^>]*id="zustellung-datum-7"[^>]*>/);
+    pruefe('NK-221: das Datumsfeld „Zugestellt am“ startet leer',
+        !!feld && /type="date"/.test(feld[0]) && !/value=/.test(feld[0]));
+    const melden = appQuelle.match(/async function zustellungMelden\([\s\S]*?\n\}/);
+    pruefe('NK-221: ohne Datum wird nichts gemeldet',
+        !!melden && /if \(!datum\) \{ showError\([^)]*\); return; \}/.test(melden[0]));
+}
+
+// --- NK-216 (F1): unplausibler Zählerstand wird nachgefragt ---------------
+// 409 mit nachfrage: die App fragt im eigenen Dialog und schickt bei Ja
+// dasselbe mit `trotzdem` noch einmal; bei Nein geht nichts mehr hinaus.
+async function nachfragePruefen() {
+    const m = appQuelle.match(/async function sendeMitNachfrage\([\s\S]*?\n\}/);
+    const lauf = async (antworten, ja) => {
+        const aufrufe = [], fragen = [];
+        const holen = (url, opt) => {
+            aufrufe.push({ url, methode: opt.method, trotzdem: opt.body.felder.trotzdem });
+            const [status, daten] = antworten.shift();
+            return Promise.resolve({ ok: status < 300, status, json: () => Promise.resolve(daten) });
+        };
+        const formular = { felder: {}, append(k, v) { this.felder[k] = v; } };
+        const senden = new Function('fetch', 'frage', m[0] + '; return sendeMitNachfrage;')(
+            holen, async text => { fragen.push(text); return ja; });
+        const res = await senden('/api/readings/3', 'PUT', formular);
+        return { res, aufrufe, fragen };
+    };
+    pruefe('NK-216: sendeMitNachfrage gibt es', !!m);
+    if (!m) return;
+    const frage409 = [409, { error: 'Der Stand 5 ist kleiner als der vorige.', nachfrage: true }];
+
+    const ja = await lauf([frage409, [200, { id: 3 }]], true);
+    pruefe('NK-216: bei Ja geht dieselbe Anfrage mit trotzdem noch einmal',
+        ja.fragen[0] === 'Der Stand 5 ist kleiner als der vorige.'
+        && ja.aufrufe.length === 2 && ja.aufrufe[1].methode === 'PUT'
+        && ja.aufrufe[0].trotzdem === undefined && ja.aufrufe[1].trotzdem === '1'
+        && ja.res.ok);
+
+    const nein = await lauf([frage409], false);
+    pruefe('NK-216: bei Nein bleibt es bei einer Anfrage',
+        nein.aufrufe.length === 1 && nein.res === null);
+
+    const glatt = await lauf([[201, { id: 4 }]], true);
+    pruefe('NK-216: ohne 409 keine Frage',
+        glatt.fragen.length === 0 && glatt.aufrufe.length === 1 && glatt.res.status === 201);
+
+    pruefe('NK-216: saveReading speichert über sendeMitNachfrage',
+        /const res = await sendeMitNachfrage\(url, method, formData\);\s*if \(!res\) return;/.test(appQuelle));
+}
+
+async function korrekturPruefen() {
+    const funktion = name => (appQuelle.match(new RegExp(
+        '(async )?function ' + name + '\\([\\s\\S]*?\\n\\}')) || [''])[0];
+    const euro = (appQuelle.match(/const euroText = .*;/) || [''])[0];
+    const korrektur = funktion('korrekturErstellen'), text = funktion('korrekturVorschauText');
+    pruefe('NK-217: Korrektur mit Vorschau gibt es', !!(korrektur && text && euro));
+    if (!korrektur || !text || !euro) return;
+    const lauf = async (vorschau, ja) => {
+        const aufrufe = [], fragen = [], meldungen = [];
+        const holen = (url, opt) => {
+            aufrufe.push(url + ' ' + ((opt && opt.method) || 'GET'));
+            const daten = url.endsWith('/vorschau') ? vorschau : { message: 'Korrektur erstellt' };
+            return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(daten) });
+        };
+        const tue = async () => {};
+        const k = new Function('fetch', 'frage', 'showSuccess', 'showError', 'serverFehler', 'meldungZu',
+            'fetchBillingHistory', 'openReportDetails',
+            euro + text + korrektur + '; return korrekturErstellen;')(
+            holen, async t => { fragen.push(t); return ja; }, m => meldungen.push(m),
+            m => meldungen.push('FEHLER ' + m), tue, (e, x) => x, tue, tue);
+        await k(7);
+        return { aufrufe, fragen, meldungen };
+    };
+    const geaendert = {
+        unveraendert: false,
+        positionen: [{ kostenart: 'Wasser', alt: '1200.00', neu: '1066.67' },
+                     { kostenart: 'Grundsteuer', alt: '100.00', neu: '100.00' }],
+        summe: { alt: '1300.00', neu: '1166.67' }, saldo: { alt: '1000.00', neu: '866.67' },
+    };
+    const ja = await lauf(geaendert, true);
+    const f = (ja.fragen[0] || '').replace(/\u00a0/g, ' ');
+    pruefe('NK-217: der Dialog zeigt alt → neu, nur geänderte Positionen',
+        f.includes('Wasser: 1.200,00 € → 1.066,67 €') && f.includes('Summe: 1.300,00 € → 1.166,67 €')
+        && f.includes('Saldo: 1.000,00 € → 866,67 €') && !f.includes('Grundsteuer'));
+    pruefe('NK-217: erst Vorschau, dann Korrektur',
+        ja.aufrufe.join('|') === '/api/billing/reports/7/korrektur/vorschau GET|/api/billing/reports/7/korrektur POST');
+    const nein = await lauf(geaendert, false);
+    pruefe('NK-217: bei Nein keine Korrektur', nein.aufrufe.length === 1);
+    const gleich = await lauf({ ...geaendert, unveraendert: true }, true);
+    pruefe('NK-217: unverändert fragt nicht und legt nichts an',
+        gleich.fragen.length === 0 && gleich.aufrufe.length === 1 && gleich.meldungen.length === 1);
+    // Review PR 26 (1): gleich nach heutigem Regelstand -- der Server haelt es
+    // fest, sonst stuende der Hinweis fuer immer da.
+    const erledigt = await lauf({ ...geaendert, unveraendert: true, veraltet: true }, true);
+    pruefe('NK-217: unverändert bei älterem Regelstand erledigt den Hinweis ohne Frage',
+        erledigt.fragen.length === 0
+        && erledigt.aufrufe.join('|') === '/api/billing/reports/7/korrektur/vorschau GET|/api/billing/reports/7/korrektur POST'
+        && erledigt.meldungen.join('|') === 'Korrektur erstellt');
+    pruefe('NK-217: Liste und Details zeigen den älteren Regelstand',
+        /\$\{r\.veraltet \? REGELSTAND_HINWEIS : ''\}/.test(appQuelle)
+        && /\$\{umschlag\.veraltet \? REGELSTAND_HINWEIS : ''\}/.test(appQuelle)
+        && /const REGELSTAND_HINWEIS = `[^`]*Nach älterem Regelstand erstellt/.test(appQuelle));
+}
+
+warnLeistePruefen()
+    .catch(e => pruefe('NK-201: Warnleisten-Prüfung lief durch — ' + e.message, false))
+    .then(() => ausschalterPruefen()
+        .catch(e => pruefe('NK-204: Ausschalter-Prüfung lief durch — ' + e.message, false))
+        .then(() => haushaltPruefen()
+            .catch(e => pruefe('NK-118: Haushaltsprüfung lief durch — ' + e.message, false))
+            .then(() => nachfragePruefen()
+                .catch(e => pruefe('NK-216: Nachfrage-Prüfung lief durch — ' + e.message, false))
+                .then(() => korrekturPruefen()
+                    .catch(e => pruefe('NK-217: Korrektur-Prüfung lief durch — ' + e.message, false))
+                    .then(() => process.exit(fehler ? 1 : 0))))));

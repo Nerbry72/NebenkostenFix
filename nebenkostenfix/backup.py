@@ -379,10 +379,11 @@ def sicherung_erstellen(
         }
         zusatz = []
         if art == 'nkfix':
-            zusatz = _zusatzdateien(app, Path(arbeit))
+            manifest['zaehlwerte'] = zaehlwerte(kopie)
+            zusatz = _zusatzdateien(app, Path(arbeit),
+                                    bool(manifest['zaehlwerte'].get('users')))
             manifest['produkt'] = 'NebenkostenFix'
             manifest['quelle'] = _quelle(app)
-            manifest['zaehlwerte'] = zaehlwerte(kopie)
             manifest['zusatz'] = [
                 {'pfad': name_im_archiv, 'groesse': datei.stat().st_size,
                  'sha256': pruefsumme(datei)}
@@ -482,7 +483,7 @@ def zaehlwerte(db: Path) -> dict:
         verbindung.close()
 
 
-def _zusatzdateien(app, arbeit: Path) -> list[tuple[str, Path]]:
+def _zusatzdateien(app, arbeit: Path, hat_konto: bool) -> list[tuple[str, Path]]:
     """Was zum Bestand gehoert, aber nicht in Datenbank oder Belegordner liegt.
 
     Die Vermieterwerte werden festgeschrieben: wer unter Docker Name und IBAN
@@ -505,7 +506,10 @@ def _zusatzdateien(app, arbeit: Path) -> list[tuple[str, Path]]:
             'name': os.environ.get('VERMIETER_NAME', '').strip(),
             'iban': iban_saeubern(os.environ.get('VERMIETER_IBAN', '')),
         },
-        'anwendung': {k: stand[k] for k in app_einstellungen.UEBERTRAGBAR},
+        # NK-197: der Schalter wandert als wirksamer Wert mit, nie als None;
+        # NK-206: mit Konto ist er False, das Konto gewinnt.
+        'anwendung': app_einstellungen.uebertragbar(
+            stand, app.config.get('DESKTOP'), hat_konto),
     }
     datei = arbeit / EINSTELLUNGEN_IM_ARCHIV
     datei.write_text(json.dumps(einstellungen, ensure_ascii=False, indent=2),
@@ -849,6 +853,7 @@ def _einspielen_klartext(app, archiv, sicherheitskopie_nach=None,
                 passphrase=passphrase,
             )
 
+        vorher_offen = _offen(app) if ziel_db.exists() else False
         _verbindungen_schliessen(app)
 
         ziel_db.parent.mkdir(parents=True, exist_ok=True)
@@ -875,6 +880,9 @@ def _einspielen_klartext(app, archiv, sicherheitskopie_nach=None,
                 herrichten(belege=False)
             _verbindungen_schliessen(app)
         zusatz = _zusatz_anwenden(app, entpackt, manifest)
+        # Erst hier importiert: auth -> umzug -> backup -> auth waere ein Kreis.
+        from nebenkostenfix import auth
+        bleibt_an = auth.import_absichern(app, vorher_offen)
 
     fehlende = dateiverweise_pruefen(app)
     return {
@@ -888,7 +896,20 @@ def _einspielen_klartext(app, archiv, sicherheitskopie_nach=None,
         'quelle': manifest.get('quelle'),
         'zaehlwerte': manifest.get('zaehlwerte'),
         'zusatz': zusatz,
+        'anmeldung_bleibt_an': bleibt_an,
     }
+
+
+def _offen(app) -> bool:
+    """Lief die Instanz vor dem Einspielen offen? Ohne Kontentabelle nicht."""
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from nebenkostenfix import auth  # spaet: auth -> umzug -> backup -> auth
+    try:
+        with app.app_context():
+            return auth.ohne_anmeldung_aktiv(app)
+    except SQLAlchemyError:
+        return False
 
 
 def _zusatz_anwenden(app, entpackt: Path, manifest: dict) -> dict:
@@ -945,10 +966,13 @@ def _anwendung_uebernehmen(ordner: Path, werte) -> list[str]:
     if not isinstance(werte, dict):
         return []
     # Nur bekannte Schluessel mit dem erwarteten Typ; ein ``None`` beim
-    # Hinweis heisst „nie bestaetigt“ und ueberschreibt nichts.
+    # Hinweis heisst „nie bestaetigt“ und ueberschreibt nichts. Der Schalter
+    # ``ohne_anmeldung`` (NK-197) gilt nur mit bool; fehlt er (alte Pakete),
+    # bleibt der Wert am Ziel unverändert.
     werte = {k: v for k, v in werte.items()
              if (k == 'haftung' and isinstance(v, dict))
-             or (k == 'updates_automatisch' and isinstance(v, bool))}
+             or (k == 'updates_automatisch' and isinstance(v, bool))
+             or (k == 'ohne_anmeldung' and isinstance(v, bool))}
     if werte:
         app_einstellungen.schreiben(ordner, **werte)
     return sorted(werte)

@@ -71,6 +71,8 @@ VERBEN: set[str] = {
     "suchen", "installieren",
     # NK-164: den Bestand einer anderen Installation übernehmen (ersetzt alles).
     "\u00fcbernehmen",
+    # NK-201: den offenen Modus ein- und ausschalten (Konto-Karte).
+    "einschalten", "ausschalten",
     # NK-161: Tabellen aus Excel/CSV einlesen und probeweise prüfen.
     "importieren", "pr\u00fcfen",
     # NK-162: Sitzung verlängern und einen gesicherten Entwurf zurückholen.

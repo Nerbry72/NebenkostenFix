@@ -143,7 +143,14 @@ def vergleichen(erwartet: dict, angekommen: dict) -> list[str]:
         fehler.append(f'Vermieterwerte nicht festgeschrieben: {angekommen.get("vermieter")}')
     if not angekommen.get('logo'):
         fehler.append('Logo fehlt')
-    if angekommen.get('einstellungen') != erwartet.get('einstellungen'):
+    # NK-197: ein Paket aus einem alten Release kennt den neuen Schalter
+    # nicht; was drueben zusaetzlich steht, ist erlaubt. Jeder Schluessel
+    # des Pakets muss aber mit seinem Wert ankommen, und die
+    # Pflichtschluessel muessen da sein.
+    einst = erwartet.get('einstellungen') or {}
+    angek = angekommen.get('einstellungen') or {}
+    if not ({'haftung', 'updates_automatisch'} | set(einst)) <= set(angek) \
+            or {k: angek[k] for k in einst} != einst:
         fehler.append(f'Einstellungen nicht übernommen: {angekommen.get("einstellungen")}')
     return fehler
 

@@ -41,6 +41,23 @@ def test_vergleich_besteht_bei_gleichem_bestand():
     assert kreuz.vergleichen(ERWARTET, ANGEKOMMEN) == []
 
 
+def test_vergleich_toleriert_neue_schluessel():
+    """NK-197: ein neuer Schalter auf nur einer Seite bricht die Probe nicht."""
+    angekommen = copy.deepcopy(ANGEKOMMEN)
+    angekommen['einstellungen'] = {'haftung': {'version': 1}, 'updates_automatisch': False,
+                                   'ohne_anmeldung': False}
+    assert kreuz.vergleichen(ERWARTET, angekommen) == []
+
+
+def test_vergleich_meldet_verlorenen_schalter():
+    """Review PR 26: verglichen wurden nur gemeinsame Schlüssel -- ein
+    Schalter des Pakets, der drüben fehlte, fiel nicht auf."""
+    erwartet = copy.deepcopy(ERWARTET)
+    erwartet['einstellungen']['ohne_anmeldung'] = True
+    fehler = kreuz.vergleichen(erwartet, ANGEKOMMEN)
+    assert any('Einstellungen' in f for f in fehler), fehler
+
+
 def test_vergleich_meldet_jede_abweichung():
     faelle = [
         (lambda a: a['zeilen'].update(properties=0), 'properties'),
@@ -52,6 +69,11 @@ def test_vergleich_meldet_jede_abweichung():
         (lambda a: a.update(vermieter={'name': None, 'iban': None}), 'Vermieter'),
         (lambda a: a.update(logo=False), 'Logo'),
         (lambda a: a.update(einstellungen={}), 'Einstellungen'),
+        # Abweichender Wert in einem gemeinsamen Schlüssel ...
+        (lambda a: a.update(einstellungen={'haftung': {'version': 1},
+                                           'updates_automatisch': True}), 'Einstellungen'),
+        # ... und ein fehlender Pflichtschlüssel (haftung).
+        (lambda a: a.update(einstellungen={'updates_automatisch': False}), 'Einstellungen'),
     ]
     for aendern, muster in faelle:
         angekommen = copy.deepcopy(ANGEKOMMEN)

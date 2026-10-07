@@ -14,6 +14,13 @@ Rechnung -- Rechnungsbetrag durch den Gesamtverbrauch des Hauptzählers über
 den vollen Rechnungszeitraum. Nur so addieren sich vier Quartale wieder zum
 vollen Betrag.
 
+NK-213 (B6) laesst die Betraege stehen, aendert aber, was die Zeile zeigt:
+Allgemeinverbrauch und Personentage im Nenner stehen fuer den vollen
+Rechnungszeitraum, der Mieter traegt seine Personentage im Fenster. Im
+Quartal: 40 m³ allgemein, 90 von 730 Personentagen -- 400 EUR · 90/730 =
+49,32 EUR, derselbe Betrag wie 98,63 EUR · 90/180. So laesst sich die Zeile
+aus der Rechnung nachrechnen, statt aus einer Schaetzung im Fenster.
+
 Die Fälle hier sind die beiden Proberechnungen aus F-33: ein Quartal statt
 des ganzen Jahres, und ein Mieterwechsel zur Jahresmitte. Gerechnet wird in
 2025 (365 Tage), wie im Befund.
@@ -138,10 +145,10 @@ def test_quartal_berechnet_den_allgemeinanteil_nur_fuer_sein_fenster():
     assert posten['tenant_cost'] == Decimal('123.29')
     assert posten['sub_items'][0]['cost'] == Decimal('73.97')
     assert posten['sub_items'][1]['cost'] == Decimal('49.32')
-    # Gemessen im Fenster, nicht im Rechnungszeitraum: 90 von 180
-    # Personentagen, 9,9 von 100 m³ des Hauses.
-    assert 'Anteil: 90 von 180 Personentagen' in posten['description']
-    assert 'Haus gesamt: 9.9 m³' in posten['description']
+    # NK-213: gezeigt wird die Rechnung -- 40 m³ allgemein, Annas 90 von
+    # 730 Personentagen. Derselbe Betrag wie 9,9 m³ und 90 von 180.
+    assert 'Anteil: 90 von 730 Personentagen' in posten['description']
+    assert 'Haus gesamt: 40.0 m³' in posten['description']
 
 
 def test_quartal_laesst_den_preis_auf_der_rechnung():
@@ -149,8 +156,8 @@ def test_quartal_laesst_den_preis_auf_der_rechnung():
 
     Würde der Preis aus dem geschnittenen Verbrauch entstehen, trüge jede
     Teilabrechnung den vollen Betrag je Einheit, und vier Quartale ergäben
-    das Vierfache. Deshalb zeigt der Nachweis jetzt beides: den Verbrauch
-    im Fenster und den Verbrauch des vollen Rechnungszeitraums als Preisfuss.
+    das Vierfache. Der Nachweis zeigt deshalb den Verbrauch des vollen
+    Rechnungszeitraums als Preisfuss (seit NK-213 auch Haus und Allgemein).
     """
     anna = mieter(1, 'Anna', 1, einzug=date(2020, 1, 1))
     bert = mieter(2, 'Bert', 2, einzug=date(2020, 1, 1))
@@ -158,9 +165,12 @@ def test_quartal_laesst_den_preis_auf_der_rechnung():
 
     details = rechne(v)['line_items'][0]['meter_details']
 
-    assert details['main_consumption'] == 24.7          # 100 m³ * 90/365
-    assert details['sum_sub_consumption'] == 14.8       # 2 * 30 m³ * 90/365
-    assert details['allgemein_consumption'] == 9.9      # 40 m³ * 90/365
+    # NK-213: die Details zeigen den Rechnungszeitraum, dazu Annas Anteil
+    assert details['main_consumption'] == 100.0
+    assert details['sum_sub_consumption'] == 60.0
+    assert details['allgemein_consumption'] == 40.0
+    assert details['allgemein_quote'] == round(90 / 730, 6)
+    assert details['allgemein_anteil'] == 4.9           # 40 m³ * 90/730
     assert details['rechnung_main_consumption'] == 100.0
     assert details['cost_per_unit'] == Decimal('10.0000')
 
@@ -234,10 +244,10 @@ def test_mieterwechsel_traegt_den_allgemeinanteil_seiner_mietzeit():
     assert posten['tenant_cost'] == Decimal('252.05')
     assert posten['sub_items'][0]['cost'] == Decimal('151.23')
     assert posten['sub_items'][1]['cost'] == Decimal('100.82')
-    # Personentage Zaehler wie Nenner im selben Fenster: 184 von 368, nicht
-    # 184 von 549 (das waere der volle Rechnungszeitraum).
-    assert 'Anteil: 184 von 368 Personentagen' in posten['description']
-    assert 'Haus gesamt: 20.2 m³' in posten['description']
+    # NK-213: der Nenner ist die ganze Rechnung mit Leerstand (F-121):
+    # Anna 365, Bert 184, die leere Wohnung 181 -- 400 EUR · 184/730.
+    assert 'Anteil: 184 von 730 Personentagen' in posten['description']
+    assert 'Haus gesamt: 40.0 m³' in posten['description']
 
 
 def test_mieterwechsel_aendert_nichts_am_ganzjaehrigen_mieter():
@@ -279,4 +289,4 @@ def test_nur_allgemein_schneidet_auch_ins_fenster():
     posten = rechne(v)['line_items'][0]
 
     assert posten['tenant_cost'] == Decimal('49.32')
-    assert 'Anteil: 90 von 180 Personentagen' in posten['description']
+    assert 'Anteil: 90 von 730 Personentagen' in posten['description']

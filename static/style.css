@@ -2221,6 +2221,19 @@ td .btn-icon,
     font-size: 15px;
 }
 
+/* NK-214 (B7): die dauerhafte Warnung im offenen Modus schwebte über Kopf,
+   Knöpfen und Dialogtiteln. Sie steht jetzt als Band im Fluss unter dem
+   Kopf; die kurzen Hinweise (Leerlauf, Entwurf) schweben weiter. */
+.hinweis-leiste.hinweis-band {
+    position: relative;
+    left: auto;
+    top: auto;
+    transform: none;
+    z-index: auto;
+    max-width: none;
+    box-shadow: none;
+}
+
 :focus-visible {
     outline: 3px solid rgba(79, 70, 229, 0.45);
     outline-offset: 2px;
