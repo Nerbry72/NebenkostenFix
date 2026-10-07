@@ -186,4 +186,4 @@ def test_einfaches_pdf_nennt_geschaetzten_stichtag(app_ctx):
 
 def test_einfaches_pdf_schweigt_bei_ablesung_am_stichtag(app_ctx):
     text = _heizposten((date(2024, 12, 31), 100), (date(2025, 12, 31), 1100))
-    assert text == 'Eigenverbrauch (1000.0 kWh)'
+    assert text == 'Eigenverbrauch (1000,0 kWh)'

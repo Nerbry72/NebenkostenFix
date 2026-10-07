@@ -38,7 +38,7 @@ ERWARTUNG = {
         meldungen=[(PREISWARNUNG, 'HS-1')],
         gruende=['Abgerechnet ist bis 31.03.2033', 'WMZ-EG', 'Beleuchtung (Allgemeinstrom)'],
         pdf=['01.04.2033 bis 31.12.2033', 'Ihre Nachzahlung', 'WA-33', 'HZ-33', 'ST-33', 'VG-33',
-             f'3371.9 kWh, {GESCHAETZT}']),
+             f'3371,9 kWh, {GESCHAETZT}']),
     'Mieter 2': dict(
         zeitraum=('2033-04-01', '2033-12-31'),
         kosten={'Wasserversorgung': 281.31, 'Heizung': 0.0,

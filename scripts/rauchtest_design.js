@@ -725,6 +725,63 @@ async function ausschalterPruefen() {
         !!ohne['erste-schritte-beispiel'] && ohne['erste-schritte-beispiel'].hidden === true);
 }
 
+// --- NK-226: Vorschlag zur Anpassung der Vorauszahlung -----------------
+// Die Vorschau nennt den Vorschlag, die Details bieten die Serienbuchung an.
+// Gebucht wird erst im Zahlungsdialog, und schon gebuchte Zahlungen ab dem
+// Wirksamwerden werden genannt.
+{
+    const funktion = name => (appQuelle.match(new RegExp('function ' + name + '\\([\\s\\S]*?\\n\\}')) || [''])[0];
+    const esc = funktion('escapeHtml');
+    const block = funktion('vorauszahlungsBlock') && new Function(
+        esc + funktion('vorauszahlungsBlock') + '; return vorauszahlungsBlock;')();
+    const v = { ab: '2026-05-01', bisher: '80.00', neu: '150.00', kosten: '1800.00',
+        monate: '12.00', kuenftige: 0, aenderung: true };
+    const details = block ? block(v, 7) : '';
+    const vorschau = block ? block(v, null) : '';
+    pruefe('NK-226: der Vorschlag nennt neue und bisherige Höhe und die Grundlage',
+        details.includes('150,00 € im Monat statt 80,00 €')
+        && details.includes('1800,00 € Kosten über 12 Monate'));
+    pruefe('NK-226: den Knopf „Serienbuchung anlegen“ gibt es nur in den Details',
+        details.includes('serienbuchungAnlegen(7, \'150.00\', \'2026-05-01\', 0)')
+        && details.includes('Serienbuchung anlegen') && !vorschau.includes('serienbuchungAnlegen('));
+    pruefe('NK-226: schon gebuchte Zahlungen ab dem Wirksamwerden werden genannt',
+        !!block && block({ ...v, kuenftige: 2 }, 7).includes('schon 2 Vorauszahlungen gebucht')
+        && !details.includes('schon 0'));
+    pruefe('NK-226: ohne Vorschlag steht der Grund, ohne Änderung nichts',
+        !!block && block({ grund: 'Kein <b>Grund' }, 7).includes('Kein Vorschlag: Kein &lt;b&gt;Grund')
+        && block({ ...v, aenderung: false }, 7) === '' && block(undefined, 7) === '');
+    pruefe('NK-226: Vorschau und Details zeigen den Block',
+        /html \+= vorauszahlungsBlock\(data\.vorauszahlung, null\)/.test(appQuelle)
+        && /vorauszahlungsBlock\(umschlag\.vorauszahlung, umschlag\.tenant_id\)/.test(appQuelle));
+}
+
+// Die Nachfrage bei schon gebuchten Zahlungen kommt im eigenen Dialog (frage).
+async function serienPruefen() {
+    const funktion = name => (appQuelle.match(new RegExp('(?:async )?function ' + name + '\\([\\s\\S]*?\\n\\}')) || [''])[0];
+    const lauf = async (kuenftige, ja) => {
+        const el = {}, offen = [];
+        if (!funktion('serienbuchungAnlegen')) return { el, offen };
+        const hole = id => (el[id] = el[id] || { value: '', checked: false,
+            classList: { remove: k => offen.push(id + '-' + k) } });
+        await new Function('document', 'openAddPaymentModal', 'togglePaymentRecurring',
+            'toggleBillingReportField', 'frage',
+            funktion('serienbuchungAnlegen') + '; return serienbuchungAnlegen(7, "150.00", "2026-05-01", ' + kuenftige + ');')(
+            { getElementById: hole }, () => offen.push('dialog'), () => {}, () => {}, async () => ja);
+        return { el, offen };
+    };
+    const frei = await lauf(0, false);
+    pruefe('NK-226: „Serienbuchung anlegen“ füllt den Zahlungsdialog vor',
+        frei.offen.includes('dialog') && frei.offen.includes('report-details-modal-active')
+        && !!frei.el['payment-tenant']
+        && frei.el['payment-tenant'].value === '7' && frei.el['payment-amount'].value === '150.00'
+        && frei.el['payment-date'].value === '2026-05-01'
+        && frei.el['payment-type'].value === 'Nebenkostenvorauszahlung'
+        && frei.el['payment-recurring'].checked === true);
+    pruefe('NK-226: bei schon gebuchten Zahlungen und „Nein“ öffnet sich nichts',
+        !(await lauf(2, false)).offen.includes('dialog') && (await lauf(2, true)).offen.includes('dialog'));
+    pruefe('NK-226: kein Browserdialog', !/confirm\(/.test(funktion('serienbuchungAnlegen')));
+}
+
 // --- NK-216 (F1): unplausibler Zählerstand wird nachgefragt ---------------
 // 409 mit nachfrage: die App fragt im eigenen Dialog und schickt bei Ja
 // dasselbe mit `trotzdem` noch einmal; bei Nein geht nichts mehr hinaus.
@@ -830,4 +887,6 @@ warnLeistePruefen()
                 .catch(e => pruefe('NK-216: Nachfrage-Prüfung lief durch — ' + e.message, false))
                 .then(() => korrekturPruefen()
                     .catch(e => pruefe('NK-217: Korrektur-Prüfung lief durch — ' + e.message, false))
-                    .then(() => process.exit(fehler ? 1 : 0))))));
+                    .then(() => serienPruefen()
+                        .catch(e => pruefe('NK-226: Serienbuchung-Prüfung lief durch — ' + e.message, false))
+                        .then(() => process.exit(fehler ? 1 : 0)))))));

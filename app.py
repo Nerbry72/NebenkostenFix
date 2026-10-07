@@ -278,6 +278,7 @@ from nebenkostenfix.models import db, User, Property, Apartment, Tenant, Haushal
 from nebenkostenfix.girocode_generator import iban_pruefen, iban_saeubern, vermieter_ausweis
 from nebenkostenfix.abrechnung_version import schnappschuss, json_sicher, SOFTWARE_VERSION, REGEL_VERSION
 from nebenkostenfix.anschreiben import VORGABE, PLATZHALTER, text_fuer
+from nebenkostenfix import vorauszahlung as vz
 from nebenkostenfix.ablage import Ablage
 from nebenkostenfix.auth import init_auth
 from nebenkostenfix.backup import init_backup
@@ -2457,6 +2458,8 @@ def generate_bill():
     spaete = _zahlungen_nach_auszug_warnung(db.session.get(Tenant, tenant_id), e_date)
     if spaete:
         bill_data['warnings'].append(spaete)
+    bill_data['vorauszahlung'] = _vorauszahlung_vorschlag(
+        db.session.get(Tenant, tenant_id), bill_data, category_ids, vz._heute())
 
     return jsonify(bill_data), 200
 
@@ -2537,7 +2540,9 @@ def finalize_bill():
     # Vermieter bekam "PDF Error: list index out of range" zu lesen.
     # NK-064: das Anschreiben des Objekts (oder der Vorgabetext) spricht
     # auf dem Deckblatt, mit den Zahlen aus diesem Ergebnis.
-    anschreiben_text = _anschreiben_fuer(Tenant.query.get(tenant_id), bill_data)
+    mieter = Tenant.query.get(tenant_id)
+    anschreiben_text = _anschreiben_fuer(mieter, bill_data, vorauszahlung=(
+        _vorauszahlung_vorschlag(mieter, bill_data, category_ids, vz._heute())))
     pdf_bytes = pdf_gen.generate(
         bill_data['line_items'],
         bill_data['total_amount'],
@@ -3004,7 +3009,33 @@ def zustellung_melden(id):
     }), 200
 
 
-def _anschreiben_fuer(mieter, bill_data, report=None):
+def _vorauszahlung_vorschlag(mieter, bill_data, category_ids, stichtag):
+    """Der Vorschlag zur Anpassung der Vorauszahlung (R-VZ-01, NK-226).
+
+    Teilauswahl heißt: im Zeitraum gibt es Rechnungen einer Kostenart, die
+    die Abrechnung nicht umfasst und die der Mieter nicht ausgenommen hat.
+    """
+    from nebenkostenfix.models import Payment
+    beginn = datetime.fromisoformat(str(bill_data['start_date'])).date()
+    ende = datetime.fromisoformat(str(bill_data['end_date'])).date()
+    teilauswahl = False
+    if category_ids:
+        ausgenommen = {p.category_id for p in TenantCostProfile.query.filter_by(
+            tenant_id=mieter.id, billing_type='ignoriert')}
+        teilauswahl = CostInvoice.query.filter(
+            CostInvoice.property_id == mieter.apartment.property_id,
+            db.or_(CostInvoice.apartment_id.is_(None),
+                   CostInvoice.apartment_id == mieter.apartment_id),
+            CostInvoice.start_date <= ende, CostInvoice.end_date >= beginn,
+            CostInvoice.category_id.notin_(set(category_ids) | ausgenommen),
+        ).first() is not None
+    zahlungen = [(z.payment_date, z.amount) for z in Payment.query.filter_by(
+        tenant_id=mieter.id, type='Nebenkostenvorauszahlung')]
+    return vz.vorschlag(Decimal(str(bill_data['total_amount'])), beginn, ende,
+                        mieter.move_out_date, zahlungen, stichtag, teilauswahl)
+
+
+def _anschreiben_fuer(mieter, bill_data, report=None, vorauszahlung=None):
     """Das Anschreiben des Vermieters, ausgefüllt für diese Abrechnung (NK-064).
 
     Die Vorlage des Objekts, sonst der Vorgabetext aus ``anschreiben.py``;
@@ -3037,6 +3068,7 @@ def _anschreiben_fuer(mieter, bill_data, report=None):
         saldo=bill_data['total_amount'] - vorauszahlungen,
         einwendungsfrist=frist_text,
         vermieter_name=vermieter_ausweis()[0],
+        vorauszahlung=vorauszahlung,
     )
 
 
@@ -3093,6 +3125,12 @@ def get_billing_report_details(id):
             'einwendungsfrist_ende': (
                 einwendungsfrist(report.zugestellt_am).isoformat()
                 if report.zugestellt_am else None),
+            # NK-226: gerechnet ab der Erstellung, nicht ab heute -- so
+            # bleibt der Vorschlag derselbe, den das Anschreiben nannte.
+            'tenant_id': report.tenant_id,
+            'vorauszahlung': _vorauszahlung_vorschlag(
+                report.tenant, version.ergebnis,
+                [c.category_id for c in report.categories], version.erstellt_am),
             'versionen': [
                 {'nummer': v.nummer,
                  'erstellt_am': v.erstellt_am.isoformat() if v.erstellt_am else None,

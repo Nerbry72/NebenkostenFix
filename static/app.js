@@ -5282,6 +5282,54 @@ async function generateMissingPdf(tenantId, startDate, endDate, isDetailed, btnE
     }
 }
 
+// --- NK-226 (R-VZ-01): Vorschlag zur Anpassung der Vorauszahlung ---
+
+function vorauszahlungsBlock(v, tenantId) {
+    "Der Vorschlag, oder warum es keinen gibt. Den Knopf gibt es nur mit Mieter (Details)."
+    if (!v || (!v.grund && !v.aenderung)) return '';
+    const kasten = inhalt => `
+        <div class="dashboard-card glass-panel vorauszahlung-vorschlag" style="margin-bottom: 20px; padding: 16px;">
+            <h4 style="margin: 0 0 8px 0; display: flex; align-items: center; gap: 8px;">
+                <i class="ph ph-calendar-check"></i> Vorauszahlung anpassen
+            </h4>${inhalt}
+        </div>`;
+    if (v.grund) {
+        return kasten(`<p style="margin: 0; color: var(--text-muted);">Kein Vorschlag: ${escapeHtml(v.grund)}</p>`);
+    }
+    const euro = w => Number(w).toFixed(2).replace('.', ',') + ' €';
+    const ab = new Date(v.ab).toLocaleDateString('de-DE');
+    const monate = String(v.monate).replace(/\.00$/, '').replace('.', ',');
+    const warnung = v.kuenftige > 0
+        ? `<p style="margin: 0 0 12px 0; color: var(--warning-color);">Ab ${escapeHtml(ab)} sind schon ${Number(v.kuenftige)} Vorauszahlungen gebucht. Ändern Sie diese, statt doppelt zu buchen.</p>`
+        : '';
+    const knopf = tenantId
+        ? `<button type="button" class="btn-secondary" onclick="serienbuchungAnlegen(${Number(tenantId)}, '${escapeHtml(v.neu)}', '${escapeHtml(v.ab)}', ${Number(v.kuenftige)})">
+                <i class="ph ph-repeat"></i> Serienbuchung anlegen
+            </button>`
+        : `<p style="margin: 0; color: var(--text-muted); font-size: 0.9rem;">Nach der Festsetzung legen Sie die Serienbuchung in den Details an.</p>`;
+    return kasten(`
+            <p style="margin: 0 0 8px 0;">Ab ${escapeHtml(ab)}: ${escapeHtml(euro(v.neu))} im Monat statt ${escapeHtml(euro(v.bisher))}.</p>
+            <p style="margin: 0 0 12px 0; color: var(--text-muted); font-size: 0.9rem;">
+                Grundlage: ${escapeHtml(euro(v.kosten))} Kosten über ${escapeHtml(monate)} Monate, ohne Zuschlag (§ 560 Abs. 4 BGB).
+                Erklären Sie die Anpassung im Anschreiben, zum Beispiel mit dem Platzhalter {vorauszahlung_anpassung}.
+            </p>${warnung}${knopf}`);
+}
+
+async function serienbuchungAnlegen(tenantId, betrag, ab, kuenftige) {
+    "Öffnet den Zahlungsdialog vorbefüllt; gespeichert wird erst dort."
+    if (kuenftige > 0 && !await frage(`Ab diesem Datum sind schon ${kuenftige} Vorauszahlungen gebucht. Trotzdem eine weitere Serie anlegen?`,
+        'Trotzdem anlegen', false, 'Vorauszahlungen schon gebucht')) return;
+    document.getElementById('report-details-modal').classList.remove('active');
+    openAddPaymentModal();
+    document.getElementById('payment-tenant').value = String(tenantId);
+    document.getElementById('payment-date').value = ab;
+    document.getElementById('payment-amount').value = betrag;
+    document.getElementById('payment-type').value = 'Nebenkostenvorauszahlung';
+    document.getElementById('payment-recurring').checked = true;
+    togglePaymentRecurring();
+    toggleBillingReportField();
+}
+
 // --- NK-124: Zustellung, Frist, Korrektur und Versionen im Detaildialog ---
 
 function berichtZustellungsBlock(id, umschlag) {
@@ -5457,6 +5505,7 @@ async function openReportDetails(id) {
                 </a>
             </div>
             ${zustellungsBlock}
+            ${vorauszahlungsBlock(umschlag.vorauszahlung, umschlag.tenant_id)}
             ${versionenBlock}
             <table class="data-table" style="width: 100%; border-collapse: collapse; text-align: left;">
                 <thead>
@@ -5876,6 +5925,7 @@ async function generateBillPreview(tenantId, startDate, endDate, categoryIds = n
                 <ul class="jahr-warnungen" style="margin: 0;">${warnungenHtml(hinweise)}</ul>
             </div>`;
         }
+        html += vorauszahlungsBlock(data.vorauszahlung, null);
         
         html += `
             <table class="data-table" style="width: 100%;">

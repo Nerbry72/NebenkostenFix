@@ -53,6 +53,7 @@ kern:
 	  tests/test_grundpreis_leerstand.py tests/test_stichtagswerte.py \
 	  tests/test_allgemein_messabschnitte.py tests/test_allgemein_negativ.py \
 	  tests/test_zahlformat_umlage.py \
+	  tests/test_vorauszahlung.py \
 	  -q --no-header \
 	  --cov=nebenkostenfix.rechenkern --cov-branch --cov-report=term-missing --cov-fail-under=95
 
