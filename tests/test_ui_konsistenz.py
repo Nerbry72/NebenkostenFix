@@ -313,3 +313,9 @@ def test_erste_schritte_stand_traegt_klasse_und_bricht_nicht_um():
     assert re.search(r'<span id="erste-schritte-stand" class="erste-schritte-stand"', _liest(INDEX))
     regel = re.search(r"\n\.erste-schritte-stand \{([^}]*)\}", _liest(STYLE)).group(1)
     assert "white-space: nowrap" in regel
+
+
+def test_ablesen_nimmt_das_foto_von_der_kamera():
+    """NK-227: beim Ablesen am Handy öffnet das Foto-Feld direkt die Kamera."""
+    assert 'accept="image/*" capture="environment"' in _liest(APP)
+    assert 'onclick="openAblesen()"' in _liest(INDEX)

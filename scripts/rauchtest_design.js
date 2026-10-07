@@ -877,6 +877,83 @@ async function korrekturPruefen() {
         && /const REGELSTAND_HINWEIS = `[^`]*Nach älterem Regelstand erstellt/.test(appQuelle));
 }
 
+// --- NK-227: Ablesen am Handy zum Stichtag ------------------------------
+// Alle Zähler der Immobilie mit letztem Stand und Kamerafoto; jede ausgefüllte
+// Zeile geht einzeln über POST /api/readings, die Nachfrage kommt je Zeile.
+async function ablesenPruefen() {
+    const funktion = name => (appQuelle.match(new RegExp('(?:async )?function ' + name + '\\([\\s\\S]*?\\n\\}')) || [''])[0];
+    const quelle = 'const ZAEHLER_ANZEIGENAMEN = {};' + funktion('escapeHtml') + funktion('zaehlerArtName') + funktion('ablesenZeilen')
+        + funktion('closeAblesen') + funktion('ablesenSpeichern');
+    pruefe('NK-227: Knopf „Alle Stände erfassen“ im Zähler-Tab und der Dialog',
+        /onclick="openAblesen\(\)"[^>]*>[\s\S]{0,80}Alle Stände erfassen\s*<\/button>/.test(html)
+        && html.includes('id="ablesen-modal"') && html.includes('id="ablesen-datum"'));
+    if (!funktion('ablesenZeilen') || !funktion('ablesenSpeichern')) {
+        pruefe('NK-227: ablesenZeilen und ablesenSpeichern gibt es', false);
+        return;
+    }
+    const meters = [
+        { id: 1, property_id: 5, apartment_name: 'EG', category_name: 'Strom', meter_number: '<b>S1',
+          einheit: 'kWh', has_dual_tariff: true },
+        { id: 2, property_id: 5, is_main_meter: true, category_name: 'Wasser', meter_number: 'W1',
+          einheit: 'm³', has_dual_tariff: false },
+        { id: 3, property_id: 9, apartment_name: 'OG', category_name: 'Wasser', meter_number: 'X',
+          has_dual_tariff: false },
+    ];
+    const readings = [
+        { meter_id: 1, reading_date: '2024-12-31', value: 900, value_nt: 400 },
+        { meter_id: 1, reading_date: '2025-12-31', value: 1234.5, value_nt: 500 },
+    ];
+    const baue = (doc, extra) => new Function('document', 'meters', 'readings', 'FormData',
+        'sendeMitNachfrage', 'serverFehler', 'meldungZu', 'showError', 'fetchReadings',
+        quelle + '; return ' + extra + ';');
+    const zeilen = baue({}, 'ablesenZeilen')({}, meters, readings)(5);
+    pruefe('NK-227: die Liste zeigt die Zähler der Immobilie mit letztem Stand',
+        zeilen.includes('id="ablesen-wert-1"') && zeilen.includes('id="ablesen-wert-2"')
+        && !zeilen.includes('ablesen-wert-3')
+        && zeilen.includes('zuletzt HT 1.234,5 kWh, NT 500 kWh am 31.12.2025')
+        && zeilen.includes('noch kein Stand') && zeilen.includes('&lt;b&gt;S1'));
+    pruefe('NK-227: NT-Feld nur beim Doppeltarif',
+        zeilen.includes('id="ablesen-nt-1"') && !zeilen.includes('id="ablesen-nt-2"'));
+    pruefe('NK-227: das Foto kommt direkt von der Kamera',
+        /<input type="file" id="ablesen-foto-1" accept="image\/\*" capture="environment">/.test(zeilen));
+
+    const lauf = async (werte, antworten) => {
+        const el = {}, gesendet = [], fehler = [];
+        let neuGeladen = 0;
+        const hole = id => (el[id] = el[id] || { id, value: werte[id] !== undefined ? werte[id] : '',
+            files: [], textContent: '', classList: { remove: k => { el[id].zu = k; } } });
+        hole('ablesen-datum').value = '2026-01-01';
+        hole('ablesen-property').value = '5';
+        function Formular() { this.felder = {}; }
+        Formular.prototype.append = function (k, v) { this.felder[k] = String(v); };
+        const senden = (url, methode, fd) => { gesendet.push({ url, methode, ...fd.felder });
+            return Promise.resolve(antworten.shift()); };
+        await baue({}, 'ablesenSpeichern')({ getElementById: id => hole(id) }, meters, readings, Formular, senden,
+            async () => new Error('kaputt'), (e, t) => t, t => fehler.push(t), () => neuGeladen++)();
+        return { el, gesendet, fehler, neuGeladen };
+    };
+    const ok = { ok: true, status: 201 };
+    const beide = await lauf({ 'ablesen-wert-1': '1300', 'ablesen-nt-1': '520', 'ablesen-wert-2': '42' }, [ok, ok]);
+    pruefe('NK-227: jede ausgefüllte Zeile geht einzeln über POST /api/readings',
+        beide.gesendet.length === 2 && beide.gesendet.every(g => g.url === '/api/readings' && g.methode === 'POST')
+        && beide.gesendet[0].meter_id === '1' && beide.gesendet[0].value === '1300'
+        && beide.gesendet[0].value_nt === '520' && beide.gesendet[0].reading_date === '2026-01-01'
+        && beide.gesendet[1].meter_id === '2' && !('value_nt' in beide.gesendet[1])
+        && beide.el['ablesen-modal'].zu === 'active' && beide.neuGeladen === 1);
+    const leer = await lauf({ 'ablesen-wert-2': '42' }, [ok]);
+    pruefe('NK-227: leere Zeilen werden übersprungen',
+        leer.gesendet.length === 1 && leer.gesendet[0].meter_id === '2');
+    const nein = await lauf({ 'ablesen-wert-1': '1', 'ablesen-wert-2': '42' }, [null, ok]);
+    pruefe('NK-227: „Nein“ auf die Nachfrage lässt die Zeile stehen, der Dialog bleibt offen',
+        nein.gesendet.length === 2 && nein.el['ablesen-wert-1'].value === '1'
+        && nein.el['ablesen-meldung-1'].textContent === 'Nicht gespeichert.'
+        && nein.el['ablesen-wert-2'].value === '' && !nein.el['ablesen-modal']);
+    const nichts = await lauf({}, []);
+    pruefe('NK-227: ohne Eintrag ein Hinweis statt Stille',
+        nichts.gesendet.length === 0 && nichts.fehler.length === 1);
+}
+
+
 warnLeistePruefen()
     .catch(e => pruefe('NK-201: Warnleisten-Prüfung lief durch — ' + e.message, false))
     .then(() => ausschalterPruefen()
@@ -889,4 +966,6 @@ warnLeistePruefen()
                     .catch(e => pruefe('NK-217: Korrektur-Prüfung lief durch — ' + e.message, false))
                     .then(() => serienPruefen()
                         .catch(e => pruefe('NK-226: Serienbuchung-Prüfung lief durch — ' + e.message, false))
-                        .then(() => process.exit(fehler ? 1 : 0)))))));
+                        .then(() => ablesenPruefen()
+                            .catch(e => pruefe('NK-227: Ablesen-Prüfung lief durch — ' + e.message, false))
+                            .then(() => process.exit(fehler ? 1 : 0))))))));

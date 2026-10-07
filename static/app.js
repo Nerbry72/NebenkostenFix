@@ -3332,6 +3332,91 @@ async function saveReading() {
     }
 }
 
+// --- NK-227: Ablesen am Handy zum Stichtag ---
+// Alle Zähler einer Immobilie untereinander, mit letztem Stand und Foto
+// direkt von der Kamera. Jede ausgefüllte Zeile geht einzeln über
+// POST /api/readings; die Plausibilitätsfrage (NK-216) kommt je Zeile.
+function ablesenZeilen(propertyId) {
+    const fmt = new Intl.NumberFormat('de-DE');
+    return meters.filter(m => m.property_id == propertyId).map(m => {
+        const letzte = readings.filter(r => r.meter_id === m.id)
+            .sort((a, b) => a.reading_date < b.reading_date ? 1 : -1)[0];
+        const einheit = m.einheit ? ' ' + m.einheit : '';
+        const standHtml = escapeHtml(!letzte ? 'noch kein Stand'
+            : 'zuletzt ' + (letzte.value_nt != null
+                ? `HT ${fmt.format(letzte.value)}${einheit}, NT ${fmt.format(letzte.value_nt)}${einheit}`
+                : `${fmt.format(letzte.value)}${einheit}`)
+              + ` am ${new Date(letzte.reading_date).toLocaleDateString('de-DE')}`);
+        const nameHtml = escapeHtml(`${m.is_main_meter ? 'Allgemein' : (m.apartment_name || '')} · ${zaehlerArtName(m.category_name)} (${m.meter_number})`);
+        const ntHtml = m.has_dual_tariff ? `<div class="form-group feld-breit"><label for="ablesen-nt-${m.id}">Stand (NT)</label>
+                    <input type="number" inputmode="decimal" step="0.01" id="ablesen-nt-${m.id}"></div>` : '';
+        return `<div class="glass-panel ablesen-zeile" id="ablesen-zeile-${m.id}" style="padding: 12px; margin-bottom: 12px;">
+            <strong>${nameHtml}</strong><br><small style="color: var(--text-muted)">${standHtml}</small>
+            <div class="felder-nebeneinander">
+                <div class="form-group feld-breit"><label for="ablesen-wert-${m.id}">${m.has_dual_tariff ? 'Stand (HT)' : 'Stand'}</label>
+                    <input type="number" inputmode="decimal" step="0.01" id="ablesen-wert-${m.id}"></div>
+                ${ntHtml}
+            </div>
+            <div class="form-group"><label for="ablesen-foto-${m.id}">Foto (optional)</label>
+                <input type="file" id="ablesen-foto-${m.id}" accept="image/*" capture="environment"></div>
+            <small class="ablesen-meldung" id="ablesen-meldung-${m.id}" role="status"></small>
+        </div>`;
+    }).join('') || '<p style="color: var(--text-muted)">Diese Immobilie hat noch keine Zähler.</p>';
+}
+
+function ablesenListe() {
+    document.getElementById('ablesen-liste').innerHTML =
+        ablesenZeilen(document.getElementById('ablesen-property').value);
+}
+
+function openAblesen() {
+    const auswahl = document.getElementById('ablesen-property');
+    auswahl.innerHTML = properties.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+    document.getElementById('ablesen-datum').value = new Date().toISOString().split('T')[0];
+    ablesenListe();
+    document.getElementById('ablesen-modal').classList.add('active');
+}
+
+function closeAblesen() { document.getElementById('ablesen-modal').classList.remove('active'); }
+
+async function ablesenSpeichern() {
+    const datum = document.getElementById('ablesen-datum').value;
+    if (!datum) { showError('Bitte den Stichtag angeben.'); return; }
+    const propertyId = document.getElementById('ablesen-property').value;
+    let gespeichert = 0, offen = 0;
+    for (const m of meters.filter(m => m.property_id == propertyId)) {
+        const wert = document.getElementById(`ablesen-wert-${m.id}`);
+        if (!wert || wert.value === '') continue;
+        const meldung = document.getElementById(`ablesen-meldung-${m.id}`);
+        const nt = document.getElementById(`ablesen-nt-${m.id}`);
+        const foto = document.getElementById(`ablesen-foto-${m.id}`);
+        const formData = new FormData();
+        formData.append('meter_id', m.id);
+        formData.append('reading_date', datum);
+        formData.append('value', wert.value);
+        if (nt && nt.value !== '') formData.append('value_nt', nt.value);
+        formData.append('ablesungsart', 'ablesung');
+        formData.append('is_official_invoice', false);
+        if (foto && foto.files.length > 0) formData.append('file', foto.files[0]);
+        try {
+            const res = await sendeMitNachfrage('/api/readings', 'POST', formData);
+            if (!res) { offen++; meldung.textContent = 'Nicht gespeichert.'; continue; }
+            if (!res.ok) throw await serverFehler(res);
+            gespeichert++;
+            wert.value = '';
+            if (nt) nt.value = '';
+            if (foto) foto.value = '';
+            meldung.textContent = 'Gespeichert.';
+        } catch (e) {
+            offen++;
+            meldung.textContent = meldungZu(e, 'Nicht gespeichert.');
+        }
+    }
+    if (gespeichert) fetchReadings();
+    if (!gespeichert && !offen) { showError('Bitte mindestens einen Stand eintragen.'); return; }
+    if (!offen) closeAblesen();
+}
+
 // --- Plausibility Check ---
 let plausibilityTimeout;
 function triggerPlausibilityCheck() {
