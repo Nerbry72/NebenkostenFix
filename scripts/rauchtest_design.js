@@ -996,6 +996,78 @@ async function ablesenPruefen() {
         && !zeilen[2].includes('jahr-sprung') && !zeilen[2].includes('gegenüber dem Vorjahr'));
 }
 
+// --- NK-230: Wie im Vorjahr füllen ---------------------------------------
+// Die Rechnungen des Vorjahres kommen als Zeilen ohne Betrag; getippte Zeilen
+// bleiben, leere machen Platz. Ohne Betrag wird eine solche Zeile nicht
+// gespeichert und so markiert.
+async function vorjahrPruefen() {
+    const funktion = name => (appQuelle.match(new RegExp('(?:async )?function ' + name + '\\([\\s\\S]*?\\n\\}')) || [''])[0];
+    const konstante = name => (appQuelle.match(new RegExp('const ' + name + ' = [^\\n]*')) || [''])[0];
+    pruefe('NK-230: Knopf „Wie im Vorjahr füllen“ in der Tabelle und in Schritt 2',
+        /onclick="rtVorjahrFuellen\(\)"[^>]*>[\s\S]{0,80}Wie im Vorjahr füllen\s*<\/button>/.test(html)
+        && /onclick="jahrVorjahrFuellen\(\)"[^>]*>[\s\S]{0,80}Wie im Vorjahr füllen\s*<\/button>/.test(html));
+    if (!funktion('rtVorjahrFuellen') || !konstante('RT_OHNE_BETRAG')) {
+        pruefe('NK-230: rtVorjahrFuellen gibt es', false);
+        return;
+    }
+    // Eine kleine Tabellen-Attrappe: tr > td > input, wie rtZeilenAnlegen sie baut.
+    const knoten = tag => ({
+        tag, kinder: [], dataset: {}, value: '', textContent: '', className: '',
+        classList: { add() {}, toggle() {} }, setAttribute() {}, focus() {},
+        appendChild(k) { k.eltern = this; this.kinder.push(k); return k; },
+        remove() { this.eltern.kinder.splice(this.eltern.kinder.indexOf(this), 1); },
+        get lastElementChild() { return this.kinder[this.kinder.length - 1]; },
+        alle() { return this.kinder.flatMap(k => [k, ...k.alle()]); },
+        querySelectorAll(sel) { return this.alle().filter(k => k.tag === sel); },
+        querySelector(sel) {
+            const spalte = (sel.match(/data-spalte="(\w+)"/) || [])[1];
+            return this.alle().find(k => spalte ? k.dataset.spalte === spalte : k.className.split(' ').includes(sel.slice(1)));
+        },
+    });
+    const rumpf = knoten('tbody');
+    const el = { 'rt-zeilen': rumpf, 'rt-jahr': { value: '2025' }, 'rt-meldung': { textContent: '' },
+        'rt-immobilie': { value: '5', selectedIndex: 0, options: [{ text: 'Haus' }] } };
+    const doc = { getElementById: id => el[id], createElement: knoten,
+        querySelectorAll: sel => sel === '#rt-zeilen tr' ? rumpf.kinder.slice() : [] };
+    const aufrufe = [];
+    const antworten = [];
+    const holen = async (url, opt) => { aufrufe.push({ url, opt }); return antworten.shift(); };
+    const quelle = konstante('RT_SPALTEN') + konstante('RT_OHNE_BETRAG') + funktion('anzahlText')
+        + funktion('rtDatum') + funktion('rtZeilenAnlegen') + funktion('rtZeilenLesen')
+        + funktion('rtVorjahrFuellen') + funktion('rtSenden');
+    const t = new Function('document', 'fetch', 'serverFehler', 'meldungZu', 'showError', 'showSuccess',
+        'importNachladen', quelle + '; return { rtZeilenAnlegen, rtZeilenLesen, rtVorjahrFuellen, rtSenden };')(
+        doc, holen, async () => new Error('kaputt'), (e, x) => x, () => {}, () => {}, () => {});
+
+    t.rtZeilenAnlegen(2);
+    rumpf.kinder[0].querySelector('[data-spalte="kostenart"]').value = 'Wasser';
+    rumpf.kinder[0].querySelector('[data-spalte="betrag"]').value = '5';
+    const vorlage = (kostenart, wohnung) => ({ kostenart, von: '01.01.2025', bis: '31.12.2025',
+        anbieter: '', wohnung, betrag: '', rechnungsnummer: '', rechnungsdatum: '' });
+    antworten.push({ ok: true, json: async () => ({ zeilen: [vorlage('Grundsteuer', ''), vorlage('Hauswart', 'EG')], heizung: 1 }) });
+    await t.rtVorjahrFuellen();
+    const wert = (i, spalte) => rumpf.kinder[i].querySelector(`[data-spalte="${spalte}"]`).value;
+    const status = i => rumpf.kinder[i].querySelector('.rt-status').textContent;
+    pruefe('NK-230: das Vorjahr kommt für Immobilie und Jahr der Tabelle',
+        aufrufe[0].url === '/api/import/rechnungen/vorjahr?property_id=5&jahr=2025');
+    pruefe('NK-230: getippte Zeilen bleiben, leere machen Platz, Vorjahr ohne Betrag markiert',
+        wert(0, 'kostenart') === 'Wasser' && wert(1, 'kostenart') === 'Grundsteuer'
+        && wert(2, 'kostenart') === 'Hauswart' && wert(2, 'wohnung') === 'EG' && wert(1, 'betrag') === ''
+        && wert(1, 'von') === '01.01.2025' && status(1).includes('nicht gespeichert')
+        && rumpf.kinder.length === 6 && wert(3, 'kostenart') === '');
+    pruefe('NK-230: die Meldung nennt Anzahl, Jahr und die Heizkosten im Dialog',
+        el['rt-meldung'].textContent.includes('2 Rechnungen aus 2024')
+        && el['rt-meldung'].textContent.includes('Heizkostenrechnung'));
+
+    rumpf.kinder[1].querySelector('[data-spalte="betrag"]').value = '1.300,00';
+    antworten.push({ ok: true, json: async () => ({ fehler: [], hinweise: [], zeilen: 2 }) });
+    await t.rtSenden(false);
+    const gesendet = JSON.parse(aufrufe[1].opt.body).zeilen.filter(z => Object.keys(z).length);
+    pruefe('NK-230: eine vorbelegte Zeile ohne Betrag wird nicht gesendet und bleibt markiert',
+        gesendet.length === 2 && gesendet.map(z => z.kostenart).join() === 'Wasser,Grundsteuer'
+        && status(2).includes('nicht gespeichert') && !status(1).includes('nicht gespeichert'));
+}
+
 warnLeistePruefen()
     .catch(e => pruefe('NK-201: Warnleisten-Prüfung lief durch — ' + e.message, false))
     .then(() => ausschalterPruefen()
@@ -1010,4 +1082,6 @@ warnLeistePruefen()
                         .catch(e => pruefe('NK-226: Serienbuchung-Prüfung lief durch — ' + e.message, false))
                         .then(() => ablesenPruefen()
                             .catch(e => pruefe('NK-227: Ablesen-Prüfung lief durch — ' + e.message, false))
-                            .then(() => process.exit(fehler ? 1 : 0))))))));
+                            .then(() => vorjahrPruefen()
+                                .catch(e => pruefe('NK-230: Vorjahr-Prüfung lief durch — ' + e.message, false))
+                                .then(() => process.exit(fehler ? 1 : 0)))))))));

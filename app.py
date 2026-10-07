@@ -93,6 +93,7 @@ Import aus Excel/CSV (NK-161) -- alles in tabellenimport.py
   POST        /api/import/<art>/pruefen                    -> import_pruefen
   POST        /api/import/<art>/uebernehmen                -> import_uebernehmen
   POST        /api/import/<art>/tabelle                    -> import_tabelle
+  GET         /api/import/rechnungen/vorjahr               -> import_rechnungen_vorjahr
 
   Vorlage, Lesen, Zuordnen, Probelauf, Übernahme in einer Transaktion (nur
   ohne Fehler). ``tabelle`` ist die Tabellen-Erfassung der Rechnungen ohne

@@ -4783,8 +4783,9 @@ function rtZeilenLesen() {
         zeile.querySelectorAll('input').forEach(feld => { werte[feld.dataset.spalte] = feld.value.trim(); });
         const leer = ['kostenart', 'betrag', 'rechnungsnummer', 'anbieter', 'rechnungsdatum', 'wohnung']
             .every(s => !werte[s]);
-        // Eine Zeile nur mit dem vorbelegten Zeitraum ist leer.
-        return leer ? {} : { immobilie: name, ...werte };
+        // Eine Zeile nur mit dem vorbelegten Zeitraum ist leer, eine aus dem
+        // Vorjahr ohne Betrag auch (NK-230): sie wird nicht gespeichert.
+        return leer || (zeile.dataset.vorjahr === '1' && !werte.betrag) ? {} : { immobilie: name, ...werte };
     });
 }
 
@@ -4813,6 +4814,7 @@ async function rtSenden(speichern) {
                 status.classList.add('ok');
                 if (!hinweise.length) status.textContent = 'in Ordnung';
             }
+            if (zeile.dataset.vorjahr === '1' && !Object.keys(zeilen[i]).length) status.textContent = RT_OHNE_BETRAG;
         });
         if (bericht.fehler.length) {
             meldung.textContent = `${anzahlText(bericht.fehler.length, 'Zeile hat', 'Zeilen haben')} Fehler (rot markiert). Gespeichert wird erst, wenn alle stimmen.`;
@@ -4830,6 +4832,55 @@ async function rtSenden(speichern) {
     }
 }
 window.rtSenden = rtSenden;
+
+// NK-230: die Rechnungen des Vorjahres als Zeilen, Zeitraum ein Jahr
+// weiter, ohne Beträge. Getippte Zeilen bleiben, leere machen Platz; was ohne
+// Betrag bleibt, wird nicht gespeichert und so markiert. Nichts geschätzt.
+const RT_OHNE_BETRAG = 'Ohne Betrag wird die Zeile nicht gespeichert.';
+
+async function rtVorjahrFuellen() {
+    const jahr = Number(document.getElementById('rt-jahr').value);
+    const haus = document.getElementById('rt-immobilie').value;
+    try {
+        const res = await fetch(`/api/import/rechnungen/vorjahr?property_id=${encodeURIComponent(haus)}&jahr=${encodeURIComponent(jahr)}`);
+        if (!res.ok) throw await serverFehler(res);
+        const daten = await res.json();
+        const zeilen = [...document.querySelectorAll('#rt-zeilen tr')];
+        rtZeilenLesen().forEach((werte, i) => { if (!Object.keys(werte).length) zeilen[i].remove(); });
+        const rumpf = document.getElementById('rt-zeilen');
+        for (const vorlage of daten.zeilen) {
+            rtZeilenAnlegen(1);
+            const zeile = rumpf.lastElementChild;
+            zeile.dataset.vorjahr = '1';
+            for (const spalte of RT_SPALTEN) {
+                const feld = zeile.querySelector(`[data-spalte="${spalte}"]`);
+                feld.value = vorlage[spalte] || '';
+                feld.dataset.vorgabe = '';
+            }
+            zeile.querySelector('.rt-status').textContent = RT_OHNE_BETRAG;
+        }
+        rtZeilenAnlegen(3);
+        document.getElementById('rt-meldung').textContent = (daten.zeilen.length
+            ? `${anzahlText(daten.zeilen.length, 'Rechnung', 'Rechnungen')} aus ${jahr - 1} vorbelegt. Tragen Sie die Beträge ein; Zeilen ohne Betrag werden nicht gespeichert.`
+            : `Für ${jahr - 1} sind keine Rechnungen erfasst.`)
+            + (daten.heizung ? ` ${anzahlText(daten.heizung, 'Heizkostenrechnung', 'Heizkostenrechnungen')} mit Anlage erfassen Sie im Dialog.` : '');
+    } catch (e) {
+        showError(meldungZu(e, 'Das Vorjahr konnte nicht geladen werden.'));
+    }
+}
+window.rtVorjahrFuellen = rtVorjahrFuellen;
+
+// Aus Schritt 2 des Assistenten: Immobilie und Jahr stehen schon fest.
+async function jahrVorjahrFuellen() {
+    if (!jahrStand) return;
+    await oeffneRechnungstabelle();
+    document.getElementById('rt-immobilie').value = jahrStand.property_id;
+    rtImmobilieGewaehlt();
+    document.getElementById('rt-jahr').value = jahrStand.jahr;
+    rtJahrGewaehlt();
+    await rtVorjahrFuellen();
+}
+window.jahrVorjahrFuellen = jahrVorjahrFuellen;
 
 // --- Jahresabrechnungs-Assistent (NK-160) ------------------------------------
 // Fünf Schritte: Jahr und Immobilie -> Rechnungen (mit Vorjahr) ->

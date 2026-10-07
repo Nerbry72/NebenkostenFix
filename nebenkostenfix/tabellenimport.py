@@ -789,6 +789,14 @@ def verarbeiten(art: str, kopf: list, zeilen: list, zuordnung: dict, uebernehmen
 
 # --- Routen ----------------------------------------------------------------------
 
+def _ein_jahr_weiter(tag: date) -> date:
+    """Derselbe Tag ein Jahr später; der 29.02. wird zum 28.02."""
+    try:
+        return tag.replace(year=tag.year + 1)
+    except ValueError:
+        return tag.replace(year=tag.year + 1, day=28)
+
+
 def init_tabellenimport(app):
     from flask import Response, jsonify, request
 
@@ -895,3 +903,30 @@ def init_tabellenimport(app):
             return _fehler(str(fehler))
         return jsonify(bericht), (400 if daten.get('uebernehmen') and not bericht['uebernommen']
                                   else 200)
+
+    @app.route('/api/import/rechnungen/vorjahr', methods=['GET'])
+    def import_rechnungen_vorjahr():
+        """NK-230: die Rechnungen des Vorjahres als Zeilen der Tabellen-Erfassung,
+        Zeitraum ein Jahr weiter. Betrag, Nummer und Datum bleiben leer -- nichts
+        geschätzt, nichts in der Datenbank. Heizkosten einer Anlage gehen nur
+        über den Dialog (Anlage, CO2) und werden nur gezählt."""
+        from nebenkostenfix.models import Apartment, CostInvoice, Property
+        haus = request.args.get('property_id', type=int)
+        jahr = request.args.get('jahr', type=int)
+        if haus is None or jahr is None:
+            raise EingabeFehler('Bitte Immobilie und Jahr angeben.', 'jahr')
+        Property.query.get_or_404(haus)
+        wohnungen = {w.id: w.name for w in Apartment.query.filter_by(property_id=haus)}
+        vorjahr = [r for r in CostInvoice.query.filter_by(property_id=haus).all()
+                   if r.start_date.year == jahr - 1]
+        zeilen = [{
+            'kostenart': r.category.name,
+            'von': f'{_ein_jahr_weiter(r.start_date):%d.%m.%Y}',
+            'bis': f'{_ein_jahr_weiter(r.end_date):%d.%m.%Y}',
+            'anbieter': r.provider.name if r.provider else '',
+            'wohnung': wohnungen.get(r.apartment_id, ''),
+            'betrag': '', 'rechnungsnummer': '', 'rechnungsdatum': '',
+        } for r in sorted(vorjahr, key=lambda r: (r.category.name, r.start_date))
+            if r.heizungsanlage_id is None]
+        return jsonify({'zeilen': zeilen,
+                        'heizung': sum(1 for r in vorjahr if r.heizungsanlage_id is not None)})
