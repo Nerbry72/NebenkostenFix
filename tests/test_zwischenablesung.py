@@ -275,7 +275,7 @@ def test_ohne_zwischenablesung_gilt_der_ersatzmassstab():
     verbrauch = verbrauchskosten(zeile)
     assert len(verbrauch) == 1
     assert verbrauch[0]['cost'] == Decimal('2196.76')
-    assert '690.4 von 2200.0 kWh' in verbrauch[0]['description']
+    assert '690,4 von 2200,0 kWh' in verbrauch[0]['description']
     assert zeile['description'].count('Ersatzmaßstab') == 1
     assert '30.06.2025' in zeile['description']
 
@@ -309,7 +309,7 @@ def test_mit_zwischenablesung_bleibt_es_beim_gemessenen_verbrauch():
     assert zeile['tenant_cost'] == Decimal('3921.54')
     verbrauch = verbrauchskosten(zeile)
     assert verbrauch[0]['cost'] == Decimal('3181.82')
-    assert '1000.0 von 2200.0 kWh' in verbrauch[0]['description']
+    assert '1000,0 von 2200,0 kWh' in verbrauch[0]['description']
 
     details = zeile['heizung_details']
     assert details['zwischenablesung'] == [

@@ -158,7 +158,7 @@ def test_rechnet_ohne_app_kontext():
 
     assert ergebnis['total_amount'] == Decimal('600.00')  # 50 von 100 qm
     assert ergebnis['tenant_name'] == 'Anna Mieterin'
-    assert ergebnis['line_items'][0]['description'] == 'Umlage nach qm (50.0 von 100.0 qm)'
+    assert ergebnis['line_items'][0]['description'] == 'Umlage nach Wohnfläche (50 von 100 m²)'
 
 
 def test_vorgang_bleibt_unberuehrt():
@@ -827,7 +827,7 @@ def test_wohnungsrechnung_zeigt_den_eigenen_verbrauch_mit():
 
     assert posten['tenant_cost'] == Decimal('500.00')
     assert posten['billing_type'] == 'direkt'
-    assert posten['sub_items'][0]['description'].startswith('Eigenverbrauch (60.')
+    assert posten['sub_items'][0]['description'].startswith('Eigenverbrauch (60,')
     assert posten['sub_items'][0]['description'].endswith(' m³)')
 
 
@@ -990,7 +990,7 @@ def test_strom_mit_wohnungszaehler_rechnet_nach_verbrauch():
                 profile={11: 'direkt'}, zaehler=[z])
     zeile = rechne(v)['line_items'][0]
     assert zeile['tenant_cost'] == Decimal('100.00')
-    assert 'Eigenverbrauch ohne Hauptzähler (200.0 kWh' in zeile['description']
+    assert 'Eigenverbrauch ohne Hauptzähler (200,0 kWh' in zeile['description']
 
 
 def test_strom_ohne_zaehler_bleibt_beim_bisherigen_verhalten():
