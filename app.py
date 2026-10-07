@@ -276,7 +276,7 @@ from nebenkostenfix.heizung import (
 )
 from nebenkostenfix.models import db, User, Property, Apartment, Tenant, Haushaltsgroesse, CostCategory, CostInvoice, Meter, MeterReading, TenantCostProfile, InvoiceDocument, Provider, TenantBillingReport, BillingReportCategory, BillingReportVersion, AnschreibenVorlage, Vermieterdaten, Heizungsanlage
 from nebenkostenfix.girocode_generator import iban_pruefen, iban_saeubern, vermieter_ausweis
-from nebenkostenfix.abrechnung_version import schnappschuss, json_sicher, SOFTWARE_VERSION, REGEL_VERSION
+from nebenkostenfix.abrechnung_version import schnappschuss, json_sicher, SOFTWARE_VERSION, REGEL_VERSION, aenderungen_seit
 from nebenkostenfix.anschreiben import VORGABE, PLATZHALTER, text_fuer
 from nebenkostenfix import vorauszahlung as vz
 from nebenkostenfix.ablage import Ablage
@@ -2918,6 +2918,7 @@ def get_all_billing_reports():
             'document_path': r.document_path,
             'document_path_detailed': r.document_path_detailed,
             'veraltet': _regelstand_veraltet(r),
+            'regelstand_aenderungen': _regelstand_aenderungen(r),
         })
     return jsonify(res)
 
@@ -3110,6 +3111,7 @@ def get_billing_report_details(id):
             'software_version': version.software_version,
             'regel_version': version.regel_version,
             'veraltet': _regelstand_veraltet(report),
+            'regelstand_aenderungen': _regelstand_aenderungen(report),
             'ergebnis': version.ergebnis,
             # NK-124: die Umschlagdaten und die Versionen, damit die
             # Oberflaeche Zustellung, Frist und Korrektur an diesem Ort
@@ -3335,6 +3337,21 @@ def _regelstand_veraltet(report) -> bool:
     return version is not None and stand < REGEL_VERSION
 
 
+def _regelstand_aenderungen(report) -> list:
+    """NK-229 (R-DOC-03): was sich seit dem Regelstand der Abrechnung geaendert hat."""
+    if not _regelstand_veraltet(report):
+        return []
+    version = report.aktuelle_version
+    return aenderungen_seit(max(version.regel_version or '', report.regelstand_geprueft or ''))
+
+
+def _korrektur_richtung(saldo) -> str | None:
+    """NK-229 (R-DOC-03): ein hoeherer Saldo geht zulasten des Mieters."""
+    if saldo['alt'] is None or saldo['neu'] is None or Decimal(saldo['alt']) == Decimal(saldo['neu']):
+        return None
+    return 'zulasten' if Decimal(saldo['neu']) > Decimal(saldo['alt']) else 'zugunsten'
+
+
 def _neu_gerechnet(report):
     """Die Abrechnung gegen die heutigen Daten -- fuer Korrektur und Vorschau."""
     from nebenkostenfix.billing_engine import BillingEngine
@@ -3377,7 +3394,20 @@ def korrektur_vorschau(id):
 
     alt_je, neu_je = _je_kostenart(alt), _je_kostenart(neu)
     kostenarten = list(dict.fromkeys([*alt_je, *neu_je]))
+    saldo = paar('balance')
+    richtung = _korrektur_richtung(saldo)
+    # R-DOC-03: zugunsten des Mieters ist jederzeit frei; zulasten nach dem
+    # Fristende nur, wenn der Vermieter die Verspaetung nicht zu vertreten hat.
+    # Die Software warnt und entscheidet das nicht.
+    frist_warnung = None
+    if richtung == 'zulasten' and report.frist_ende and date.today() > report.frist_ende:
+        frist_warnung = (
+            f'Die Frist für Nachforderungen endete am {report.frist_ende:%d.%m.%Y} '
+            '(§ 556 Abs. 3 S. 3 BGB). Den Mehrbetrag zulasten des Mieters können Sie nur '
+            'noch verlangen, wenn Sie die Verspätung nicht zu vertreten haben.')
     return jsonify({
+        'richtung': richtung,
+        'frist_warnung': frist_warnung,
         'unveraendert': alt is not None and alt == neu,
         'veraltet': _regelstand_veraltet(report),
         'positionen': [{'kostenart': k,
@@ -3386,7 +3416,7 @@ def korrektur_vorschau(id):
                        for k in kostenarten],
         'summe': paar('total_amount'),
         'vorauszahlungen': paar('prepaid_amount'),
-        'saldo': paar('balance'),
+        'saldo': saldo,
     })
 
 

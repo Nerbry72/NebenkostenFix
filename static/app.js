@@ -5303,13 +5303,14 @@ async function fetchBillingHistory() {
                 </button>`;
             }
             
+            const regelstandBlock = r.veraltet ? regelstandHinweis(r.id, r.regelstand_aenderungen) : '';
             card.innerHTML = `
                 <div>
                     <h3 style="margin:0; font-size: 1.1rem;">${escapeHtml(r.tenant_name)} <span style="font-size: 0.9rem; color: var(--text-muted); font-weight: normal;">(${escapeHtml(r.apartment_name)} - ${escapeHtml(r.property_name)})</span></h3>
                     <p style="margin: 8px 0 0 0; color: var(--text-muted);">
                         Zeitraum: ${startFmt} - ${endFmt} | Erstellt am: ${createdFmt}
                     </p>
-                    ${r.veraltet ? REGELSTAND_HINWEIS : ''}
+                    ${regelstandBlock}
                 </div>
                 <div class="historie-knoepfe">
                     <button class="btn-primary" onclick="openReportDetails(${r.id})" title="Einzelheiten und Belege dieser Abrechnung ansehen">
@@ -5503,9 +5504,19 @@ function berichtVersionenBlock(id, umschlag) {
         </div>`;
 }
 
-// NK-217 (F2): die Abrechnung bleibt, wie sie zugegangen ist; der Hinweis
-// sagt nur, dass eine Korrektur heute anders rechnen kann.
-const REGELSTAND_HINWEIS = `<p class="regelstand-hinweis" style="margin: 4px 0 0 0; color: var(--warning-color); font-size: 0.9rem;"><i class="ph ph-warning"></i> Nach älterem Regelstand erstellt. „Korrektur erstellen“ prüft, ob der heutige anders rechnet.</p>`;
+// NK-217 (F2): die Abrechnung bleibt, wie sie zugegangen ist. NK-229 (R-DOC-03):
+// aufgeklappt sagt der Hinweis, was sich geändert hat, wann eine Korrektur
+// sinnvoll ist, und führt zur Vorschau, bevor etwas entsteht.
+function regelstandHinweis(id, aenderungen) {
+    const punkteHtml = (aenderungen || []).map(t => `<li>${escapeHtml(t)}</li>`).join('');
+    const erklaerungHtml = punkteHtml ? `<p style="margin: 8px 0 4px 0;">Seitdem rechnet die Software so:</p><ul style="margin: 0 0 8px 0;">${punkteHtml}</ul>` : '';
+    return `<details class="regelstand-hinweis" style="margin: 4px 0 0 0; font-size: 0.9rem;">
+        <summary style="color: var(--warning-color); cursor: pointer;"><i class="ph ph-warning" aria-hidden="true"></i> Nach älterem Regelstand erstellt</summary>
+        ${erklaerungHtml}
+        <p style="margin: 0 0 8px 0;">Die Abrechnung bleibt gültig, ein neuer Regelstand allein verpflichtet nicht zur Korrektur. Sinnvoll ist sie, wenn der heutige Stand spürbar anders rechnet, vor allem zugunsten des Mieters. Zulasten des Mieters ist eine Korrektur nur bis zum Ende der Abrechnungsfrist durchsetzbar.</p>
+        <button type="button" class="btn-secondary" onclick="korrekturErstellen(${Number(id)})">Unterschied ansehen</button>
+    </details>`;
+}
 
 /* NK-217 (F2): vor dem Bestätigen steht da, was die Korrektur ändert. */
 function korrekturVorschauText(v) {
@@ -5514,7 +5525,10 @@ function korrekturVorschauText(v) {
         .map(p => zeile(p.kostenart, {alt: p.alt, neu: p.neu ?? 0}));
     zeilen.push(zeile('Summe', v.summe), zeile('Saldo', v.saldo));
     return 'Eine Korrektur rechnet diese Abrechnung gegen die aktuellen Daten neu und legt eine neue Version an.\n\n'
-        + 'Das ändert sich:\n' + zeilen.join('\n') + '\n\nKorrektur erstellen?';
+        + 'Das ändert sich:\n' + zeilen.join('\n')
+        + (v.richtung ? `\n\nDie Korrektur fällt ${v.richtung} des Mieters aus.` : '')
+        + (v.frist_warnung ? '\n\n' + v.frist_warnung : '')
+        + '\n\nKorrektur erstellen?';
 }
 
 async function korrekturErstellen(id) {
@@ -5575,13 +5589,14 @@ async function openReportDetails(id) {
         // Der Vermieter sieht den Stand und meldet den Zugang nach.
         const zustellungsBlock = berichtZustellungsBlock(id, umschlag);
         const versionenBlock = berichtVersionenBlock(id, umschlag);
+        const regelstandBlock = umschlag.veraltet ? regelstandHinweis(id, umschlag.regelstand_aenderungen) : '';
         
         let html = `
             <div style="margin-bottom: 24px;">
                 <h3 style="margin: 0 0 8px 0; font-size: 1.25rem;">Details zur Abrechnung</h3>
                 <p style="color: var(--text-muted); margin: 0;">Zeitraum: ${new Date(umschlag.start_date || data.start_date).toLocaleDateString('de-DE')} - ${new Date(umschlag.end_date || data.end_date).toLocaleDateString('de-DE')}</p>
                 ${umschlag.version ? `<p style="color: var(--text-muted); margin: 4px 0 0 0; font-size: 0.9rem;">Version ${umschlag.version} · erstellt mit Software ${escapeHtml(umschlag.software_version || '')}, Regelstand ${escapeHtml(umschlag.regel_version || '')}</p>` : ''}
-                ${umschlag.veraltet ? REGELSTAND_HINWEIS : ''}
+                ${regelstandBlock}
             </div>
             <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;">
                 <a class="btn-secondary" href="/api/billing/reports/${id}/belege" download

@@ -872,9 +872,29 @@ async function korrekturPruefen() {
         && erledigt.aufrufe.join('|') === '/api/billing/reports/7/korrektur/vorschau GET|/api/billing/reports/7/korrektur POST'
         && erledigt.meldungen.join('|') === 'Korrektur erstellt');
     pruefe('NK-217: Liste und Details zeigen den älteren Regelstand',
-        /\$\{r\.veraltet \? REGELSTAND_HINWEIS : ''\}/.test(appQuelle)
-        && /\$\{umschlag\.veraltet \? REGELSTAND_HINWEIS : ''\}/.test(appQuelle)
-        && /const REGELSTAND_HINWEIS = `[^`]*Nach älterem Regelstand erstellt/.test(appQuelle));
+        /const regelstandBlock = r\.veraltet \? regelstandHinweis\(r\.id, r\.regelstand_aenderungen\) : '';/.test(appQuelle)
+        && /const regelstandBlock = umschlag\.veraltet \? regelstandHinweis\(id, umschlag\.regelstand_aenderungen\) : '';/.test(appQuelle)
+        && (appQuelle.match(/\$\{regelstandBlock\}/g) || []).length === 2);
+
+    // NK-229 (R-DOC-03): Richtung und Fristwarnung im Dialog, der Hinweis klappt auf.
+    const richtung = await lauf({ ...geaendert, richtung: 'zulasten',
+        frist_warnung: 'Die Frist für Nachforderungen endete am 01.01.2026.' }, false);
+    const r = richtung.fragen[0] || '';
+    pruefe('NK-229: der Dialog nennt die Richtung und warnt nach Fristende',
+        r.includes('zulasten des Mieters') && r.includes('Die Frist für Nachforderungen endete am 01.01.2026.'));
+    const zugunsten = (await lauf({ ...geaendert, richtung: 'zugunsten', frist_warnung: null }, false)).fragen[0] || '';
+    pruefe('NK-229: zugunsten ohne Warnung',
+        zugunsten.includes('zugunsten des Mieters') && !zugunsten.includes('Frist'));
+    const hinweis = funktion('regelstandHinweis');
+    pruefe('NK-229: regelstandHinweis gibt es', !!hinweis);
+    if (!hinweis) return;
+    const h = new Function(funktion('escapeHtml') + hinweis + '; return regelstandHinweis;')()(7, ['Neu <b>gerechnet</b>.']);
+    pruefe('NK-229: der Hinweis klappt auf, nennt die Änderung maskiert und führt zur Vorschau',
+        /^<details class="regelstand-hinweis"/.test(h.trim()) && h.includes('Nach älterem Regelstand erstellt</summary>')
+        && h.includes('<li>Neu &lt;b&gt;gerechnet&lt;/b&gt;.</li>') && h.includes('verpflichtet nicht zur Korrektur')
+        && /onclick="korrekturErstellen\(7\)">Unterschied ansehen<\/button>/.test(h));
+    const ohne = new Function(funktion('escapeHtml') + hinweis + '; return regelstandHinweis;')()(7, []);
+    pruefe('NK-229: ohne Änderungstext keine leere Liste', !ohne.includes('<ul'));
 }
 
 // --- NK-227: Ablesen am Handy zum Stichtag ------------------------------

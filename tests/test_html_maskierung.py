@@ -50,8 +50,6 @@ AUSNAHMEN = {
     'mCons': 'toFixed(1) in wrapInterpolated',
     'aCons': 'toFixed(1) in wrapInterpolated',
     'prozent': 'toLocaleString der Allgemeinquote (NK-209)',
-    "r.veraltet ? REGELSTAND_HINWEIS : ''": 'fester Hinweistext (NK-217)',
-    "umschlag.veraltet ? REGELSTAND_HINWEIS : ''": 'fester Hinweistext (NK-217)',
     'pfTitle': 'feste Zeichenkette je Ampelstufe',
     'umschlag.version ? `<p style="color: var(--text-muted); marg':
         'Versionsnummer (Zahl), Texte darin maskiert',

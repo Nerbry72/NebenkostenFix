@@ -319,3 +319,13 @@ def test_ablesen_nimmt_das_foto_von_der_kamera():
     """NK-227: beim Ablesen am Handy öffnet das Foto-Feld direkt die Kamera."""
     assert 'accept="image/*" capture="environment"' in _liest(APP)
     assert 'onclick="openAblesen()"' in _liest(INDEX)
+
+
+def test_regelstand_hinweis_klappt_auf_und_fuehrt_zur_vorschau():
+    """NK-229: der Hinweis erklärt sich und zeigt den Unterschied, bevor etwas entsteht."""
+    app = _liest(APP)
+    hinweis = app[app.index('function regelstandHinweis('):]
+    hinweis = hinweis[:hinweis.index('\n}\n')]
+    assert '<details class="regelstand-hinweis"' in hinweis
+    assert 'Unterschied ansehen' in hinweis and 'korrekturErstellen(' in hinweis
+    assert 'REGELSTAND_HINWEIS' not in app

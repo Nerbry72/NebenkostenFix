@@ -40,6 +40,22 @@ SOFTWARE_VERSION = '0.12.0'
 # daran erkennt die Anwendung Abrechnungen nach älterem Stand.
 REGEL_VERSION = '2026-10-06'
 
+# NK-229 (R-DOC-03): was sich mit einem Regelstand an der Rechnung geändert
+# hat, in Worten für den Vermieter. Wer REGEL_VERSION hebt, trägt hier ein,
+# warum -- der Hinweis „Nach älterem Regelstand erstellt“ zeigt es an.
+REGEL_AENDERUNGEN = {
+    '2026-10-06': 'Der Allgemeinverbrauch (Hauptzähler minus Wohnungszähler) wird bei einem '
+                  'Mieterwechsel nur noch zwischen Tagen geteilt, an denen alle Zähler abgelesen '
+                  'sind, und dort nach Personentagen; die Anteile aller Parteien ergeben zusammen '
+                  'genau den Allgemeinverbrauch (NK-213). Der Verbrauchsnachweis nennt die '
+                  'Zählerstände genau an den Zeitraumgrenzen (NK-208).',
+}
+
+
+def aenderungen_seit(regelstand):
+    """Die Änderungstexte aller Regelstände nach ``regelstand``, älteste zuerst."""
+    return [text for stand, text in sorted(REGEL_AENDERUNGEN.items()) if stand > (regelstand or '')]
+
 
 def json_sicher(objekt):
     """Wandelt einen Wert in JSON-verträgliche Daten (R-DOC-02).
