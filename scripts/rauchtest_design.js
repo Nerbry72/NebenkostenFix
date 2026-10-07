@@ -954,6 +954,28 @@ async function ablesenPruefen() {
 }
 
 
+// --- NK-228: Sprünge gegenüber dem Vorjahr in Schritt 2 -------------------
+{
+    const funktion = name => (appQuelle.match(new RegExp('function ' + name + '\\([\\s\\S]*?\\n\\}')) || [''])[0];
+    const euro = (appQuelle.match(/const euroText = .*\n/) || [''])[0];
+    const ziel = {};
+    new Function('document', 'jahrStand', euro + funktion('escapeHtml') + funktion('anzahlText')
+        + funktion('jahrKostenartenZeigen') + '; jahrKostenartenZeigen();')(
+        { getElementById: () => ziel },
+        { jahr: 2025, kostenarten: [
+            { name: 'Grundsteuer', zustand: 'erfasst', anzahl: 1, summe: 1450, summe_vorjahr: 1000, aenderung: 45, sprung: true },
+            { name: 'Müll', zustand: 'erfasst', anzahl: 1, summe: 700, summe_vorjahr: 1000, aenderung: -30, sprung: true },
+            { name: 'Wasser', zustand: 'erfasst', anzahl: 1, summe: 1100, summe_vorjahr: 1000, aenderung: 10, sprung: false },
+        ] });
+    const zeilen = (ziel.innerHTML || '').split('<tr').slice(2);
+    pruefe('NK-228: Schritt 2 markiert den Sprung mit Richtung und rät zum Anschreiben',
+        zeilen.length === 3
+        && zeilen[0].includes('jahr-sprung') && zeilen[0].includes('+45 % gegenüber dem Vorjahr')
+        && zeilen[0].includes('Anschreiben (Schritt 5)')
+        && zeilen[1].includes('−30 % gegenüber dem Vorjahr')
+        && !zeilen[2].includes('jahr-sprung') && !zeilen[2].includes('gegenüber dem Vorjahr'));
+}
+
 warnLeistePruefen()
     .catch(e => pruefe('NK-201: Warnleisten-Prüfung lief durch — ' + e.message, false))
     .then(() => ausschalterPruefen()

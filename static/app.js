@@ -4966,15 +4966,19 @@ window.jahrNeuLaden = jahrNeuLaden;
 
 function jahrKostenartenZeigen() {
     const hinweise = {
-        erfasst: k => `${anzahlText(k.anzahl, 'Rechnung', 'Rechnungen')} erfasst`,
+        // NK-228: mehr als 20 % zum Vorjahr verdient ein Wort an den Mieter.
+        erfasst: k => `${anzahlText(k.anzahl, 'Rechnung', 'Rechnungen')} erfasst` + (k.sprung
+            ? `. ${k.aenderung > 0 ? '+' : '−'}${Math.abs(k.aenderung)} % gegenüber dem Vorjahr: `
+              + 'den Grund am besten im Anschreiben (Schritt 5) nennen.'
+            : ''),
         fehlt: k => `Im Vorjahr ${euroText(k.summe_vorjahr)} — fehlt eine Rechnung?`,
         offen: () => 'Keine Rechnung erfasst. Fällt die Kostenart bei Ihnen an?',
     };
     const rows = jahrStand.kostenarten.map(k => {
         const diesesJahr = k.anzahl ? euroText(k.summe) : '—';
         const vorjahr = k.summe_vorjahr === null ? '—' : euroText(k.summe_vorjahr);
-        const symbol = k.zustand === 'erfasst' ? 'ph-check-circle' : 'ph-warning-circle';
-        return `<tr class="jahr-${escapeHtml(k.zustand)}">
+        const symbol = k.zustand === 'erfasst' && !k.sprung ? 'ph-check-circle' : 'ph-warning-circle';
+        return `<tr class="jahr-${escapeHtml(k.zustand)}${k.sprung ? ' jahr-sprung' : ''}">
         <td class="zelle"><i class="ph ${escapeHtml(symbol)}" aria-hidden="true"></i> ${escapeHtml(k.name)}</td>
         <td class="zelle">${escapeHtml(diesesJahr)}</td>
         <td class="zelle">${escapeHtml(vorjahr)}</td>

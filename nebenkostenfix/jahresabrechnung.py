@@ -11,6 +11,8 @@ Rechenweg.
 - **Kostenarten** (Schritt 2): jede übliche Kostenart und jede, zu der es im
   Jahr oder im Vorjahr Rechnungen gibt, mit Summe, Anzahl und Vorjahres-
   summe. ``fehlt`` heißt: im Vorjahr gab es eine, in diesem Jahr keine.
+  ``aenderung`` ist die Änderung zum Vorjahr in ganzen Prozent (nur wenn
+  beide Jahre Rechnungen haben), ``sprung`` heißt: mehr als 20 % (NK-228).
 - **Ablesungen** (Schritt 3): je Zähler, ob ein Stand zum Stichtag
   (±31 Tage um das Jahresende) da ist, und je Mieterwechsel im Jahr, ob der
   Zähler der Wohnung am Wechseltag (±7 Tage) abgelesen wurde.
@@ -22,6 +24,7 @@ Rechenweg.
 from __future__ import annotations
 
 from datetime import date, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 
 # Die Kostenarten, die in fast jedem Mietshaus anfallen: fehlen sie, fragt
 # der Assistent nach, auch ohne Vorjahr.
@@ -35,6 +38,7 @@ UEBLICH = (
 )
 STICHTAG_TOLERANZ = timedelta(days=31)
 WECHSEL_TOLERANZ = timedelta(days=7)
+SPRUNG_PROZENT = 20
 
 
 class StandFehler(Exception):
@@ -77,10 +81,17 @@ def stand(property_id: int, jahr: int, heute: date | None = None) -> dict:
             zustand = 'fehlt'
         else:
             zustand = 'offen'
+        aenderung = None
+        if diese and vorige and summe_vorjahr > 0:
+            # Gemessen wird an der gerundeten Zahl: markiert wird, was man sieht.
+            aenderung = int((Decimal(summe - summe_vorjahr) * 100 / summe_vorjahr)
+                            .quantize(Decimal('1'), ROUND_HALF_UP))
         kostenarten.append({
             'id': kat.id, 'name': kat.name, 'zustand': zustand,
             'anzahl': len(diese), 'summe': float(summe),
             'summe_vorjahr': float(summe_vorjahr) if vorige else None,
+            'aenderung': aenderung,
+            'sprung': aenderung is not None and abs(aenderung) > SPRUNG_PROZENT,
         })
 
     # --- Schritt 4/5: Mieter ------------------------------------------------------

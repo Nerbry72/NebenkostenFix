@@ -2305,6 +2305,7 @@ td .btn-icon,
 .jahr-fehlt td:first-child i,
 .jahr-offen td:first-child i { color: #B45309; }
 .jahr-erfasst td:first-child i { color: #15803D; }
+.jahr-sprung td:first-child i { color: #B45309; }
 
 .jahr-mieter {
     padding: 16px;
