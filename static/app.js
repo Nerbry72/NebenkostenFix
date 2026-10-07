@@ -753,6 +753,8 @@ function zeigeErsteSchritte() {
     const balken = document.getElementById('erste-schritte-balken');
     if (stand) stand.textContent = `${erledigtPflicht} von 5 erledigt`;
     if (balken) balken.style.width = `${Math.round(erledigtPflicht / 5 * 100)}%`;
+    const beispielHinweis = document.getElementById('erste-schritte-beispiel');
+    if (beispielHinweis) beispielHinweis.hidden = !beispielDa;
 
     // Der hervorgehobene Schritt ist immer der erste offene Pflichtschritt --
     // ein optionaler Schritt (Zähler) lenkt die Führung nicht ab.

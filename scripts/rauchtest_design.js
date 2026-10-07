@@ -701,6 +701,30 @@ async function ausschalterPruefen() {
         sichtbar.join() === 'false,true,false');
 }
 
+// --- NK-225: „0 von 5“ trotz Beispielhaus wird erklärt -----------------
+{
+    const funktion = name => (appQuelle.match(new RegExp('function ' + name + '\\([\\s\\S]*?\\n\\}')) || [''])[0];
+    const quelle = funktion('echterBestand') + funktion('zeigeErsteSchritte');
+    const lauf = beispiel => {
+        const el = {};
+        const hole = id => (el[id] = el[id] || { id, hidden: beispiel, style: {},  // Start = Gegenteil der Erwartung
+            replaceChildren() {}, appendChild() {} });
+        new Function('document', 'properties', 'allApartments', 'tenants', 'invoices', 'meters',
+            'readings', 'payments', 'abrechnungsHistorie', quelle + '; zeigeErsteSchritte();')(
+            { getElementById: hole, createElement: () => ({}) },
+            beispiel ? [{ id: 1, ist_beispiel: true }] : [], [], [], [], [], [], [], []);
+        return el;
+    };
+    const mit = lauf(true), ohne = lauf(false);
+    pruefe('NK-225: mit Beispielhaus steht „Die Beispielimmobilie zählt nicht mit.“ neben dem Stand',
+        mit['erste-schritte-stand'].textContent === '0 von 5 erledigt'
+        && !!mit['erste-schritte-beispiel'] && mit['erste-schritte-beispiel'].hidden === false
+        && html.includes('id="erste-schritte-beispiel"')
+        && /id="erste-schritte-beispiel"[^>]*>Die Beispielimmobilie zählt nicht mit\.</.test(html));
+    pruefe('NK-225: ohne Beispielhaus kein Hinweis',
+        !!ohne['erste-schritte-beispiel'] && ohne['erste-schritte-beispiel'].hidden === true);
+}
+
 // --- NK-216 (F1): unplausibler Zählerstand wird nachgefragt ---------------
 // 409 mit nachfrage: die App fragt im eigenen Dialog und schickt bei Ja
 // dasselbe mit `trotzdem` noch einmal; bei Nein geht nichts mehr hinaus.
