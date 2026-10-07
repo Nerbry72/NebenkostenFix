@@ -1206,6 +1206,7 @@ input[type="number"] {
     font-size: 13px;
     font-weight: 600;
     color: var(--text-main);
+    white-space: nowrap;               /* NK-223 */
 }
 
 .erste-schritte-balken {
@@ -1561,7 +1562,8 @@ input[type="number"] {
         grid-template-columns: 32px 1fr;
     }
 
-    .erste-schritte-liste .schritt .btn-primary {
+    .erste-schritte-liste .schritt .btn-primary,
+    .erste-schritte-liste .schritt .btn-secondary {
         grid-column: 2;
         justify-self: start;
     }

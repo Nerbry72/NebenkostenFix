@@ -420,8 +420,8 @@ pruefe('K5: Zeilenraster 32px | 1fr | auto, mindestens 64 px hoch',
     && css.includes('.erste-schritte-liste .schritt + .schritt {'));
 pruefe('K5: der aktuelle Schritt trägt die 3-px-Primärleiste',
     /\.erste-schritte-liste \.schritt\.aktuell\s*\{[^}]*inset 3px 0 0 var\(--primary\)/m.test(css));
-pruefe('K5: bei ≤ 720 px rutscht der Knopf unter den Text',
-    /\.erste-schritte-liste \.schritt \.btn-primary\s*\{[^}]*grid-column: 2;/m.test(css));
+pruefe('K5: bei ≤ 720 px rutscht der Knopf unter den Text, auch der Zweitknopf (NK-223)',
+    /\.erste-schritte-liste \.schritt \.btn-primary,\s*\.erste-schritte-liste \.schritt \.btn-secondary\s*\{[^}]*grid-column: 2;/m.test(css));
 pruefe('B8: die Pille „optional“ steht hinter dem Titel, auf der Grundlinie',
     app.includes('<div class="schritt-titel-zeile"><strong>${s.titel}</strong>${hinweis}</div>')
     && css.includes('.schritt-titel-zeile {'));
