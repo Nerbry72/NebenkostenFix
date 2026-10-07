@@ -482,6 +482,10 @@ function initTabs() {
             tabContents.forEach(tab => tab.style.display = 'none');
             
             item.classList.add('active');
+            // NK-224: der Gruß gehört zur Übersicht, jede andere Seite hat
+            // ihre eigene Überschrift.
+            const gruss = document.querySelector('.greeting');
+            if (gruss) gruss.hidden = item.dataset.tab !== 'dashboard';
             const targetId = 'tab-' + item.dataset.tab;
             const targetTab = document.getElementById(targetId);
             if (targetTab) {

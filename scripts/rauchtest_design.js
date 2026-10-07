@@ -675,6 +675,32 @@ async function ausschalterPruefen() {
         !!melden && /if \(!datum\) \{ showError\([^)]*\); return; \}/.test(melden[0]));
 }
 
+// --- NK-224: der Gruß steht nur auf der Übersicht ---------------------
+// Vorher stand „Willkommen …“ über jedem Tab, obwohl jede Seite ihre eigene
+// Überschrift trägt.
+{
+    const m = appQuelle.match(/function initTabs\(\)[\s\S]*?\n\}/);
+    const reiter = ['dashboard', 'meters', 'invoices'].map(name => {
+        const h = {};
+        return { dataset: { tab: name }, classList: { add() {}, remove() {} },
+            addEventListener: (typ, fn) => { h[typ] = fn; },
+            klick: () => h.click({ preventDefault() {} }) };
+    });
+    const gruss = { hidden: false };
+    const init = m && new Function('document', m[0] + '; return initTabs;')({
+        querySelectorAll: s => s === '.nav-item' ? reiter : [],
+        querySelector: s => s === '.greeting' ? gruss : null,
+        getElementById: () => null,
+    });
+    const sichtbar = [];
+    if (init) {
+        init();
+        for (const r of [reiter[1], reiter[0], reiter[2]]) { r.klick(); sichtbar.push(!gruss.hidden); }
+    }
+    pruefe('NK-224: der Gruß verschwindet auf anderen Tabs und kommt auf der Übersicht zurück',
+        sichtbar.join() === 'false,true,false');
+}
+
 // --- NK-216 (F1): unplausibler Zählerstand wird nachgefragt ---------------
 // 409 mit nachfrage: die App fragt im eigenen Dialog und schickt bei Ja
 // dasselbe mit `trotzdem` noch einmal; bei Nein geht nichts mehr hinaus.
