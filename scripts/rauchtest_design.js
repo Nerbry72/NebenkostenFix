@@ -420,8 +420,8 @@ pruefe('K5: Zeilenraster 32px | 1fr | auto, mindestens 64 px hoch',
     && css.includes('.erste-schritte-liste .schritt + .schritt {'));
 pruefe('K5: der aktuelle Schritt trägt die 3-px-Primärleiste',
     /\.erste-schritte-liste \.schritt\.aktuell\s*\{[^}]*inset 3px 0 0 var\(--primary\)/m.test(css));
-pruefe('K5: bei ≤ 720 px rutscht der Knopf unter den Text',
-    /\.erste-schritte-liste \.schritt \.btn-primary\s*\{[^}]*grid-column: 2;/m.test(css));
+pruefe('K5: bei ≤ 720 px rutscht der Knopf unter den Text, auch der Zweitknopf (NK-223)',
+    /\.erste-schritte-liste \.schritt \.btn-primary,\s*\.erste-schritte-liste \.schritt \.btn-secondary\s*\{[^}]*grid-column: 2;/m.test(css));
 pruefe('B8: die Pille „optional“ steht hinter dem Titel, auf der Grundlinie',
     app.includes('<div class="schritt-titel-zeile"><strong>${s.titel}</strong>${hinweis}</div>')
     && css.includes('.schritt-titel-zeile {'));
@@ -675,6 +675,113 @@ async function ausschalterPruefen() {
         !!melden && /if \(!datum\) \{ showError\([^)]*\); return; \}/.test(melden[0]));
 }
 
+// --- NK-224: der Gruß steht nur auf der Übersicht ---------------------
+// Vorher stand „Willkommen …“ über jedem Tab, obwohl jede Seite ihre eigene
+// Überschrift trägt.
+{
+    const m = appQuelle.match(/function initTabs\(\)[\s\S]*?\n\}/);
+    const reiter = ['dashboard', 'meters', 'invoices'].map(name => {
+        const h = {};
+        return { dataset: { tab: name }, classList: { add() {}, remove() {} },
+            addEventListener: (typ, fn) => { h[typ] = fn; },
+            klick: () => h.click({ preventDefault() {} }) };
+    });
+    const gruss = { hidden: false };
+    const init = m && new Function('document', m[0] + '; return initTabs;')({
+        querySelectorAll: s => s === '.nav-item' ? reiter : [],
+        querySelector: s => s === '.greeting' ? gruss : null,
+        getElementById: () => null,
+    });
+    const sichtbar = [];
+    if (init) {
+        init();
+        for (const r of [reiter[1], reiter[0], reiter[2]]) { r.klick(); sichtbar.push(!gruss.hidden); }
+    }
+    pruefe('NK-224: der Gruß verschwindet auf anderen Tabs und kommt auf der Übersicht zurück',
+        sichtbar.join() === 'false,true,false');
+}
+
+// --- NK-225: „0 von 5“ trotz Beispielhaus wird erklärt -----------------
+{
+    const funktion = name => (appQuelle.match(new RegExp('function ' + name + '\\([\\s\\S]*?\\n\\}')) || [''])[0];
+    const quelle = funktion('echterBestand') + funktion('zeigeErsteSchritte');
+    const lauf = beispiel => {
+        const el = {};
+        const hole = id => (el[id] = el[id] || { id, hidden: beispiel, style: {},  // Start = Gegenteil der Erwartung
+            replaceChildren() {}, appendChild() {} });
+        new Function('document', 'properties', 'allApartments', 'tenants', 'invoices', 'meters',
+            'readings', 'payments', 'abrechnungsHistorie', quelle + '; zeigeErsteSchritte();')(
+            { getElementById: hole, createElement: () => ({}) },
+            beispiel ? [{ id: 1, ist_beispiel: true }] : [], [], [], [], [], [], [], []);
+        return el;
+    };
+    const mit = lauf(true), ohne = lauf(false);
+    pruefe('NK-225: mit Beispielhaus steht „Die Beispielimmobilie zählt nicht mit.“ neben dem Stand',
+        mit['erste-schritte-stand'].textContent === '0 von 5 erledigt'
+        && !!mit['erste-schritte-beispiel'] && mit['erste-schritte-beispiel'].hidden === false
+        && html.includes('id="erste-schritte-beispiel"')
+        && /id="erste-schritte-beispiel"[^>]*>Die Beispielimmobilie zählt nicht mit\.</.test(html));
+    pruefe('NK-225: ohne Beispielhaus kein Hinweis',
+        !!ohne['erste-schritte-beispiel'] && ohne['erste-schritte-beispiel'].hidden === true);
+}
+
+// --- NK-226: Vorschlag zur Anpassung der Vorauszahlung -----------------
+// Die Vorschau nennt den Vorschlag, die Details bieten die Serienbuchung an.
+// Gebucht wird erst im Zahlungsdialog, und schon gebuchte Zahlungen ab dem
+// Wirksamwerden werden genannt.
+{
+    const funktion = name => (appQuelle.match(new RegExp('function ' + name + '\\([\\s\\S]*?\\n\\}')) || [''])[0];
+    const esc = funktion('escapeHtml');
+    const block = funktion('vorauszahlungsBlock') && new Function(
+        esc + funktion('vorauszahlungsBlock') + '; return vorauszahlungsBlock;')();
+    const v = { ab: '2026-05-01', bisher: '80.00', neu: '150.00', kosten: '1800.00',
+        monate: '12.00', kuenftige: 0, aenderung: true };
+    const details = block ? block(v, 7) : '';
+    const vorschau = block ? block(v, null) : '';
+    pruefe('NK-226: der Vorschlag nennt neue und bisherige Höhe und die Grundlage',
+        details.includes('150,00 € im Monat statt 80,00 €')
+        && details.includes('1800,00 € Kosten über 12 Monate'));
+    pruefe('NK-226: den Knopf „Serienbuchung anlegen“ gibt es nur in den Details',
+        details.includes('serienbuchungAnlegen(7, \'150.00\', \'2026-05-01\', 0)')
+        && details.includes('Serienbuchung anlegen') && !vorschau.includes('serienbuchungAnlegen('));
+    pruefe('NK-226: schon gebuchte Zahlungen ab dem Wirksamwerden werden genannt',
+        !!block && block({ ...v, kuenftige: 2 }, 7).includes('schon 2 Vorauszahlungen gebucht')
+        && !details.includes('schon 0'));
+    pruefe('NK-226: ohne Vorschlag steht der Grund, ohne Änderung nichts',
+        !!block && block({ grund: 'Kein <b>Grund' }, 7).includes('Kein Vorschlag: Kein &lt;b&gt;Grund')
+        && block({ ...v, aenderung: false }, 7) === '' && block(undefined, 7) === '');
+    pruefe('NK-226: Vorschau und Details zeigen den Block',
+        /html \+= vorauszahlungsBlock\(data\.vorauszahlung, null\)/.test(appQuelle)
+        && /vorauszahlungsBlock\(umschlag\.vorauszahlung, umschlag\.tenant_id\)/.test(appQuelle));
+}
+
+// Die Nachfrage bei schon gebuchten Zahlungen kommt im eigenen Dialog (frage).
+async function serienPruefen() {
+    const funktion = name => (appQuelle.match(new RegExp('(?:async )?function ' + name + '\\([\\s\\S]*?\\n\\}')) || [''])[0];
+    const lauf = async (kuenftige, ja) => {
+        const el = {}, offen = [];
+        if (!funktion('serienbuchungAnlegen')) return { el, offen };
+        const hole = id => (el[id] = el[id] || { value: '', checked: false,
+            classList: { remove: k => offen.push(id + '-' + k) } });
+        await new Function('document', 'openAddPaymentModal', 'togglePaymentRecurring',
+            'toggleBillingReportField', 'frage',
+            funktion('serienbuchungAnlegen') + '; return serienbuchungAnlegen(7, "150.00", "2026-05-01", ' + kuenftige + ');')(
+            { getElementById: hole }, () => offen.push('dialog'), () => {}, () => {}, async () => ja);
+        return { el, offen };
+    };
+    const frei = await lauf(0, false);
+    pruefe('NK-226: „Serienbuchung anlegen“ füllt den Zahlungsdialog vor',
+        frei.offen.includes('dialog') && frei.offen.includes('report-details-modal-active')
+        && !!frei.el['payment-tenant']
+        && frei.el['payment-tenant'].value === '7' && frei.el['payment-amount'].value === '150.00'
+        && frei.el['payment-date'].value === '2026-05-01'
+        && frei.el['payment-type'].value === 'Nebenkostenvorauszahlung'
+        && frei.el['payment-recurring'].checked === true);
+    pruefe('NK-226: bei schon gebuchten Zahlungen und „Nein“ öffnet sich nichts',
+        !(await lauf(2, false)).offen.includes('dialog') && (await lauf(2, true)).offen.includes('dialog'));
+    pruefe('NK-226: kein Browserdialog', !/confirm\(/.test(funktion('serienbuchungAnlegen')));
+}
+
 // --- NK-216 (F1): unplausibler Zählerstand wird nachgefragt ---------------
 // 409 mit nachfrage: die App fragt im eigenen Dialog und schickt bei Ja
 // dasselbe mit `trotzdem` noch einmal; bei Nein geht nichts mehr hinaus.
@@ -765,9 +872,200 @@ async function korrekturPruefen() {
         && erledigt.aufrufe.join('|') === '/api/billing/reports/7/korrektur/vorschau GET|/api/billing/reports/7/korrektur POST'
         && erledigt.meldungen.join('|') === 'Korrektur erstellt');
     pruefe('NK-217: Liste und Details zeigen den älteren Regelstand',
-        /\$\{r\.veraltet \? REGELSTAND_HINWEIS : ''\}/.test(appQuelle)
-        && /\$\{umschlag\.veraltet \? REGELSTAND_HINWEIS : ''\}/.test(appQuelle)
-        && /const REGELSTAND_HINWEIS = `[^`]*Nach älterem Regelstand erstellt/.test(appQuelle));
+        /const regelstandBlock = r\.veraltet \? regelstandHinweis\(r\.id, r\.regelstand_aenderungen\) : '';/.test(appQuelle)
+        && /const regelstandBlock = umschlag\.veraltet \? regelstandHinweis\(id, umschlag\.regelstand_aenderungen\) : '';/.test(appQuelle)
+        && (appQuelle.match(/\$\{regelstandBlock\}/g) || []).length === 2);
+
+    // NK-229 (R-DOC-03): Richtung und Fristwarnung im Dialog, der Hinweis klappt auf.
+    const richtung = await lauf({ ...geaendert, richtung: 'zulasten',
+        frist_warnung: 'Die Frist für Nachforderungen endete am 01.01.2026.' }, false);
+    const r = richtung.fragen[0] || '';
+    pruefe('NK-229: der Dialog nennt die Richtung und warnt nach Fristende',
+        r.includes('zulasten des Mieters') && r.includes('Die Frist für Nachforderungen endete am 01.01.2026.'));
+    const zugunsten = (await lauf({ ...geaendert, richtung: 'zugunsten', frist_warnung: null }, false)).fragen[0] || '';
+    pruefe('NK-229: zugunsten ohne Warnung',
+        zugunsten.includes('zugunsten des Mieters') && !zugunsten.includes('Frist'));
+    const hinweis = funktion('regelstandHinweis');
+    pruefe('NK-229: regelstandHinweis gibt es', !!hinweis);
+    if (!hinweis) return;
+    const h = new Function(funktion('escapeHtml') + hinweis + '; return regelstandHinweis;')()(7, ['Neu <b>gerechnet</b>.']);
+    pruefe('NK-229: der Hinweis klappt auf, nennt die Änderung maskiert und führt zur Vorschau',
+        /^<details class="regelstand-hinweis"/.test(h.trim()) && h.includes('Nach älterem Regelstand erstellt</summary>')
+        && h.includes('<li>Neu &lt;b&gt;gerechnet&lt;/b&gt;.</li>') && h.includes('verpflichtet nicht zur Korrektur')
+        && /onclick="korrekturErstellen\(7\)">Unterschied ansehen<\/button>/.test(h));
+    const ohne = new Function(funktion('escapeHtml') + hinweis + '; return regelstandHinweis;')()(7, []);
+    pruefe('NK-229: ohne Änderungstext keine leere Liste', !ohne.includes('<ul'));
+}
+
+// --- NK-227: Ablesen am Handy zum Stichtag ------------------------------
+// Alle Zähler der Immobilie mit letztem Stand und Kamerafoto; jede ausgefüllte
+// Zeile geht einzeln über POST /api/readings, die Nachfrage kommt je Zeile.
+async function ablesenPruefen() {
+    const funktion = name => (appQuelle.match(new RegExp('(?:async )?function ' + name + '\\([\\s\\S]*?\\n\\}')) || [''])[0];
+    const quelle = 'const ZAEHLER_ANZEIGENAMEN = {};' + funktion('escapeHtml') + funktion('zaehlerArtName') + funktion('ablesenZeilen')
+        + funktion('closeAblesen') + funktion('ablesenSpeichern');
+    pruefe('NK-227: Knopf „Alle Stände erfassen“ im Zähler-Tab und der Dialog',
+        /onclick="openAblesen\(\)"[^>]*>[\s\S]{0,80}Alle Stände erfassen\s*<\/button>/.test(html)
+        && html.includes('id="ablesen-modal"') && html.includes('id="ablesen-datum"'));
+    if (!funktion('ablesenZeilen') || !funktion('ablesenSpeichern')) {
+        pruefe('NK-227: ablesenZeilen und ablesenSpeichern gibt es', false);
+        return;
+    }
+    const meters = [
+        { id: 1, property_id: 5, apartment_name: 'EG', category_name: 'Strom', meter_number: '<b>S1',
+          einheit: 'kWh', has_dual_tariff: true },
+        { id: 2, property_id: 5, is_main_meter: true, category_name: 'Wasser', meter_number: 'W1',
+          einheit: 'm³', has_dual_tariff: false },
+        { id: 3, property_id: 9, apartment_name: 'OG', category_name: 'Wasser', meter_number: 'X',
+          has_dual_tariff: false },
+    ];
+    const readings = [
+        { meter_id: 1, reading_date: '2024-12-31', value: 900, value_nt: 400 },
+        { meter_id: 1, reading_date: '2025-12-31', value: 1234.5, value_nt: 500 },
+    ];
+    const baue = (doc, extra) => new Function('document', 'meters', 'readings', 'FormData',
+        'sendeMitNachfrage', 'serverFehler', 'meldungZu', 'showError', 'fetchReadings',
+        quelle + '; return ' + extra + ';');
+    const zeilen = baue({}, 'ablesenZeilen')({}, meters, readings)(5);
+    pruefe('NK-227: die Liste zeigt die Zähler der Immobilie mit letztem Stand',
+        zeilen.includes('id="ablesen-wert-1"') && zeilen.includes('id="ablesen-wert-2"')
+        && !zeilen.includes('ablesen-wert-3')
+        && zeilen.includes('zuletzt HT 1.234,5 kWh, NT 500 kWh am 31.12.2025')
+        && zeilen.includes('noch kein Stand') && zeilen.includes('&lt;b&gt;S1'));
+    pruefe('NK-227: NT-Feld nur beim Doppeltarif',
+        zeilen.includes('id="ablesen-nt-1"') && !zeilen.includes('id="ablesen-nt-2"'));
+    pruefe('NK-227: das Foto kommt direkt von der Kamera',
+        /<input type="file" id="ablesen-foto-1" accept="image\/\*" capture="environment">/.test(zeilen));
+
+    const lauf = async (werte, antworten) => {
+        const el = {}, gesendet = [], fehler = [];
+        let neuGeladen = 0;
+        const hole = id => (el[id] = el[id] || { id, value: werte[id] !== undefined ? werte[id] : '',
+            files: [], textContent: '', classList: { remove: k => { el[id].zu = k; } } });
+        hole('ablesen-datum').value = '2026-01-01';
+        hole('ablesen-property').value = '5';
+        function Formular() { this.felder = {}; }
+        Formular.prototype.append = function (k, v) { this.felder[k] = String(v); };
+        const senden = (url, methode, fd) => { gesendet.push({ url, methode, ...fd.felder });
+            return Promise.resolve(antworten.shift()); };
+        await baue({}, 'ablesenSpeichern')({ getElementById: id => hole(id) }, meters, readings, Formular, senden,
+            async () => new Error('kaputt'), (e, t) => t, t => fehler.push(t), () => neuGeladen++)();
+        return { el, gesendet, fehler, neuGeladen };
+    };
+    const ok = { ok: true, status: 201 };
+    const beide = await lauf({ 'ablesen-wert-1': '1300', 'ablesen-nt-1': '520', 'ablesen-wert-2': '42' }, [ok, ok]);
+    pruefe('NK-227: jede ausgefüllte Zeile geht einzeln über POST /api/readings',
+        beide.gesendet.length === 2 && beide.gesendet.every(g => g.url === '/api/readings' && g.methode === 'POST')
+        && beide.gesendet[0].meter_id === '1' && beide.gesendet[0].value === '1300'
+        && beide.gesendet[0].value_nt === '520' && beide.gesendet[0].reading_date === '2026-01-01'
+        && beide.gesendet[1].meter_id === '2' && !('value_nt' in beide.gesendet[1])
+        && beide.el['ablesen-modal'].zu === 'active' && beide.neuGeladen === 1);
+    const leer = await lauf({ 'ablesen-wert-2': '42' }, [ok]);
+    pruefe('NK-227: leere Zeilen werden übersprungen',
+        leer.gesendet.length === 1 && leer.gesendet[0].meter_id === '2');
+    const nein = await lauf({ 'ablesen-wert-1': '1', 'ablesen-wert-2': '42' }, [null, ok]);
+    pruefe('NK-227: „Nein“ auf die Nachfrage lässt die Zeile stehen, der Dialog bleibt offen',
+        nein.gesendet.length === 2 && nein.el['ablesen-wert-1'].value === '1'
+        && nein.el['ablesen-meldung-1'].textContent === 'Nicht gespeichert.'
+        && nein.el['ablesen-wert-2'].value === '' && !nein.el['ablesen-modal']);
+    const nichts = await lauf({}, []);
+    pruefe('NK-227: ohne Eintrag ein Hinweis statt Stille',
+        nichts.gesendet.length === 0 && nichts.fehler.length === 1);
+}
+
+
+// --- NK-228: Sprünge gegenüber dem Vorjahr in Schritt 2 -------------------
+{
+    const funktion = name => (appQuelle.match(new RegExp('function ' + name + '\\([\\s\\S]*?\\n\\}')) || [''])[0];
+    const euro = (appQuelle.match(/const euroText = .*\n/) || [''])[0];
+    const ziel = {};
+    new Function('document', 'jahrStand', euro + funktion('escapeHtml') + funktion('anzahlText')
+        + funktion('jahrKostenartenZeigen') + '; jahrKostenartenZeigen();')(
+        { getElementById: () => ziel },
+        { jahr: 2025, kostenarten: [
+            { name: 'Grundsteuer', zustand: 'erfasst', anzahl: 1, summe: 1450, summe_vorjahr: 1000, aenderung: 45, sprung: true },
+            { name: 'Müll', zustand: 'erfasst', anzahl: 1, summe: 700, summe_vorjahr: 1000, aenderung: -30, sprung: true },
+            { name: 'Wasser', zustand: 'erfasst', anzahl: 1, summe: 1100, summe_vorjahr: 1000, aenderung: 10, sprung: false },
+        ] });
+    const zeilen = (ziel.innerHTML || '').split('<tr').slice(2);
+    pruefe('NK-228: Schritt 2 markiert den Sprung mit Richtung und rät zum Anschreiben',
+        zeilen.length === 3
+        && zeilen[0].includes('jahr-sprung') && zeilen[0].includes('+45 % gegenüber dem Vorjahr')
+        && zeilen[0].includes('Anschreiben (Schritt 5)')
+        && zeilen[1].includes('−30 % gegenüber dem Vorjahr')
+        && !zeilen[2].includes('jahr-sprung') && !zeilen[2].includes('gegenüber dem Vorjahr'));
+}
+
+// --- NK-230: Wie im Vorjahr füllen ---------------------------------------
+// Die Rechnungen des Vorjahres kommen als Zeilen ohne Betrag; getippte Zeilen
+// bleiben, leere machen Platz. Ohne Betrag wird eine solche Zeile nicht
+// gespeichert und so markiert.
+async function vorjahrPruefen() {
+    const funktion = name => (appQuelle.match(new RegExp('(?:async )?function ' + name + '\\([\\s\\S]*?\\n\\}')) || [''])[0];
+    const konstante = name => (appQuelle.match(new RegExp('const ' + name + ' = [^\\n]*')) || [''])[0];
+    pruefe('NK-230: Knopf „Wie im Vorjahr füllen“ in der Tabelle und in Schritt 2',
+        /onclick="rtVorjahrFuellen\(\)"[^>]*>[\s\S]{0,80}Wie im Vorjahr füllen\s*<\/button>/.test(html)
+        && /onclick="jahrVorjahrFuellen\(\)"[^>]*>[\s\S]{0,80}Wie im Vorjahr füllen\s*<\/button>/.test(html));
+    if (!funktion('rtVorjahrFuellen') || !konstante('RT_OHNE_BETRAG')) {
+        pruefe('NK-230: rtVorjahrFuellen gibt es', false);
+        return;
+    }
+    // Eine kleine Tabellen-Attrappe: tr > td > input, wie rtZeilenAnlegen sie baut.
+    const knoten = tag => ({
+        tag, kinder: [], dataset: {}, value: '', textContent: '', className: '',
+        classList: { add() {}, toggle() {} }, setAttribute() {}, focus() {},
+        appendChild(k) { k.eltern = this; this.kinder.push(k); return k; },
+        remove() { this.eltern.kinder.splice(this.eltern.kinder.indexOf(this), 1); },
+        get lastElementChild() { return this.kinder[this.kinder.length - 1]; },
+        alle() { return this.kinder.flatMap(k => [k, ...k.alle()]); },
+        querySelectorAll(sel) { return this.alle().filter(k => k.tag === sel); },
+        querySelector(sel) {
+            const spalte = (sel.match(/data-spalte="(\w+)"/) || [])[1];
+            return this.alle().find(k => spalte ? k.dataset.spalte === spalte : k.className.split(' ').includes(sel.slice(1)));
+        },
+    });
+    const rumpf = knoten('tbody');
+    const el = { 'rt-zeilen': rumpf, 'rt-jahr': { value: '2025' }, 'rt-meldung': { textContent: '' },
+        'rt-immobilie': { value: '5', selectedIndex: 0, options: [{ text: 'Haus' }] } };
+    const doc = { getElementById: id => el[id], createElement: knoten,
+        querySelectorAll: sel => sel === '#rt-zeilen tr' ? rumpf.kinder.slice() : [] };
+    const aufrufe = [];
+    const antworten = [];
+    const holen = async (url, opt) => { aufrufe.push({ url, opt }); return antworten.shift(); };
+    const quelle = konstante('RT_SPALTEN') + konstante('RT_OHNE_BETRAG') + funktion('anzahlText')
+        + funktion('rtDatum') + funktion('rtZeilenAnlegen') + funktion('rtZeilenLesen')
+        + funktion('rtVorjahrFuellen') + funktion('rtSenden');
+    const t = new Function('document', 'fetch', 'serverFehler', 'meldungZu', 'showError', 'showSuccess',
+        'importNachladen', quelle + '; return { rtZeilenAnlegen, rtZeilenLesen, rtVorjahrFuellen, rtSenden };')(
+        doc, holen, async () => new Error('kaputt'), (e, x) => x, () => {}, () => {}, () => {});
+
+    t.rtZeilenAnlegen(2);
+    rumpf.kinder[0].querySelector('[data-spalte="kostenart"]').value = 'Wasser';
+    rumpf.kinder[0].querySelector('[data-spalte="betrag"]').value = '5';
+    const vorlage = (kostenart, wohnung) => ({ kostenart, von: '01.01.2025', bis: '31.12.2025',
+        anbieter: '', wohnung, betrag: '', rechnungsnummer: '', rechnungsdatum: '' });
+    antworten.push({ ok: true, json: async () => ({ zeilen: [vorlage('Grundsteuer', ''), vorlage('Hauswart', 'EG')], heizung: 1 }) });
+    await t.rtVorjahrFuellen();
+    const wert = (i, spalte) => rumpf.kinder[i].querySelector(`[data-spalte="${spalte}"]`).value;
+    const status = i => rumpf.kinder[i].querySelector('.rt-status').textContent;
+    pruefe('NK-230: das Vorjahr kommt für Immobilie und Jahr der Tabelle',
+        aufrufe[0].url === '/api/import/rechnungen/vorjahr?property_id=5&jahr=2025');
+    pruefe('NK-230: getippte Zeilen bleiben, leere machen Platz, Vorjahr ohne Betrag markiert',
+        wert(0, 'kostenart') === 'Wasser' && wert(1, 'kostenart') === 'Grundsteuer'
+        && wert(2, 'kostenart') === 'Hauswart' && wert(2, 'wohnung') === 'EG' && wert(1, 'betrag') === ''
+        && wert(1, 'von') === '01.01.2025' && status(1).includes('nicht gespeichert')
+        && rumpf.kinder.length === 6 && wert(3, 'kostenart') === '');
+    pruefe('NK-230: die Meldung nennt Anzahl, Jahr und die Heizkosten im Dialog',
+        el['rt-meldung'].textContent.includes('2 Rechnungen aus 2024')
+        && el['rt-meldung'].textContent.includes('Heizkostenrechnung'));
+
+    rumpf.kinder[1].querySelector('[data-spalte="betrag"]').value = '1.300,00';
+    antworten.push({ ok: true, json: async () => ({ fehler: [], hinweise: [], zeilen: 2 }) });
+    await t.rtSenden(false);
+    const gesendet = JSON.parse(aufrufe[1].opt.body).zeilen.filter(z => Object.keys(z).length);
+    pruefe('NK-230: eine vorbelegte Zeile ohne Betrag wird nicht gesendet und bleibt markiert',
+        gesendet.length === 2 && gesendet.map(z => z.kostenart).join() === 'Wasser,Grundsteuer'
+        && status(2).includes('nicht gespeichert') && !status(1).includes('nicht gespeichert'));
 }
 
 warnLeistePruefen()
@@ -780,4 +1078,10 @@ warnLeistePruefen()
                 .catch(e => pruefe('NK-216: Nachfrage-Prüfung lief durch — ' + e.message, false))
                 .then(() => korrekturPruefen()
                     .catch(e => pruefe('NK-217: Korrektur-Prüfung lief durch — ' + e.message, false))
-                    .then(() => process.exit(fehler ? 1 : 0))))));
+                    .then(() => serienPruefen()
+                        .catch(e => pruefe('NK-226: Serienbuchung-Prüfung lief durch — ' + e.message, false))
+                        .then(() => ablesenPruefen()
+                            .catch(e => pruefe('NK-227: Ablesen-Prüfung lief durch — ' + e.message, false))
+                            .then(() => vorjahrPruefen()
+                                .catch(e => pruefe('NK-230: Vorjahr-Prüfung lief durch — ' + e.message, false))
+                                .then(() => process.exit(fehler ? 1 : 0)))))))));

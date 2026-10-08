@@ -112,7 +112,7 @@ def test_einzug_im_jahr_nimmt_die_gemessene_menge():
     """
     einzug = date(2025, 7, 2)
     dritter = rechne(replace(_welt(wer=3, dritter_ab=einzug), beginn=einzug))
-    assert 'Eigenverbrauch (6.0 m³)' in dritter['line_items'][0]['description']
+    assert 'Eigenverbrauch (6,0 m³)' in dritter['line_items'][0]['description']
     vermieter = rechne(_welt(wer=1, dritter_ab=einzug))['landlord_share']
     eigen = [p for p in vermieter['positions'] if 'vermieter_consumption' in p]
     assert [p['amount'] for p in eigen] == [Decimal('40.00')]

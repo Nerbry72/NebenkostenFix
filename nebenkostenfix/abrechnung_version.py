@@ -31,7 +31,7 @@ from decimal import Decimal
 # Die einzige Stelle der Versionsnummer (x.y.z). Docker-Abbild, Windows-
 # Installer und GitHub-Release lesen sie von hier; jeder Merge nach main
 # braucht eine neue Nummer, sonst lehnt die CI den Pull Request ab.
-SOFTWARE_VERSION = '0.12.0'
+SOFTWARE_VERSION = '0.13.0'
 
 # Der Stand der rechtlichen Grundlage (BetrKV, HeizkostenV, CO2KostAufG),
 # gegen den die Rechenregeln geprüft sind. Wer eine Regel nach neuer
@@ -39,6 +39,22 @@ SOFTWARE_VERSION = '0.12.0'
 # sie auch eine Änderung, die Zahlen einer Abrechnung ändert (NK-208, NK-213):
 # daran erkennt die Anwendung Abrechnungen nach älterem Stand.
 REGEL_VERSION = '2026-10-06'
+
+# NK-229 (R-DOC-03): was sich mit einem Regelstand an der Rechnung geändert
+# hat, in Worten für den Vermieter. Wer REGEL_VERSION hebt, trägt hier ein,
+# warum -- der Hinweis „Nach älterem Regelstand erstellt“ zeigt es an.
+REGEL_AENDERUNGEN = {
+    '2026-10-06': 'Der Allgemeinverbrauch (Hauptzähler minus Wohnungszähler) wird bei einem '
+                  'Mieterwechsel nur noch zwischen Tagen geteilt, an denen alle Zähler abgelesen '
+                  'sind, und dort nach Personentagen; die Anteile aller Parteien ergeben zusammen '
+                  'genau den Allgemeinverbrauch (NK-213). Der Verbrauchsnachweis nennt die '
+                  'Zählerstände genau an den Zeitraumgrenzen (NK-208).',
+}
+
+
+def aenderungen_seit(regelstand):
+    """Die Änderungstexte aller Regelstände nach ``regelstand``, älteste zuerst."""
+    return [text for stand, text in sorted(REGEL_AENDERUNGEN.items()) if stand > (regelstand or '')]
 
 
 def json_sicher(objekt):
@@ -64,6 +80,25 @@ def json_sicher(objekt):
     if isinstance(objekt, (list, tuple, set, frozenset)):
         return [json_sicher(wert) for wert in objekt]
     return str(objekt)
+
+
+# Felder, die nur in Worten sagen, was die Zahlen daneben schon tragen.
+# Ändert eine neue Fassung allein ihren Wortlaut (Zahlformat, „m²“), rechnet
+# die Abrechnung gleich und braucht keine Korrektur (NK-235).
+PROSA = frozenset({'description', 'rechenweg'})
+
+
+def _ohne_prosa(wert):
+    if isinstance(wert, Mapping):
+        return {k: _ohne_prosa(v) for k, v in wert.items() if k not in PROSA}
+    if isinstance(wert, list):
+        return [_ohne_prosa(v) for v in wert]
+    return wert
+
+
+def gleich_gerechnet(alt, neu):
+    """Ob zwei Ergebnisse dieselben Zahlen tragen, gleich wie sie beschrieben sind."""
+    return _ohne_prosa(alt) == _ohne_prosa(neu)
 
 
 def schnappschuss(vorgang, bill_data):

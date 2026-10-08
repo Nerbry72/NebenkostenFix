@@ -14,6 +14,7 @@ einzige mit absichtlich leerem Wert -- bei einem Guthaben gäbe es keine
 Zahlungsaufforderung, und die Lücke ist hier der Inhalt.
 """
 
+from datetime import date
 from decimal import Decimal
 # Bandit-Ausnahme: maskiert Text fuer reportlab, parst kein XML
 from xml.sax.saxutils import escape  # nosec B406
@@ -53,6 +54,9 @@ PLATZHALTER = {
     'einwendungsfrist': ('Ende der Einwendungsfrist des Mieters -- nur '
                          'gefüllt, wenn das Zustelldatum vorliegt, sonst '
                          'sichtbarer Platzhalter'),
+    'vorauszahlung_anpassung': ('Die neue monatliche Vorauszahlung ab ihrem '
+                                'Wirksamwerden (R-VZ-01) -- leer, wenn sich '
+                                'nichts ändert'),
 }
 
 
@@ -96,7 +100,8 @@ def text_fuer(vorlage: str, *, mieter_name: str, wohnung_name: str,
               objekt_name: str, zeitraum: str, gesamtsumme: Decimal,
               vorauszahlungen: Decimal, saldo: Decimal,
               einwendungsfrist: str | None = None,
-              vermieter_name: str = '') -> str:
+              vermieter_name: str = '',
+              vorauszahlung: dict | None = None) -> str:
     """Füllt die Vorlage aus dem Ergebnis einer Abrechnung.
 
     ``vermieter_name`` unterschreibt den Gruß (NK-210). Ohne Namen bleibt
@@ -106,6 +111,9 @@ def text_fuer(vorlage: str, *, mieter_name: str, wohnung_name: str,
     ``einwendungsfrist`` ist das Ende der Einwendungsfrist des Mieters --
     bekannt erst mit dem Zustelldatum; ohne es bleibt der Platzhalter
     sichtbar stehen.
+
+    ``vorauszahlung`` ist der Vorschlag aus ``vorauszahlung.vorschlag``
+    (NK-226). Ohne Änderung bleibt der Satz gewollt leer.
     """
     return fuelle(vorlage, {
         'mieter_name': mieter_name,
@@ -119,7 +127,16 @@ def text_fuer(vorlage: str, *, mieter_name: str, wohnung_name: str,
         'saldo_art': _saldo_art(saldo),
         'aufforderung': _aufforderung(saldo),
         'einwendungsfrist': einwendungsfrist,
+        'vorauszahlung_anpassung': _anpassung(vorauszahlung),
     })
+
+
+def _anpassung(v: dict | None) -> str:
+    if not v or not v.get('aenderung'):
+        return ''
+    ab = date.fromisoformat(v['ab'])
+    return (f"Ab dem {ab:%d.%m.%Y} beträgt Ihre monatliche Vorauszahlung "
+            f"{euro_text(Decimal(v['neu']))} (bisher {euro_text(Decimal(v['bisher']))}).")
 
 
 def absaetze(text: str) -> list[str]:

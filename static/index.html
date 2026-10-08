@@ -103,8 +103,10 @@
                         <h2>Erste Schritte</h2>
                         <p>Fünf Schritte bis zur ersten Abrechnung, dazu zwei optionale: vorher ausprobieren und Zähler.</p>
                         <div class="erste-schritte-fortschritt">
-                            <span id="erste-schritte-stand">0 von 5 erledigt</span>
+                            <span id="erste-schritte-stand" class="erste-schritte-stand">0 von 5 erledigt</span>
                             <div class="erste-schritte-balken"><span id="erste-schritte-balken"></span></div>
+                            <!-- NK-225: erklärt „0 von 5“, solange nur das Beispielhaus da ist. -->
+                            <span id="erste-schritte-beispiel" class="erste-schritte-beispiel" hidden>Die Beispielimmobilie zählt nicht mit.</span>
                         </div>
                     </div>
                     <!-- B7 (NK-103): die Liste trug ihre Klasse nicht — keine
@@ -147,6 +149,7 @@
                             Aus Excel importieren</button>
                         <button class="btn-secondary" onclick="openAddMeterModal()"><i class="ph ph-plus"></i> Zähler
                             anlegen</button>
+                        <button class="btn-secondary" onclick="openAblesen()"><i class="ph ph-camera" aria-hidden="true"></i> Alle Stände erfassen</button>
                         <button class="btn-primary" onclick="openAddReadingModal()"><i class="ph ph-plus"></i> Ablesung
                             erfassen</button>
                     </div>
@@ -1128,6 +1131,8 @@
                             <i class="ph ph-plus" aria-hidden="true"></i> Rechnung erfassen</button>
                         <button type="button" class="btn-secondary" onclick="oeffneRechnungstabelle()">
                             <i class="ph ph-table" aria-hidden="true"></i> Als Tabelle erfassen</button>
+                        <button type="button" class="btn-secondary" onclick="jahrVorjahrFuellen()">
+                            <i class="ph ph-copy" aria-hidden="true"></i> Wie im Vorjahr füllen</button>
                         <button type="button" class="btn-tint" onclick="jahrNeuLaden()">Liste prüfen</button>
                     </div>
                 </section>
@@ -1397,6 +1402,8 @@
                 <div class="knopf-zeile abstand-oben">
                     <button class="btn-secondary" type="button" onclick="rtZeilenAnlegen(5)">
                         <i class="ph ph-plus" aria-hidden="true"></i> Zeilen anlegen</button>
+                    <button class="btn-secondary" type="button" onclick="rtVorjahrFuellen()">
+                        <i class="ph ph-copy" aria-hidden="true"></i> Wie im Vorjahr füllen</button>
                 </div>
                 <p class="karten-text abstand-oben" id="rt-meldung" role="status"></p>
             </div>
@@ -1723,6 +1730,37 @@
                 <div class="modal-footer">
                     <button type="button" class="btn-secondary" onclick="closeAddReadingModal()">Abbrechen</button>
                     <button type="submit" class="btn-primary">Ablesung speichern</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- NK-227: Ablesen am Handy zum Stichtag. Alle Zähler einer Immobilie
+         untereinander, jede ausgefüllte Zeile wird einzeln gespeichert. -->
+    <div class="modal-overlay" id="ablesen-modal">
+        <div class="modal glass-panel">
+            <div class="modal-header">
+                <h2>Ablesen zum Stichtag</h2>
+                <button class="btn-icon" aria-label="Schließen" onclick="closeAblesen()"><i class="ph ph-x"></i></button>
+            </div>
+            <form id="ablesen-form" onsubmit="event.preventDefault(); ablesenSpeichern();">
+                <div class="modal-body">
+                    <div class="felder-nebeneinander">
+                        <div class="form-group feld-breit">
+                            <label for="ablesen-property">Immobilie</label>
+                            <select id="ablesen-property" onchange="ablesenListe()"></select>
+                        </div>
+                        <div class="form-group feld-breit">
+                            <label for="ablesen-datum">Stichtag</label>
+                            <input type="date" id="ablesen-datum" required>
+                        </div>
+                    </div>
+                    <p class="karten-text">Leere Zeilen werden nicht gespeichert.</p>
+                    <div id="ablesen-liste"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="closeAblesen()">Abbrechen</button>
+                    <button type="submit" class="btn-primary">Stände speichern</button>
                 </div>
             </form>
         </div>

@@ -128,3 +128,114 @@ def test_gleiches_ergebnis_erledigt_den_hinweis(auth_client, app_ctx):
     assert BillingReportVersion.query.filter_by(report_id=bericht_id).count() == 1
     # Ein zweiter Versuch ist wieder die bloße Kopie und wird abgelehnt.
     assert auth_client.post(f'/api/billing/reports/{bericht_id}/korrektur').status_code == 400
+
+
+# --- NK-229: Richtung, Frist und was sich geändert hat (R-DOC-03) -------------
+
+
+def test_weniger_saldo_ist_zugunsten_des_mieters(auth_client, app_ctx):
+    mieter_id, _, lese_id = _welt(app_ctx)
+    bericht_id = _finalisiere(auth_client, mieter_id).id
+    db.session.get(MeterReading, lese_id).value = 800.0
+    db.session.commit()
+
+    vorschau = _vorschau(auth_client, bericht_id)
+
+    assert vorschau['richtung'] == 'zugunsten'
+    assert vorschau['frist_warnung'] is None
+
+
+def test_mehr_saldo_ist_zulasten_des_mieters(auth_client, app_ctx):
+    mieter_id, _, lese_id = _welt(app_ctx)
+    bericht_id = _finalisiere(auth_client, mieter_id).id
+    db.session.get(MeterReading, lese_id).value = 1200.0
+    db.session.commit()
+
+    vorschau = _vorschau(auth_client, bericht_id)
+
+    assert vorschau['richtung'] == 'zulasten'
+    # Das Fristende 31.12.2026 liegt noch vor uns: keine Warnung.
+    assert vorschau['frist_warnung'] is None
+
+
+def test_zulasten_nach_fristende_warnt(auth_client, app_ctx):
+    from datetime import date
+    mieter_id, _, lese_id = _welt(app_ctx)
+    bericht = _finalisiere(auth_client, mieter_id)
+    bericht.frist_ende = date(2026, 1, 1)
+    db.session.get(MeterReading, lese_id).value = 1200.0
+    db.session.commit()
+
+    warnung = _vorschau(auth_client, bericht.id)['frist_warnung']
+
+    assert '01.01.2026' in warnung and '§ 556 Abs. 3' in warnung
+    # Zugunsten des Mieters ist auch nach Fristende frei.
+    db.session.get(MeterReading, lese_id).value = 800.0
+    db.session.commit()
+    assert _vorschau(auth_client, bericht.id)['frist_warnung'] is None
+
+
+def test_gleicher_saldo_hat_keine_richtung(auth_client, app_ctx):
+    mieter_id, _, _ = _welt(app_ctx)
+    bericht_id = _finalisiere(auth_client, mieter_id).id
+    vorschau = _vorschau(auth_client, bericht_id)
+    assert (vorschau['richtung'], vorschau['frist_warnung']) == (None, None)
+
+
+def test_jeder_regelstand_erklaert_seine_aenderung():
+    """Wer REGEL_VERSION hebt, sagt dem Vermieter auch, was sich geändert hat."""
+    from nebenkostenfix.abrechnung_version import REGEL_AENDERUNGEN
+    assert REGEL_VERSION in REGEL_AENDERUNGEN
+    assert all(len(text) > 40 for text in REGEL_AENDERUNGEN.values())
+
+
+def test_veraltete_abrechnung_nennt_die_aenderungen_seitdem(auth_client, app_ctx):
+    from nebenkostenfix.abrechnung_version import REGEL_AENDERUNGEN
+    mieter_id, _, _ = _welt(app_ctx)
+    bericht_id = _finalisiere(auth_client, mieter_id).id
+
+    def aenderungen():
+        [eintrag] = [r for r in auth_client.get('/api/billing/reports').get_json()
+                     if r['id'] == bericht_id]
+        details = auth_client.get(f'/api/billing/reports/{bericht_id}/details').get_json()
+        return eintrag['regelstand_aenderungen'], details['regelstand_aenderungen']
+
+    assert aenderungen() == ([], [])
+    _bericht(bericht_id).aktuelle_version.regel_version = '2026-08-28'
+    db.session.commit()
+    erwartet = [REGEL_AENDERUNGEN[REGEL_VERSION]]
+    assert aenderungen() == (erwartet, erwartet)
+
+
+# --- NK-235: geänderte Texte allein sind keine Änderung -----------------------
+
+
+def _alte_texte(wert):
+    """Das Ergebnis, wie es eine ältere Fassung beschrieben hätte."""
+    if isinstance(wert, dict):
+        return {k: (f'{v} (alter Text)' if k == 'description' else
+                    [f'{s} qm' for s in v] if k == 'rechenweg' else _alte_texte(v))
+                for k, v in wert.items()}
+    if isinstance(wert, list):
+        return [_alte_texte(v) for v in wert]
+    return wert
+
+
+def test_nur_andere_texte_sind_unveraendert(auth_client, app_ctx):
+    """*Hätte den Fehler gefunden:* nach dem Update von 0.12 auf 0.13 galt jede
+    alte Abrechnung als verändert, weil Beschreibung und Rechenweg „m²“ und
+    deutsche Zahlen bekamen; der Hinweis auf den älteren Regelstand ließ sich
+    nur mit einer Korrektur ohne neue Zahlen entfernen."""
+    mieter_id, _, _ = _welt(app_ctx)
+    bericht_id = _finalisiere(auth_client, mieter_id).id
+    version = _bericht(bericht_id).aktuelle_version
+    version.ergebnis = _alte_texte(version.ergebnis)
+    version.regel_version = '2026-08-28'
+    db.session.commit()
+    assert version.ergebnis['line_items'][0]['description'].endswith('(alter Text)')
+
+    assert _vorschau(auth_client, bericht_id)['unveraendert'] is True
+    antwort = auth_client.post(f'/api/billing/reports/{bericht_id}/korrektur')
+    assert antwort.status_code == 200, antwort.get_data(as_text=True)
+    assert antwort.get_json()['unveraendert'] is True
+    assert BillingReportVersion.query.filter_by(report_id=bericht_id).count() == 1

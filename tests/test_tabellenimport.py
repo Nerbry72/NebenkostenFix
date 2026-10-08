@@ -393,3 +393,61 @@ def test_csv_in_windows_1252_mit_komma(auth_client):
 def test_ohne_anmeldung_gesperrt(anon_client):
     assert anon_client.get('/api/import/arten').status_code == 401
     assert anon_client.post('/api/import/wohnungen/lesen').status_code == 401
+
+
+# --- NK-230: Wie im Vorjahr füllen -------------------------------------------
+
+
+def test_vorjahr_liefert_die_zeilen_ohne_betraege(haus):
+    """Die Rechnungen des Vorjahres als Zeilen der Tabelle, Zeitraum ein Jahr
+    weiter, Betrag, Nummer und Rechnungsdatum leer: nichts geschätzt."""
+    from nebenkostenfix.models import (Apartment, CostCategory, CostInvoice, Heizungsanlage,
+                                       Property, Provider, db)
+    haus_id = Property.query.one().id
+    eg = Apartment.query.one()
+    art = {k.name: k for k in CostCategory.query.all()}
+    stadt = Provider(name='Stadtkasse')
+    anlage = Heizungsanlage(property_id=haus_id, name='Zentralheizung')
+    db.session.add_all([stadt, anlage])
+    db.session.flush()
+
+    def rechnung(kostenart, von, bis, **kw):
+        db.session.add(CostInvoice(property_id=haus_id, category_id=art[kostenart].id,
+                                   amount=Decimal('100'), start_date=von, end_date=bis, **kw))
+    rechnung('Grundsteuer', date(2024, 1, 1), date(2024, 12, 31), provider_id=stadt.id,
+             invoice_number='GS-17', rechnungsdatum=date(2024, 1, 15))
+    rechnung('Hauswart', date(2024, 2, 1), date(2024, 2, 29), apartment_id=eg.id)
+    rechnung('Grundsteuer', date(2023, 1, 1), date(2023, 12, 31))   # vorvoriges Jahr
+    rechnung('Grundsteuer', date(2025, 1, 1), date(2025, 12, 31))   # schon erfasst
+    rechnung('Heizung', date(2024, 1, 1), date(2024, 12, 31), heizungsanlage_id=anlage.id,
+             heizkostenart='brennstoff')
+    db.session.commit()
+
+    antwort = haus.get(f'/api/import/rechnungen/vorjahr?property_id={haus_id}&jahr=2025')
+    assert antwort.status_code == 200
+    daten = antwort.get_json()
+    leer = {'betrag': '', 'rechnungsnummer': '', 'rechnungsdatum': ''}
+    assert daten['zeilen'] == [
+        {'kostenart': 'Grundsteuer', 'von': '01.01.2025', 'bis': '31.12.2025',
+         'anbieter': 'Stadtkasse', 'wohnung': '', **leer},
+        # Schaltjahr: der 29.02. wird zum 28.02.
+        {'kostenart': 'Hauswart', 'von': '01.02.2025', 'bis': '28.02.2025',
+         'anbieter': '', 'wohnung': 'EG links', **leer},
+    ]
+    # Heizkosten einer Anlage gehen nur über den Dialog (Anlage, CO2).
+    assert daten['heizung'] == 1
+
+
+def test_vorjahr_braucht_immobilie_und_jahr(haus):
+    assert haus.get('/api/import/rechnungen/vorjahr?jahr=2025').status_code == 400
+    assert haus.get('/api/import/rechnungen/vorjahr?property_id=1&jahr=x').status_code == 400
+    assert haus.get('/api/import/rechnungen/vorjahr?property_id=999&jahr=2025').status_code == 404
+
+
+def test_ein_jahr_weiter_haelt_das_monatsende():
+    """NK-236: der 28.02. vor einem Schaltjahr wird zum 29.02., sonst fiele
+    der letzte Tag des Zeitraums weg."""
+    assert ti._ein_jahr_weiter(date(2027, 2, 28)) == date(2028, 2, 29)
+    assert ti._ein_jahr_weiter(date(2028, 2, 29)) == date(2029, 2, 28)
+    assert ti._ein_jahr_weiter(date(2027, 2, 15)) == date(2028, 2, 15)
+    assert ti._ein_jahr_weiter(date(2027, 12, 31)) == date(2028, 12, 31)

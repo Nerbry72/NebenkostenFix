@@ -286,7 +286,7 @@ def test_inactive_apartment_excluded_from_qm_denominator(app_ctx):
 
     bill = _bill(t.id)
     assert bill["line_items"][0]["tenant_cost"] == Decimal("1200.00")
-    assert "50.0 von 50.0 qm" in bill["line_items"][0]["description"]
+    assert "50 von 50 m²" in bill["line_items"][0]["description"]
 
 
 def test_vacant_active_apartment_stays_in_qm_denominator(app_ctx):
@@ -300,7 +300,7 @@ def test_vacant_active_apartment_stays_in_qm_denominator(app_ctx):
 
     bill = _bill(t.id)
     assert bill["line_items"][0]["tenant_cost"] == GOLDEN_QM_50_OF_150_ON_1200
-    assert "50.0 von 150.0 qm" in bill["line_items"][0]["description"]
+    assert "50 von 150 m²" in bill["line_items"][0]["description"]
 
 
 def test_meter_exact_coverage_consumption_and_status(app_ctx):

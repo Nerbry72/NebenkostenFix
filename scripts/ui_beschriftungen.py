@@ -83,6 +83,8 @@ VERBEN: set[str] = {
     "melden",
     # NK-174/NK-175: Haftungshinweis quittieren, Update-Hinweis vertagen.
     "verstanden", "erinnern",
+    # NK-230: die Tabelle wie im Vorjahr füllen (ohne Beträge).
+    "f\u00fcllen",
 }
 
 # Knopftexte, die zwar mit einem Verb aus der Liste beginnen, aber das

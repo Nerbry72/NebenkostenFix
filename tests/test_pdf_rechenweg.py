@@ -105,7 +105,7 @@ def test_ganzjaehriger_mieter_hat_einen_schritt():
 
     assert zeile['tenant_cost'] == Decimal('600.00')
     assert zeile['rechenweg'] == [
-        '1200,00 € nach Wohnfläche 50 von 100 qm = 600,00 €',
+        '1200,00 € nach Wohnfläche 50 von 100 m² = 600,00 €',
     ]
 
 
@@ -124,7 +124,7 @@ def test_unterjaehriges_verhaeltnis_zeigt_tage_und_zwischenergebnis():
     assert zeile['tenant_cost'] == Decimal('301.64')
     assert zeile['rechenweg'] == [
         '1200,00 € Rechnungsbetrag, anteilig 184 von 366 Tagen = 603,28 €',
-        '603,28 € nach Wohnfläche 50 von 100 qm = 301,64 €',
+        '603,28 € nach Wohnfläche 50 von 100 m² = 301,64 €',
     ]
 
 
@@ -197,7 +197,7 @@ def test_heizung_traegt_die_masse_als_ausgangswert():
     """Die Teilposten zeigen die Aufteilung; der Rechenweg die Masse.
 
     10.000 Euro Masse, 70 nach Verbrauch (1.200 von 2.000 kWh = 4.200),
-    30 nach Wohnfläche (50 von 100 qm = 1.500): die Schritte stehen in
+    30 nach Wohnfläche (50 von 100 m² = 1.500): die Schritte stehen in
     den Teilposten -- aber die Masse selbst, von der beide Prozente
     genommen werden, fehlte bisher. Sie steht jetzt als erster Satz.
     """
@@ -339,7 +339,7 @@ def _qmzeile() -> dict:
     return {
         'category': 'Wasserversorgung',
         'period': '01.01.2024 - 31.12.2024',
-        'description': 'Umlage nach qm (50.0 von 100.0 qm)',
+        'description': 'Umlage nach Wohnfläche (50 von 100 m²)',
         'tenant_cost': Decimal('301.64'),
         'invoice_days': 366,
         'overlap_days': 184,
@@ -349,12 +349,12 @@ def _qmzeile() -> dict:
         'prorated_amount': Decimal('603.28'),
         'rechenweg': [
             '1200,00 € Rechnungsbetrag, anteilig 184 von 366 Tagen = 603,28 €',
-            '603,28 € nach Wohnfläche 50 von 100 qm = 301,64 €',
+            '603,28 € nach Wohnfläche 50 von 100 m² = 301,64 €',
         ],
         'sub_items': [
             {
                 'type': 'allgemein',
-                'description': 'Umlage nach qm (50.0 von 100.0 qm)',
+                'description': 'Umlage nach Wohnfläche (50 von 100 m²)',
                 'cost': Decimal('301.64'),
             },
         ],
@@ -369,7 +369,7 @@ def test_die_schritte_stehen_unter_der_zeile(unkomprimiert, detailliert):
 
     assert '184von366Tagen' in geklebt
     assert '1200,00€Rechnungsbetrag,anteilig184von366Tagen=603,28€' in geklebt
-    assert '603,28€nachWohnfläche50von100qm=301,64€' in geklebt
+    assert '603,28€nachWohnfläche50von100m²=301,64€' in geklebt
     assert '301,64' in text
 
 
@@ -381,7 +381,7 @@ def test_der_wiederholende_teilposten_schweigt(unkomprimiert):
     zweimal untereinander (glossar).
     """
     text = _text(_erzeuge([_qmzeile()]))
-    assert 'Umlage nach qm (50.0 von 100.0 qm)' not in text
+    assert 'Umlage nach Wohnfläche (50 von 100 m²)' not in text
 
 
 def test_echte_teilposten_bleiben_neben_dem_rechenweg(unkomprimiert):
@@ -458,9 +458,9 @@ def test_der_rechenweg_erfindet_keinen_zeitanteil(unkomprimiert):
     zeile = _qmzeile()
     zeile['overlap_days'] = 366
     zeile['rechenweg'] = [
-        '1200,00 € nach Wohnfläche 50 von 100 qm = 600,00 €',
+        '1200,00 € nach Wohnfläche 50 von 100 m² = 600,00 €',
     ]
     geklebt = _geklebt(_erzeuge([zeile]))
 
     assert 'anteilig' not in geklebt
-    assert '1200,00€nachWohnfläche50von100qm=600,00€' in geklebt
+    assert '1200,00€nachWohnfläche50von100m²=600,00€' in geklebt

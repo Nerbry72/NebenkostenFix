@@ -482,6 +482,10 @@ function initTabs() {
             tabContents.forEach(tab => tab.style.display = 'none');
             
             item.classList.add('active');
+            // NK-224: der Gruß gehört zur Übersicht, jede andere Seite hat
+            // ihre eigene Überschrift.
+            const gruss = document.querySelector('.greeting');
+            if (gruss) gruss.hidden = item.dataset.tab !== 'dashboard';
             const targetId = 'tab-' + item.dataset.tab;
             const targetTab = document.getElementById(targetId);
             if (targetTab) {
@@ -749,6 +753,8 @@ function zeigeErsteSchritte() {
     const balken = document.getElementById('erste-schritte-balken');
     if (stand) stand.textContent = `${erledigtPflicht} von 5 erledigt`;
     if (balken) balken.style.width = `${Math.round(erledigtPflicht / 5 * 100)}%`;
+    const beispielHinweis = document.getElementById('erste-schritte-beispiel');
+    if (beispielHinweis) beispielHinweis.hidden = !beispielDa;
 
     // Der hervorgehobene Schritt ist immer der erste offene Pflichtschritt --
     // ein optionaler Schritt (Zähler) lenkt die Führung nicht ab.
@@ -3241,7 +3247,7 @@ function openAddReadingModal(meterId = null, editReadingId = null) {
     } else {
         meterSelect.disabled = false;
         if (meterId) meterSelect.value = meterId;
-        document.getElementById('reading-date').value = new Date().toISOString().split('T')[0];
+        document.getElementById('reading-date').value = new Date().toLocaleDateString('sv-SE');
         document.getElementById('reading-value').value = '';
         document.getElementById('reading-value-nt').value = '';
         document.getElementById('reading-ablesungsart').value = 'ablesung';
@@ -3324,6 +3330,91 @@ async function saveReading() {
     } catch(e) {
         showError(meldungZu(e, 'Fehler beim Speichern.'));
     }
+}
+
+// --- NK-227: Ablesen am Handy zum Stichtag ---
+// Alle Zähler einer Immobilie untereinander, mit letztem Stand und Foto
+// direkt von der Kamera. Jede ausgefüllte Zeile geht einzeln über
+// POST /api/readings; die Plausibilitätsfrage (NK-216) kommt je Zeile.
+function ablesenZeilen(propertyId) {
+    const fmt = new Intl.NumberFormat('de-DE');
+    return meters.filter(m => m.property_id == propertyId).map(m => {
+        const letzte = readings.filter(r => r.meter_id === m.id)
+            .sort((a, b) => a.reading_date < b.reading_date ? 1 : -1)[0];
+        const einheit = m.einheit ? ' ' + m.einheit : '';
+        const standHtml = escapeHtml(!letzte ? 'noch kein Stand'
+            : 'zuletzt ' + (letzte.value_nt != null
+                ? `HT ${fmt.format(letzte.value)}${einheit}, NT ${fmt.format(letzte.value_nt)}${einheit}`
+                : `${fmt.format(letzte.value)}${einheit}`)
+              + ` am ${new Date(letzte.reading_date).toLocaleDateString('de-DE')}`);
+        const nameHtml = escapeHtml(`${m.is_main_meter ? 'Allgemein' : (m.apartment_name || '')} · ${zaehlerArtName(m.category_name)} (${m.meter_number})`);
+        const ntHtml = m.has_dual_tariff ? `<div class="form-group feld-breit"><label for="ablesen-nt-${m.id}">Stand (NT)</label>
+                    <input type="number" inputmode="decimal" step="0.01" id="ablesen-nt-${m.id}"></div>` : '';
+        return `<div class="glass-panel ablesen-zeile" id="ablesen-zeile-${m.id}" style="padding: 12px; margin-bottom: 12px;">
+            <strong>${nameHtml}</strong><br><small style="color: var(--text-muted)">${standHtml}</small>
+            <div class="felder-nebeneinander">
+                <div class="form-group feld-breit"><label for="ablesen-wert-${m.id}">${m.has_dual_tariff ? 'Stand (HT)' : 'Stand'}</label>
+                    <input type="number" inputmode="decimal" step="0.01" id="ablesen-wert-${m.id}"></div>
+                ${ntHtml}
+            </div>
+            <div class="form-group"><label for="ablesen-foto-${m.id}">Foto (optional)</label>
+                <input type="file" id="ablesen-foto-${m.id}" accept="image/*" capture="environment"></div>
+            <small class="ablesen-meldung" id="ablesen-meldung-${m.id}" role="status"></small>
+        </div>`;
+    }).join('') || '<p style="color: var(--text-muted)">Diese Immobilie hat noch keine Zähler.</p>';
+}
+
+function ablesenListe() {
+    document.getElementById('ablesen-liste').innerHTML =
+        ablesenZeilen(document.getElementById('ablesen-property').value);
+}
+
+function openAblesen() {
+    const auswahl = document.getElementById('ablesen-property');
+    auswahl.innerHTML = properties.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+    document.getElementById('ablesen-datum').value = new Date().toLocaleDateString('sv-SE');
+    ablesenListe();
+    document.getElementById('ablesen-modal').classList.add('active');
+}
+
+function closeAblesen() { document.getElementById('ablesen-modal').classList.remove('active'); }
+
+async function ablesenSpeichern() {
+    const datum = document.getElementById('ablesen-datum').value;
+    if (!datum) { showError('Bitte den Stichtag angeben.'); return; }
+    const propertyId = document.getElementById('ablesen-property').value;
+    let gespeichert = 0, offen = 0;
+    for (const m of meters.filter(m => m.property_id == propertyId)) {
+        const wert = document.getElementById(`ablesen-wert-${m.id}`);
+        if (!wert || wert.value === '') continue;
+        const meldung = document.getElementById(`ablesen-meldung-${m.id}`);
+        const nt = document.getElementById(`ablesen-nt-${m.id}`);
+        const foto = document.getElementById(`ablesen-foto-${m.id}`);
+        const formData = new FormData();
+        formData.append('meter_id', m.id);
+        formData.append('reading_date', datum);
+        formData.append('value', wert.value);
+        if (nt && nt.value !== '') formData.append('value_nt', nt.value);
+        formData.append('ablesungsart', 'ablesung');
+        formData.append('is_official_invoice', false);
+        if (foto && foto.files.length > 0) formData.append('file', foto.files[0]);
+        try {
+            const res = await sendeMitNachfrage('/api/readings', 'POST', formData);
+            if (!res) { offen++; meldung.textContent = 'Nicht gespeichert.'; continue; }
+            if (!res.ok) throw await serverFehler(res);
+            gespeichert++;
+            wert.value = '';
+            if (nt) nt.value = '';
+            if (foto) foto.value = '';
+            meldung.textContent = 'Gespeichert.';
+        } catch (e) {
+            offen++;
+            meldung.textContent = meldungZu(e, 'Nicht gespeichert.');
+        }
+    }
+    if (gespeichert) fetchReadings();
+    if (!gespeichert && !offen) { showError('Bitte mindestens einen Stand eintragen.'); return; }
+    if (!offen) closeAblesen();
 }
 
 // --- Plausibility Check ---
@@ -4278,7 +4369,7 @@ async function umzugExportieren() {
     const knopf = document.getElementById('btn-umzug-export');
     knopf.disabled = true;
     try {
-        const name = `NebenkostenFix-${new Date().toISOString().slice(0, 10)}.nkfix`;
+        const name = `NebenkostenFix-${new Date().toLocaleDateString('sv-SE')}.nkfix`;
         if (window.umzugPaket.desktop()) {
             const pfad = await window.umzugPaket.desktopSpeichernUnter(name);
             if (!pfad) return;
@@ -4692,8 +4783,9 @@ function rtZeilenLesen() {
         zeile.querySelectorAll('input').forEach(feld => { werte[feld.dataset.spalte] = feld.value.trim(); });
         const leer = ['kostenart', 'betrag', 'rechnungsnummer', 'anbieter', 'rechnungsdatum', 'wohnung']
             .every(s => !werte[s]);
-        // Eine Zeile nur mit dem vorbelegten Zeitraum ist leer.
-        return leer ? {} : { immobilie: name, ...werte };
+        // Eine Zeile nur mit dem vorbelegten Zeitraum ist leer, eine aus dem
+        // Vorjahr ohne Betrag auch (NK-230): sie wird nicht gespeichert.
+        return leer || (zeile.dataset.vorjahr === '1' && !werte.betrag) ? {} : { immobilie: name, ...werte };
     });
 }
 
@@ -4722,6 +4814,7 @@ async function rtSenden(speichern) {
                 status.classList.add('ok');
                 if (!hinweise.length) status.textContent = 'in Ordnung';
             }
+            if (zeile.dataset.vorjahr === '1' && !Object.keys(zeilen[i]).length) status.textContent = RT_OHNE_BETRAG;
         });
         if (bericht.fehler.length) {
             meldung.textContent = `${anzahlText(bericht.fehler.length, 'Zeile hat', 'Zeilen haben')} Fehler (rot markiert). Gespeichert wird erst, wenn alle stimmen.`;
@@ -4739,6 +4832,55 @@ async function rtSenden(speichern) {
     }
 }
 window.rtSenden = rtSenden;
+
+// NK-230: die Rechnungen des Vorjahres als Zeilen, Zeitraum ein Jahr
+// weiter, ohne Beträge. Getippte Zeilen bleiben, leere machen Platz; was ohne
+// Betrag bleibt, wird nicht gespeichert und so markiert. Nichts geschätzt.
+const RT_OHNE_BETRAG = 'Ohne Betrag wird die Zeile nicht gespeichert.';
+
+async function rtVorjahrFuellen() {
+    const jahr = Number(document.getElementById('rt-jahr').value);
+    const haus = document.getElementById('rt-immobilie').value;
+    try {
+        const res = await fetch(`/api/import/rechnungen/vorjahr?property_id=${encodeURIComponent(haus)}&jahr=${encodeURIComponent(jahr)}`);
+        if (!res.ok) throw await serverFehler(res);
+        const daten = await res.json();
+        const zeilen = [...document.querySelectorAll('#rt-zeilen tr')];
+        rtZeilenLesen().forEach((werte, i) => { if (!Object.keys(werte).length) zeilen[i].remove(); });
+        const rumpf = document.getElementById('rt-zeilen');
+        for (const vorlage of daten.zeilen) {
+            rtZeilenAnlegen(1);
+            const zeile = rumpf.lastElementChild;
+            zeile.dataset.vorjahr = '1';
+            for (const spalte of RT_SPALTEN) {
+                const feld = zeile.querySelector(`[data-spalte="${spalte}"]`);
+                feld.value = vorlage[spalte] || '';
+                feld.dataset.vorgabe = '';
+            }
+            zeile.querySelector('.rt-status').textContent = RT_OHNE_BETRAG;
+        }
+        rtZeilenAnlegen(3);
+        document.getElementById('rt-meldung').textContent = (daten.zeilen.length
+            ? `${anzahlText(daten.zeilen.length, 'Rechnung', 'Rechnungen')} aus ${jahr - 1} vorbelegt. Tragen Sie die Beträge ein; Zeilen ohne Betrag werden nicht gespeichert.`
+            : `Für ${jahr - 1} sind keine Rechnungen erfasst.`)
+            + (daten.heizung ? ` ${anzahlText(daten.heizung, 'Heizkostenrechnung', 'Heizkostenrechnungen')} mit Anlage erfassen Sie im Dialog.` : '');
+    } catch (e) {
+        showError(meldungZu(e, 'Das Vorjahr konnte nicht geladen werden.'));
+    }
+}
+window.rtVorjahrFuellen = rtVorjahrFuellen;
+
+// Aus Schritt 2 des Assistenten: Immobilie und Jahr stehen schon fest.
+async function jahrVorjahrFuellen() {
+    if (!jahrStand) return;
+    await oeffneRechnungstabelle();
+    document.getElementById('rt-immobilie').value = jahrStand.property_id;
+    rtImmobilieGewaehlt();
+    document.getElementById('rt-jahr').value = jahrStand.jahr;
+    rtJahrGewaehlt();
+    await rtVorjahrFuellen();
+}
+window.jahrVorjahrFuellen = jahrVorjahrFuellen;
 
 // --- Jahresabrechnungs-Assistent (NK-160) ------------------------------------
 // Fünf Schritte: Jahr und Immobilie -> Rechnungen (mit Vorjahr) ->
@@ -4875,15 +5017,19 @@ window.jahrNeuLaden = jahrNeuLaden;
 
 function jahrKostenartenZeigen() {
     const hinweise = {
-        erfasst: k => `${anzahlText(k.anzahl, 'Rechnung', 'Rechnungen')} erfasst`,
+        // NK-228: mehr als 20 % zum Vorjahr verdient ein Wort an den Mieter.
+        erfasst: k => `${anzahlText(k.anzahl, 'Rechnung', 'Rechnungen')} erfasst` + (k.sprung
+            ? `. ${k.aenderung > 0 ? '+' : '−'}${Math.abs(k.aenderung)} % gegenüber dem Vorjahr: `
+              + 'den Grund am besten im Anschreiben (Schritt 5) nennen.'
+            : ''),
         fehlt: k => `Im Vorjahr ${euroText(k.summe_vorjahr)} — fehlt eine Rechnung?`,
         offen: () => 'Keine Rechnung erfasst. Fällt die Kostenart bei Ihnen an?',
     };
     const rows = jahrStand.kostenarten.map(k => {
         const diesesJahr = k.anzahl ? euroText(k.summe) : '—';
         const vorjahr = k.summe_vorjahr === null ? '—' : euroText(k.summe_vorjahr);
-        const symbol = k.zustand === 'erfasst' ? 'ph-check-circle' : 'ph-warning-circle';
-        return `<tr class="jahr-${escapeHtml(k.zustand)}">
+        const symbol = k.zustand === 'erfasst' && !k.sprung ? 'ph-check-circle' : 'ph-warning-circle';
+        return `<tr class="jahr-${escapeHtml(k.zustand)}${k.sprung ? ' jahr-sprung' : ''}">
         <td class="zelle"><i class="ph ${escapeHtml(symbol)}" aria-hidden="true"></i> ${escapeHtml(k.name)}</td>
         <td class="zelle">${escapeHtml(diesesJahr)}</td>
         <td class="zelle">${escapeHtml(vorjahr)}</td>
@@ -5208,13 +5354,14 @@ async function fetchBillingHistory() {
                 </button>`;
             }
             
+            const regelstandBlock = r.veraltet ? regelstandHinweis(r.id, r.regelstand_aenderungen) : '';
             card.innerHTML = `
                 <div>
                     <h3 style="margin:0; font-size: 1.1rem;">${escapeHtml(r.tenant_name)} <span style="font-size: 0.9rem; color: var(--text-muted); font-weight: normal;">(${escapeHtml(r.apartment_name)} - ${escapeHtml(r.property_name)})</span></h3>
                     <p style="margin: 8px 0 0 0; color: var(--text-muted);">
                         Zeitraum: ${startFmt} - ${endFmt} | Erstellt am: ${createdFmt}
                     </p>
-                    ${r.veraltet ? REGELSTAND_HINWEIS : ''}
+                    ${regelstandBlock}
                 </div>
                 <div class="historie-knoepfe">
                     <button class="btn-primary" onclick="openReportDetails(${r.id})" title="Einzelheiten und Belege dieser Abrechnung ansehen">
@@ -5274,6 +5421,54 @@ async function generateMissingPdf(tenantId, startDate, endDate, isDetailed, btnE
         btnElement.disabled = false;
         btnElement.textContent = `PDF ${isDetailed ? 'erstellen (detailliert)' : 'erstellen (einfach)'}`;
     }
+}
+
+// --- NK-226 (R-VZ-01): Vorschlag zur Anpassung der Vorauszahlung ---
+
+function vorauszahlungsBlock(v, tenantId) {
+    "Der Vorschlag, oder warum es keinen gibt. Den Knopf gibt es nur mit Mieter (Details)."
+    if (!v || (!v.grund && !v.aenderung)) return '';
+    const kasten = inhalt => `
+        <div class="dashboard-card glass-panel vorauszahlung-vorschlag" style="margin-bottom: 20px; padding: 16px;">
+            <h4 style="margin: 0 0 8px 0; display: flex; align-items: center; gap: 8px;">
+                <i class="ph ph-calendar-check"></i> Vorauszahlung anpassen
+            </h4>${inhalt}
+        </div>`;
+    if (v.grund) {
+        return kasten(`<p style="margin: 0; color: var(--text-muted);">Kein Vorschlag: ${escapeHtml(v.grund)}</p>`);
+    }
+    const euro = w => Number(w).toFixed(2).replace('.', ',') + ' €';
+    const ab = new Date(v.ab).toLocaleDateString('de-DE');
+    const monate = String(v.monate).replace(/\.00$/, '').replace('.', ',');
+    const warnung = v.kuenftige > 0
+        ? `<p style="margin: 0 0 12px 0; color: var(--warning-color);">Ab ${escapeHtml(ab)} sind schon ${Number(v.kuenftige)} Vorauszahlungen gebucht. Ändern Sie diese, statt doppelt zu buchen.</p>`
+        : '';
+    const knopf = tenantId
+        ? `<button type="button" class="btn-secondary" onclick="serienbuchungAnlegen(${Number(tenantId)}, '${escapeHtml(v.neu)}', '${escapeHtml(v.ab)}', ${Number(v.kuenftige)})">
+                <i class="ph ph-repeat"></i> Serienbuchung anlegen
+            </button>`
+        : `<p style="margin: 0; color: var(--text-muted); font-size: 0.9rem;">Nach der Festsetzung legen Sie die Serienbuchung in den Details an.</p>`;
+    return kasten(`
+            <p style="margin: 0 0 8px 0;">Ab ${escapeHtml(ab)}: ${escapeHtml(euro(v.neu))} im Monat statt ${escapeHtml(euro(v.bisher))}.</p>
+            <p style="margin: 0 0 12px 0; color: var(--text-muted); font-size: 0.9rem;">
+                Grundlage: ${escapeHtml(euro(v.kosten))} Kosten über ${escapeHtml(monate)} Monate, ohne Zuschlag (§ 560 Abs. 4 BGB).
+                Erklären Sie die Anpassung im Anschreiben, zum Beispiel mit dem Platzhalter {vorauszahlung_anpassung}.
+            </p>${warnung}${knopf}`);
+}
+
+async function serienbuchungAnlegen(tenantId, betrag, ab, kuenftige) {
+    "Öffnet den Zahlungsdialog vorbefüllt; gespeichert wird erst dort."
+    if (kuenftige > 0 && !await frage(`Ab diesem Datum sind schon ${kuenftige} Vorauszahlungen gebucht. Trotzdem eine weitere Serie anlegen?`,
+        'Trotzdem anlegen', false, 'Vorauszahlungen schon gebucht')) return;
+    document.getElementById('report-details-modal').classList.remove('active');
+    openAddPaymentModal();
+    document.getElementById('payment-tenant').value = String(tenantId);
+    document.getElementById('payment-date').value = ab;
+    document.getElementById('payment-amount').value = betrag;
+    document.getElementById('payment-type').value = 'Nebenkostenvorauszahlung';
+    document.getElementById('payment-recurring').checked = true;
+    togglePaymentRecurring();
+    toggleBillingReportField();
 }
 
 // --- NK-124: Zustellung, Frist, Korrektur und Versionen im Detaildialog ---
@@ -5360,9 +5555,19 @@ function berichtVersionenBlock(id, umschlag) {
         </div>`;
 }
 
-// NK-217 (F2): die Abrechnung bleibt, wie sie zugegangen ist; der Hinweis
-// sagt nur, dass eine Korrektur heute anders rechnen kann.
-const REGELSTAND_HINWEIS = `<p class="regelstand-hinweis" style="margin: 4px 0 0 0; color: var(--warning-color); font-size: 0.9rem;"><i class="ph ph-warning"></i> Nach älterem Regelstand erstellt. „Korrektur erstellen“ prüft, ob der heutige anders rechnet.</p>`;
+// NK-217 (F2): die Abrechnung bleibt, wie sie zugegangen ist. NK-229 (R-DOC-03):
+// aufgeklappt sagt der Hinweis, was sich geändert hat, wann eine Korrektur
+// sinnvoll ist, und führt zur Vorschau, bevor etwas entsteht.
+function regelstandHinweis(id, aenderungen) {
+    const punkteHtml = (aenderungen || []).map(t => `<li>${escapeHtml(t)}</li>`).join('');
+    const erklaerungHtml = punkteHtml ? `<p style="margin: 8px 0 4px 0;">Seitdem rechnet die Software so:</p><ul style="margin: 0 0 8px 0;">${punkteHtml}</ul>` : '';
+    return `<details class="regelstand-hinweis" style="margin: 4px 0 0 0; font-size: 0.9rem;">
+        <summary style="color: var(--warning-color); cursor: pointer;"><i class="ph ph-warning" aria-hidden="true"></i> Nach älterem Regelstand erstellt</summary>
+        ${erklaerungHtml}
+        <p style="margin: 0 0 8px 0;">Die Abrechnung bleibt gültig, ein neuer Regelstand allein verpflichtet nicht zur Korrektur. Sinnvoll ist sie, wenn der heutige Stand spürbar anders rechnet, vor allem zugunsten des Mieters. Zulasten des Mieters ist eine Korrektur nur bis zum Ende der Abrechnungsfrist durchsetzbar.</p>
+        <button type="button" class="btn-secondary" onclick="korrekturErstellen(${Number(id)})">Unterschied ansehen</button>
+    </details>`;
+}
 
 /* NK-217 (F2): vor dem Bestätigen steht da, was die Korrektur ändert. */
 function korrekturVorschauText(v) {
@@ -5371,7 +5576,10 @@ function korrekturVorschauText(v) {
         .map(p => zeile(p.kostenart, {alt: p.alt, neu: p.neu ?? 0}));
     zeilen.push(zeile('Summe', v.summe), zeile('Saldo', v.saldo));
     return 'Eine Korrektur rechnet diese Abrechnung gegen die aktuellen Daten neu und legt eine neue Version an.\n\n'
-        + 'Das ändert sich:\n' + zeilen.join('\n') + '\n\nKorrektur erstellen?';
+        + 'Das ändert sich:\n' + zeilen.join('\n')
+        + (v.richtung ? `\n\nDie Korrektur fällt ${v.richtung} des Mieters aus.` : '')
+        + (v.frist_warnung ? '\n\n' + v.frist_warnung : '')
+        + '\n\nKorrektur erstellen?';
 }
 
 async function korrekturErstellen(id) {
@@ -5432,13 +5640,14 @@ async function openReportDetails(id) {
         // Der Vermieter sieht den Stand und meldet den Zugang nach.
         const zustellungsBlock = berichtZustellungsBlock(id, umschlag);
         const versionenBlock = berichtVersionenBlock(id, umschlag);
+        const regelstandBlock = umschlag.veraltet ? regelstandHinweis(id, umschlag.regelstand_aenderungen) : '';
         
         let html = `
             <div style="margin-bottom: 24px;">
                 <h3 style="margin: 0 0 8px 0; font-size: 1.25rem;">Details zur Abrechnung</h3>
                 <p style="color: var(--text-muted); margin: 0;">Zeitraum: ${new Date(umschlag.start_date || data.start_date).toLocaleDateString('de-DE')} - ${new Date(umschlag.end_date || data.end_date).toLocaleDateString('de-DE')}</p>
                 ${umschlag.version ? `<p style="color: var(--text-muted); margin: 4px 0 0 0; font-size: 0.9rem;">Version ${umschlag.version} · erstellt mit Software ${escapeHtml(umschlag.software_version || '')}, Regelstand ${escapeHtml(umschlag.regel_version || '')}</p>` : ''}
-                ${umschlag.veraltet ? REGELSTAND_HINWEIS : ''}
+                ${regelstandBlock}
             </div>
             <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;">
                 <a class="btn-secondary" href="/api/billing/reports/${id}/belege" download
@@ -5451,6 +5660,7 @@ async function openReportDetails(id) {
                 </a>
             </div>
             ${zustellungsBlock}
+            ${vorauszahlungsBlock(umschlag.vorauszahlung, umschlag.tenant_id)}
             ${versionenBlock}
             <table class="data-table" style="width: 100%; border-collapse: collapse; text-align: left;">
                 <thead>
@@ -5870,6 +6080,7 @@ async function generateBillPreview(tenantId, startDate, endDate, categoryIds = n
                 <ul class="jahr-warnungen" style="margin: 0;">${warnungenHtml(hinweise)}</ul>
             </div>`;
         }
+        html += vorauszahlungsBlock(data.vorauszahlung, null);
         
         html += `
             <table class="data-table" style="width: 100%;">
@@ -7385,7 +7596,7 @@ async function exportData() {
         }
         let blob;
         let dateiname;
-        const heute = new Date().toISOString().split('T')[0];
+        const heute = new Date().toLocaleDateString('sv-SE');
         if (passphrase) {
             const res = await fetch('/api/export', {
                 method: 'POST',
@@ -7651,7 +7862,7 @@ function openAddPaymentModal() {
         tenantSelect.appendChild(opt);
     });
     
-    document.getElementById('payment-date').value = new Date().toISOString().split('T')[0];
+    document.getElementById('payment-date').value = new Date().toLocaleDateString('sv-SE');
     document.getElementById('payment-amount').value = '';
     document.getElementById('payment-type').value = 'Miete';
     

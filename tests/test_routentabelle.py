@@ -24,7 +24,7 @@ import pytest
 from nebenkostenfix.auth import PUBLIC_ENDPOINTS
 
 
-# Stand vom 07.10.2026, 117 Routen (NK-217: Korrekturvorschau; NK-148: Drittlizenzen; NK-174/175: Haftung, Update-Einstellung, Suche beim Start; NK-176: Lizenzrouten entfernt; NK-145: CSV-Export; NK-129: /api/files -> /api/dateien; NK-131: Belege-Export). Aendert sich diese Menge, ist das kein
+# Stand vom 07.10.2026, 118 Routen (NK-230: Vorjahr füllen; NK-217: Korrekturvorschau; NK-148: Drittlizenzen; NK-174/175: Haftung, Update-Einstellung, Suche beim Start; NK-176: Lizenzrouten entfernt; NK-145: CSV-Export; NK-129: /api/files -> /api/dateien; NK-131: Belege-Export). Aendert sich diese Menge, ist das kein
 # Fehler im Test, sondern eine Entscheidung, die getroffen werden muss.
 ROUTEN_INVENTAR = frozenset({
     'belege_exportieren',
@@ -59,6 +59,7 @@ ROUTEN_INVENTAR = frozenset({
     'import_pruefen',
     'import_uebernehmen',
     'import_tabelle',
+    'import_rechnungen_vorjahr',
     'umzug_hochladen_beginnen',
     'umzug_hochladen_stand',
     'umzug_hochladen_stueck',

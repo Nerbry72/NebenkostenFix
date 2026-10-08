@@ -32,6 +32,9 @@ AUSNAHMEN = {
     'tableRows': 'Zeilen, deren Zellen einzeln maskiert werden',
     'liste': 'Liste aus maskierten Eintraegen (Versionen)',
     'knopf': 'Knopf aus Code-Konstanten',
+    'inhalt': 'Kasten aus maskierten Teilen (NK-226)',
+    'warnung': 'Hinweis mit Datum maskiert und Anzahl als Zahl (NK-226)',
+    'vorauszahlungsBlock(umschlag.vorauszahlung, umschlag.tenant_': 'Block aus maskierten Teilen (NK-226)',
     'marke': 'Symbol aus Code-Konstanten',
     'hinweis': 'feste Zeichenkette',
     'weitere': 'Zahl aus der Laenge der Liste (D-116)',
@@ -47,8 +50,6 @@ AUSNAHMEN = {
     'mCons': 'toFixed(1) in wrapInterpolated',
     'aCons': 'toFixed(1) in wrapInterpolated',
     'prozent': 'toLocaleString der Allgemeinquote (NK-209)',
-    "r.veraltet ? REGELSTAND_HINWEIS : ''": 'fester Hinweistext (NK-217)',
-    "umschlag.veraltet ? REGELSTAND_HINWEIS : ''": 'fester Hinweistext (NK-217)',
     'pfTitle': 'feste Zeichenkette je Ampelstufe',
     'umschlag.version ? `<p style="color: var(--text-muted); marg':
         'Versionsnummer (Zahl), Texte darin maskiert',

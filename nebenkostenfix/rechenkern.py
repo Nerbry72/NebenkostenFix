@@ -597,7 +597,16 @@ def zahl_text(wert) -> str:
     Dieselbe Regel wie fuer die Betraege: der Punkt eines floats gehoert
     nicht in ein deutsches Dokument.
     """
-    return f"{float(wert):g}".replace('.', ',')
+    # Decimal statt :g -- :g kappt bei sechs Stellen und schreibt grosse
+    # Zahlen als Exponent (NK-222). Ein float erst auf 12 gueltige Stellen:
+    # 55.1 + 62.2 ist 117.30000000000001 (NK-234).
+    zahl = Decimal(f'{wert:.12g}') if isinstance(wert, float) else Decimal(str(wert))
+    return format(zahl.normalize(), 'f').replace('.', ',')
+
+
+def menge_text(wert) -> str:
+    """Eine Verbrauchsmenge mit einer Nachkommastelle: 1234.56 wird "1234,6"."""
+    return f"{float(wert):.1f}".replace('.', ',')
 
 
 def rechenweg_rechnungsbetrag(betrag, anteilige_tage: int,
@@ -679,7 +688,7 @@ def flaechen_pruefung(vorgang: Vorgang) -> tuple:
         befunde.append((
             'blocker',
             f"Für die Wohnung '{vorgang.wohnung.name}' ist keine Wohnfläche hinterlegt. "
-            f"Ohne sie lässt sich ihr Anteil an {gesamt_qm} qm Gesamtfläche nicht "
+            f"Ohne sie lässt sich ihr Anteil an {zahl_text(gesamt_qm)} m² Gesamtfläche nicht "
             f"berechnen. Tragen Sie die Quadratmeter bei dieser Wohnung ein."
         ))
     else:
@@ -688,7 +697,7 @@ def flaechen_pruefung(vorgang: Vorgang) -> tuple:
             befunde.append((
                 'warning',
                 f"Bei {len(ohne_flaeche)} aktiven Wohnungen fehlt die Wohnfläche "
-                f"({', '.join(ohne_flaeche)}). Die Gesamtfläche von {gesamt_qm} qm "
+                f"({', '.join(ohne_flaeche)}). Die Gesamtfläche von {zahl_text(gesamt_qm)} m² "
                 f"ist damit zu klein und der Anteil dieses Mieters zu hoch. "
                 f"Tragen Sie die fehlenden Quadratmeter nach."
             ))
@@ -947,7 +956,7 @@ def eigenverbrauch_text(menge, unit: str, detail: dict | None) -> str:
     """Der Unterposten Eigenverbrauch. Ein nach Gradtagszahlen geschaetzter
     Stichtag steht auch im einfachen PDF dabei, nicht nur im detaillierten (D-115);
     die Schwelle von 7 Tagen ist dieselbe wie dort."""
-    text = f"Eigenverbrauch ({menge:.1f} {unit}"
+    text = f"Eigenverbrauch ({menge_text(menge)} {unit}"
     if detail and detail.get('gradtage') and max(detail['start_offset_days'], detail['end_offset_days']) > 7:
         text += ", Stichtag nach Gradtagszahlen geschätzt"
     return text + ")"
@@ -1621,7 +1630,7 @@ def _vermieterverbrauchsanteil(vorgang: Vorgang, kategorie_name: str,
     }
     teile = [
         f"{GRUND_TEXT[grund]}: {', '.join(namen[grund])} "
-        f"({mengen[grund]:.1f} von {summe_zaehler:.1f} {einheit})"
+        f"({menge_text(mengen[grund])} von {menge_text(summe_zaehler)} {einheit})"
         for grund in (LEERSTAND, EIGENNUTZUNG) if namen[grund]
     ]
 
@@ -2222,7 +2231,7 @@ def _verteilzeile(vorgang: Vorgang, anlage, rechnungen: Sequence[Rechnung],
             'type': 'heizung_flaeche',
             'description': (
                 f"Grundkosten 100 % nach Wohnfläche "
-                f"({vorgang.wohnung.qm} von {gesamt_qm} qm)"
+                f"({zahl_text(vorgang.wohnung.qm or 0)} von {zahl_text(gesamt_qm)} m²)"
             ),
             'cost': runde(flaechenanteil),
         }]
@@ -2245,7 +2254,7 @@ def _verteilzeile(vorgang: Vorgang, anlage, rechnungen: Sequence[Rechnung],
                 'type': 'heizung_verbrauch',
                 'description': (
                     f"Verbrauchskosten {satz} % "
-                    f"({eigener_verbrauch:.1f} von {gesamtverbrauch:.1f} {einheit})"
+                    f"({menge_text(eigener_verbrauch)} von {menge_text(gesamtverbrauch)} {einheit})"
                 ),
                 'cost': runde(verbrauchsanteil),
             },
@@ -2253,7 +2262,7 @@ def _verteilzeile(vorgang: Vorgang, anlage, rechnungen: Sequence[Rechnung],
                 'type': 'heizung_flaeche',
                 'description': (
                     f"Grundkosten {heizung.flaechenanteil(satz)} % nach Wohnfläche "
-                    f"({vorgang.wohnung.qm} von {gesamt_qm} qm)"
+                    f"({zahl_text(vorgang.wohnung.qm or 0)} von {zahl_text(gesamt_qm)} m²)"
                 ),
                 'cost': runde(flaechenanteil),
             },
@@ -2898,7 +2907,7 @@ def rechne(vorgang: Vorgang) -> dict:
             if area_blocker:
                 raise BillingDataError(area_blocker)
             tenant_cost = prorated_invoice_amount * (dec(vorgang.wohnung.qm) / dec(property_sqm))
-            description = f"Umlage nach qm ({vorgang.wohnung.qm} von {property_sqm} qm)"
+            description = f"Umlage nach Wohnfläche ({zahl_text(vorgang.wohnung.qm)} von {zahl_text(property_sqm)} m²)"
             # Der Rechenweg sagt es mit Zwischenergebnis (R-DOC-01 Punkt 6):
             # erst der Zeitanteil mit Tagen (Punkt 7), dann der Schluessel.
             # Ohne Zeitanteil faellt der erste Schritt weg -- die Rechnung
@@ -2911,7 +2920,7 @@ def rechne(vorgang: Vorgang) -> dict:
             rechenweg.append(
                 f"{euro_text(prorated_invoice_amount)} nach Wohnfläche "
                 f"{zahl_text(vorgang.wohnung.qm)} von "
-                f"{zahl_text(property_sqm)} qm = {euro_text(tenant_cost)}")
+                f"{zahl_text(property_sqm)} m² = {euro_text(tenant_cost)}")
 
             # Der Rest dieser Rechnung faellt auf Flaeche, die im Zeitraum
             # niemand gemietet hatte. Er bleibt beim Vermieter -- und steht
@@ -3138,10 +3147,10 @@ def rechne(vorgang: Vorgang) -> dict:
                             tenant_direct_cost = dec(tenant_consumption) * cost_per_unit
 
                         tenant_cost = tenant_direct_cost + tenant_allgemein_share_prorated
-                        description = f"Eigenverbrauch ({tenant_consumption:.1f} {unit}) + Anteil Allgemein (Haus gesamt: {allgemein_consumption:.1f} {unit}, Anteil: {this_tenant_days} von {total_person_days} Personentagen{abschnitte_text})"
+                        description = f"Eigenverbrauch ({menge_text(tenant_consumption)} {unit}) + Anteil Allgemein (Haus gesamt: {menge_text(allgemein_consumption)} {unit}, Anteil: {this_tenant_days} von {total_person_days} Personentagen{abschnitte_text})"
                     else:
                         tenant_cost = tenant_allgemein_share_prorated
-                        description = f"Anteil am Allgemeinverbrauch (Haus gesamt: {allgemein_consumption:.1f} {unit}, Anteil: {this_tenant_days} von {total_person_days} Personentagen{abschnitte_text})"
+                        description = f"Anteil am Allgemeinverbrauch (Haus gesamt: {menge_text(allgemein_consumption)} {unit}, Anteil: {this_tenant_days} von {total_person_days} Personentagen{abschnitte_text})"
                 else:
                     # Kein Hauptzaehler: der Preis je Einheit kommt aus der Summe der Unterzaehler
                     unter_rechnung_details = [verbrauch_detail(m, inv.beginn, inv.ende)
@@ -3168,7 +3177,7 @@ def rechne(vorgang: Vorgang) -> dict:
                         else:
                             tenant_direct_cost = dec(tenant_consumption) * cost_per_unit
                         tenant_cost = tenant_direct_cost
-                        description = f"Eigenverbrauch ohne Hauptzähler ({tenant_consumption:.1f} {unit} / {sum_sub_consumption:.1f} {unit} Anteil)"
+                        description = f"Eigenverbrauch ohne Hauptzähler ({menge_text(tenant_consumption)} {unit} / {menge_text(sum_sub_consumption)} {unit} Anteil)"
                     else:
                         tenant_cost = NULL
                         description = "Nur Allgemein (Entfällt, da kein Hauptzähler existiert)"
@@ -3208,7 +3217,7 @@ def rechne(vorgang: Vorgang) -> dict:
                         'description': eigenverbrauch_text(tenant_consumption, unit, tenant_detail),
                         'cost': runde(tenant_direct_cost)
                     })
-                    sub_desc = f"Anteil Allgemein (Haus gesamt: {allgemein_consumption:.1f} {unit}, Anteil: {this_tenant_days} von {total_person_days} Personentagen{abschnitte_text})"
+                    sub_desc = f"Anteil Allgemein (Haus gesamt: {menge_text(allgemein_consumption)} {unit}, Anteil: {this_tenant_days} von {total_person_days} Personentagen{abschnitte_text})"
                     sub_items.append({
                         'type': 'allgemein',
                         'description': sub_desc,
@@ -3216,7 +3225,7 @@ def rechne(vorgang: Vorgang) -> dict:
                     })
             elif billing_type == 'nur_allgemein' or (billing_type == 'direkt' and not tenant_meter):
                 if 'Entfällt' not in description and 'Fehler' not in description:
-                    sub_desc = f"Anteil Allgemein (Haus gesamt: {allgemein_consumption:.1f} {unit}, Anteil: {this_tenant_days} von {total_person_days} Personentagen{abschnitte_text})"
+                    sub_desc = f"Anteil Allgemein (Haus gesamt: {menge_text(allgemein_consumption)} {unit}, Anteil: {this_tenant_days} von {total_person_days} Personentagen{abschnitte_text})"
                     sub_items.append({
                         'type': 'allgemein',
                         'description': sub_desc,
@@ -3632,7 +3641,7 @@ def pruefe(vorgang: Vorgang) -> dict:
         for status, message in area_findings:
             checks.append({
                 'category': 'Wohnflaeche',
-                'meter_type': 'Umlage nach qm',
+                'meter_type': 'Umlage nach Wohnfläche',
                 'meter_number': None,
                 'meter_id': None,
                 'apartment': vorgang.wohnung.name,

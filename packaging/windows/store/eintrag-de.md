@@ -25,16 +25,15 @@ Die Nebenkostenabrechnung für private Vermieter. Kostenlos, und Ihre Daten blei
 
 ## Neuerungen in dieser Version
 
-Version 0.12.0: Die Windows-App startet ohne Anmeldung, der Haftungshinweis ist kürzer. Der Allgemeinverbrauch wird genauer aufgeteilt, dadurch können sich Beträge ändern.
+Version 0.13.0: Vorschlag für die neue Vorauszahlung, alle Zählerstände auf einmal erfassen und Rechnungen wie im Vorjahr vorbelegen. Die Rechenregeln bleiben unverändert.
 
-- Die Windows-App öffnet direkt, ohne Benutzername und Passwort. In den Einstellungen unter „Konto“ lässt sich die Anmeldung einschalten.
-- In Docker bleibt die Anmeldung Vorgabe. Sie lässt sich dort ausschalten, eine Warnleiste weist dann darauf hin.
-- Ein Umzug oder eine Sicherung nimmt die Wahl mit. Wer die Anmeldung ausgeschaltet hatte, bleibt auch auf dem neuen Rechner ohne.
-- Der Haftungshinweis ist kürzer gefasst. Er erscheint einmal neu und muss bestätigt werden.
-- Der Allgemeinverbrauch (Hauptzähler abzüglich der Wohnungszähler) wird zwischen Tagen gemessen, an denen alle Zähler abgelesen sind. Bei einem Mieterwechsel im Jahr kann das Beträge ändern.
-- Der Verbrauchsnachweis zeigt die Zählerstände an den Stichtagen, mit denen gerechnet wird, und den Anteil am Allgemeinverbrauch in Prozent.
-- Ein Zählerstand unter dem vorigen oder ein zweiter am selben Tag wird vor dem Speichern nachgefragt.
-- Abrechnungen nach älterem Regelstand sind gekennzeichnet. „Korrektur erstellen“ zeigt vorher, was sich ändert.
+- Nach der Abrechnung schlägt NebenkostenFix eine angepasste monatliche Vorauszahlung vor. Ein Platzhalter übernimmt den Vorschlag ins Anschreiben, daraus lässt sich eine Serienbuchung anlegen.
+- Im Tab „Zähler“ erfassen Sie alle Zähler einer Immobilie zum Stichtag in einer Liste, am Handy mit Foto direkt von der Kamera.
+- „Wie im Vorjahr füllen“ legt die Rechnungen des Vorjahres als Zeilen der Tabelle an. Sie tragen nur noch die Beträge ein.
+- Der Assistent „Jahr abrechnen“ markiert Kostenarten, die sich gegenüber dem Vorjahr um mehr als 20 % ändern.
+- Der Hinweis „Nach älterem Regelstand erstellt“ erklärt, was sich geändert hat. Die Korrekturvorschau nennt, ob die Korrektur zugunsten oder zulasten des Mieters ausfällt, und warnt nach Ablauf der Frist.
+- Flächen und Mengen in den Umlagetexten stehen mit Dezimalkomma und „m²“.
+- Eine Korrektur rechnet bei einer Heizungsanlage jetzt mit den Heizkosten. Bisher fehlten sie in der neu berechneten Abrechnung.
 
 ## Produktmerkmale
 

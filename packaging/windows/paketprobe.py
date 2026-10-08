@@ -24,6 +24,7 @@ import os
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -37,6 +38,41 @@ def _zusammenfassung(zeile: str) -> None:
     if ziel:
         with open(ziel, 'a', encoding='utf-8') as datei:
             datei.write(zeile + '\n')
+
+
+# NK-239: Frist je gestartetem Programm. Normal braucht jedes wenige
+# Sekunden; der ganze Update-Schritt in windows.yml hat 5 Minuten.
+FRIST = 120
+
+
+def _starten(befehl: list[str], cwd: Path | None = None) -> int | None:
+    """Ein Programm der Probe starten; Exit-Code oder None nach der Frist.
+
+    Die Ausgabe geht in eine Datei statt in die Kanäle des CI-Schritts: ein
+    Kindprozess, der weiterläuft (Installer, Deinstaller-Kopie in %TEMP%),
+    hielte sonst den Schritt offen, und kein timeout-minutes beendet ihn.
+    Nach der Frist endet der ganze Prozessbaum, nicht nur das Programm.
+    """
+    with tempfile.TemporaryFile() as ausgabe:
+        prozess = subprocess.Popen(  # noqa: S603 -- feste Argumente aus der CI
+            befehl, cwd=cwd, stdin=subprocess.DEVNULL, stdout=ausgabe,
+            stderr=subprocess.STDOUT)
+        try:
+            code = prozess.wait(timeout=FRIST)
+        except subprocess.TimeoutExpired:
+            if os.name == 'nt':  # pragma: no cover - Windows
+                subprocess.run(['taskkill', '/T', '/F', '/PID', str(prozess.pid)],  # noqa: S603, S607
+                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, timeout=60, check=False)
+            prozess.kill()
+            prozess.wait(timeout=60)
+            code = None
+        ausgabe.seek(0)
+        print(ausgabe.read().decode('utf-8', 'replace'), end='')
+    if code is None:
+        _zusammenfassung(f'- ZEITÜBERSCHREITUNG: `{Path(befehl[0]).name}` '
+                         f'nach {FRIST} s samt Kindprozessen beendet')
+    return code
 
 
 def subsystem(exe: Path) -> int:
@@ -71,9 +107,9 @@ def probe_groesse(ordner: Path) -> bool:
 
 def probe_selbsttest(exe: Path, datenordner: Path, bericht: Path) -> bool:
     beginn = time.monotonic()
-    lauf = subprocess.run(  # noqa: S603 -- feste Argumente aus der CI
+    code = _starten(
         [str(exe), '--selbsttest', '--datenordner', str(datenordner),
-         '--bericht', str(bericht)], timeout=300,
+         '--bericht', str(bericht)],
         # Wie die Verknüpfung: Start im Programmordner, nicht im Checkout mit
         # static/ daneben -- sonst fällt ein relativer Pfad nie auf (0.9.0).
         cwd=exe.parent)
@@ -82,7 +118,7 @@ def probe_selbsttest(exe: Path, datenordner: Path, bericht: Path) -> bool:
         ergebnis = json.loads(bericht.read_text(encoding='utf-8'))
     except (OSError, ValueError):
         ergebnis = {}
-    ok = lauf.returncode == 0 and ergebnis.get('ergebnis') == 'bestanden'
+    ok = code == 0 and ergebnis.get('ergebnis') == 'bestanden'
     _zusammenfassung(
         f'- Selbsttest `{exe.name}`: {"bestanden" if ok else "FEHLGESCHLAGEN"} '
         f'in {sekunden:.1f} s (Kaltstart bis PDF), Bericht: `{json.dumps(ergebnis, ensure_ascii=False)}`')
@@ -90,11 +126,10 @@ def probe_selbsttest(exe: Path, datenordner: Path, bericht: Path) -> bool:
 
 
 def probe_installieren(setup: Path, protokoll: Path) -> bool:
-    lauf = subprocess.run(  # noqa: S603 -- feste Argumente aus der CI
-        [str(setup), '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART',
-         f'/LOG={protokoll}'], timeout=600)
-    ok = lauf.returncode == 0
-    _zusammenfassung(f'- Stille Installation: {"ok" if ok else f"Exit {lauf.returncode}"}')
+    code = _starten([str(setup), '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART',
+                     f'/LOG={protokoll}'])
+    ok = code == 0
+    _zusammenfassung(f'- Stille Installation: {"ok" if ok else f"Exit {code}"}')
     return ok
 
 
@@ -143,8 +178,7 @@ def sha256_datei(pfad: Path) -> str:
 
 def probe_deinstallieren(programm: Path, datenordner: Path) -> bool:
     deinstaller = programm / 'unins000.exe'
-    subprocess.run(  # noqa: S603 -- feste Argumente aus der CI
-        [str(deinstaller), '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'], timeout=600)
+    _starten([str(deinstaller), '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'])
     # Der Deinstaller kopiert sich nach %TEMP% und laeuft dort weiter; der
     # erste Prozess endet frueher. Warten, bis das Programm wirklich weg ist.
     frist = time.monotonic() + 120
@@ -160,8 +194,7 @@ def probe_deinstallieren(programm: Path, datenordner: Path) -> bool:
 def probe_datenordner(exe: Path, erwartet: Path, bericht: Path) -> bool:
     """Welchen Datenordner nimmt die installierte App? (D-95: nach dem Update
     über eine Installation vor der Umbenennung der alte.)"""
-    subprocess.run(  # noqa: S603 -- feste Argumente aus der CI
-        [str(exe), '--datenordner-zeigen', '--bericht', str(bericht)], timeout=120)
+    _starten([str(exe), '--datenordner-zeigen', '--bericht', str(bericht)])
     try:
         ordner = json.loads(bericht.read_text(encoding='utf-8'))['datenordner']
     except (OSError, ValueError, KeyError):
@@ -179,15 +212,14 @@ def probe_umzug(exe: Path, paket: Path, erwartet: Path, datenordner: Path,
     sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'scripts'))
     import umzug_kreuzprobe  # noqa: E402 -- Vergleich aus den Quellen
 
-    lauf = subprocess.run(  # noqa: S603 -- feste Argumente aus der CI
-        [str(exe), '--umzug-uebernehmen', str(paket), '--datenordner', str(datenordner),
-         '--bericht', str(bericht)], timeout=600)
+    code = _starten([str(exe), '--umzug-uebernehmen', str(paket), '--datenordner',
+                     str(datenordner), '--bericht', str(bericht)])
     try:
         angekommen = json.loads(bericht.read_text(encoding='utf-8'))
     except (OSError, ValueError):
         angekommen = {'fehler': 'kein Bericht'}
-    if lauf.returncode != 0 or 'fehler' in angekommen:
-        fehler = [angekommen.get('fehler', f'Exit {lauf.returncode}')]
+    if code != 0 or 'fehler' in angekommen:
+        fehler = [angekommen.get('fehler', f'Exit {code}')]
     else:
         fehler = umzug_kreuzprobe.vergleichen(
             json.loads(erwartet.read_text(encoding='utf-8')), angekommen)
@@ -252,8 +284,7 @@ def probe_msix(alias: Path, familie: str, datenordner: Path, berichte: Path) -> 
     lokal = Path(os.environ['LOCALAPPDATA'])
     selbst, ordner = berichte / 'bericht-msix.json', berichte / 'bericht-msix-ordner.json'
     probe_selbsttest(alias, datenordner, selbst)
-    subprocess.run(  # noqa: S603 -- feste Argumente aus der CI
-        [str(alias), '--datenordner-zeigen', '--bericht', str(ordner)], timeout=120)
+    _starten([str(alias), '--datenordner-zeigen', '--bericht', str(ordner)])
     ok, zeilen = msix_auswerten(_json(selbst), _json(ordner), familie, lokal)
     for zeile in zeilen:
         _zusammenfassung(zeile)

@@ -1198,6 +1198,7 @@ input[type="number"] {
 .erste-schritte-fortschritt {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;                   /* NK-225: Hinweis darf umbrechen */
     gap: var(--space-3);
     margin: 0 0 var(--space-5);        /* K5: Kopf → Liste 24 px */
 }
@@ -1206,6 +1207,12 @@ input[type="number"] {
     font-size: 13px;
     font-weight: 600;
     color: var(--text-main);
+    white-space: nowrap;               /* NK-223 */
+}
+
+.erste-schritte-beispiel {
+    font-size: 13px;
+    color: var(--text-muted);
 }
 
 .erste-schritte-balken {
@@ -1561,7 +1568,8 @@ input[type="number"] {
         grid-template-columns: 32px 1fr;
     }
 
-    .erste-schritte-liste .schritt .btn-primary {
+    .erste-schritte-liste .schritt .btn-primary,
+    .erste-schritte-liste .schritt .btn-secondary {
         grid-column: 2;
         justify-self: start;
     }
@@ -2297,6 +2305,7 @@ td .btn-icon,
 .jahr-fehlt td:first-child i,
 .jahr-offen td:first-child i { color: #B45309; }
 .jahr-erfasst td:first-child i { color: #15803D; }
+.jahr-sprung td:first-child i { color: #B45309; }
 
 .jahr-mieter {
     padding: 16px;

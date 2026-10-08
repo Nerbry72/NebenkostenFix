@@ -93,6 +93,7 @@ Import aus Excel/CSV (NK-161) -- alles in tabellenimport.py
   POST        /api/import/<art>/pruefen                    -> import_pruefen
   POST        /api/import/<art>/uebernehmen                -> import_uebernehmen
   POST        /api/import/<art>/tabelle                    -> import_tabelle
+  GET         /api/import/rechnungen/vorjahr               -> import_rechnungen_vorjahr
 
   Vorlage, Lesen, Zuordnen, Probelauf, Übernahme in einer Transaktion (nur
   ohne Fehler). ``tabelle`` ist die Tabellen-Erfassung der Rechnungen ohne
@@ -276,8 +277,9 @@ from nebenkostenfix.heizung import (
 )
 from nebenkostenfix.models import db, User, Property, Apartment, Tenant, Haushaltsgroesse, CostCategory, CostInvoice, Meter, MeterReading, TenantCostProfile, InvoiceDocument, Provider, TenantBillingReport, BillingReportCategory, BillingReportVersion, AnschreibenVorlage, Vermieterdaten, Heizungsanlage
 from nebenkostenfix.girocode_generator import iban_pruefen, iban_saeubern, vermieter_ausweis
-from nebenkostenfix.abrechnung_version import schnappschuss, json_sicher, SOFTWARE_VERSION, REGEL_VERSION
+from nebenkostenfix.abrechnung_version import schnappschuss, json_sicher, SOFTWARE_VERSION, REGEL_VERSION, aenderungen_seit, gleich_gerechnet
 from nebenkostenfix.anschreiben import VORGABE, PLATZHALTER, text_fuer
+from nebenkostenfix import vorauszahlung as vz
 from nebenkostenfix.ablage import Ablage
 from nebenkostenfix.auth import init_auth
 from nebenkostenfix.backup import init_backup
@@ -2457,6 +2459,8 @@ def generate_bill():
     spaete = _zahlungen_nach_auszug_warnung(db.session.get(Tenant, tenant_id), e_date)
     if spaete:
         bill_data['warnings'].append(spaete)
+    bill_data['vorauszahlung'] = _vorauszahlung_vorschlag(
+        db.session.get(Tenant, tenant_id), bill_data, category_ids, vz._heute())
 
     return jsonify(bill_data), 200
 
@@ -2537,7 +2541,9 @@ def finalize_bill():
     # Vermieter bekam "PDF Error: list index out of range" zu lesen.
     # NK-064: das Anschreiben des Objekts (oder der Vorgabetext) spricht
     # auf dem Deckblatt, mit den Zahlen aus diesem Ergebnis.
-    anschreiben_text = _anschreiben_fuer(Tenant.query.get(tenant_id), bill_data)
+    mieter = Tenant.query.get(tenant_id)
+    anschreiben_text = _anschreiben_fuer(mieter, bill_data, vorauszahlung=(
+        _vorauszahlung_vorschlag(mieter, bill_data, category_ids, vz._heute())))
     pdf_bytes = pdf_gen.generate(
         bill_data['line_items'],
         bill_data['total_amount'],
@@ -2595,11 +2601,15 @@ def finalize_bill():
         # Save Categories
         final_category_ids = category_ids
         if not final_category_ids:
-            # If no explicit categories passed, assume all categories that were billed in line_items
-            cats_billed = set([item['category'] for item in bill_data['line_items']])
-            all_cats = CostCategory.query.filter(CostCategory.name.in_(cats_billed)).all()
-            final_category_ids = [c.id for c in all_cats]
-            
+            # Ohne Auswahl: die Kostenarten der Rechnungen, die den Mieter
+            # treffen. Nicht aus den Postennamen -- der Heizposten heißt
+            # "Heizkosten (Anlage)" und fiel dort heraus (NK-233).
+            vorgang = engine.vorgang
+            final_category_ids = sorted({
+                r.kategorie.id for r in vorgang.rechnungen
+                if r.wohnung_id in (None, vorgang.wohnung.id)
+                and vorgang.profile.get(r.kategorie.id) != 'ignoriert'})
+
         for cid in final_category_ids:
             rc = BillingReportCategory(
                 report_id=report.id,
@@ -2913,6 +2923,7 @@ def get_all_billing_reports():
             'document_path': r.document_path,
             'document_path_detailed': r.document_path_detailed,
             'veraltet': _regelstand_veraltet(r),
+            'regelstand_aenderungen': _regelstand_aenderungen(r),
         })
     return jsonify(res)
 
@@ -3004,7 +3015,33 @@ def zustellung_melden(id):
     }), 200
 
 
-def _anschreiben_fuer(mieter, bill_data, report=None):
+def _vorauszahlung_vorschlag(mieter, bill_data, category_ids, stichtag):
+    """Der Vorschlag zur Anpassung der Vorauszahlung (R-VZ-01, NK-226).
+
+    Teilauswahl heißt: im Zeitraum gibt es Rechnungen einer Kostenart, die
+    die Abrechnung nicht umfasst und die der Mieter nicht ausgenommen hat.
+    """
+    from nebenkostenfix.models import Payment
+    beginn = datetime.fromisoformat(str(bill_data['start_date'])).date()
+    ende = datetime.fromisoformat(str(bill_data['end_date'])).date()
+    teilauswahl = False
+    if category_ids:
+        ausgenommen = {p.category_id for p in TenantCostProfile.query.filter_by(
+            tenant_id=mieter.id, billing_type='ignoriert')}
+        teilauswahl = CostInvoice.query.filter(
+            CostInvoice.property_id == mieter.apartment.property_id,
+            db.or_(CostInvoice.apartment_id.is_(None),
+                   CostInvoice.apartment_id == mieter.apartment_id),
+            CostInvoice.start_date <= ende, CostInvoice.end_date >= beginn,
+            CostInvoice.category_id.notin_(set(category_ids) | ausgenommen),
+        ).first() is not None
+    zahlungen = [(z.payment_date, z.amount) for z in Payment.query.filter_by(
+        tenant_id=mieter.id, type='Nebenkostenvorauszahlung')]
+    return vz.vorschlag(Decimal(str(bill_data['total_amount'])), beginn, ende,
+                        mieter.move_out_date, zahlungen, stichtag, teilauswahl)
+
+
+def _anschreiben_fuer(mieter, bill_data, report=None, vorauszahlung=None):
     """Das Anschreiben des Vermieters, ausgefüllt für diese Abrechnung (NK-064).
 
     Die Vorlage des Objekts, sonst der Vorgabetext aus ``anschreiben.py``;
@@ -3037,6 +3074,7 @@ def _anschreiben_fuer(mieter, bill_data, report=None):
         saldo=bill_data['total_amount'] - vorauszahlungen,
         einwendungsfrist=frist_text,
         vermieter_name=vermieter_ausweis()[0],
+        vorauszahlung=vorauszahlung,
     )
 
 
@@ -3078,6 +3116,7 @@ def get_billing_report_details(id):
             'software_version': version.software_version,
             'regel_version': version.regel_version,
             'veraltet': _regelstand_veraltet(report),
+            'regelstand_aenderungen': _regelstand_aenderungen(report),
             'ergebnis': version.ergebnis,
             # NK-124: die Umschlagdaten und die Versionen, damit die
             # Oberflaeche Zustellung, Frist und Korrektur an diesem Ort
@@ -3093,6 +3132,12 @@ def get_billing_report_details(id):
             'einwendungsfrist_ende': (
                 einwendungsfrist(report.zugestellt_am).isoformat()
                 if report.zugestellt_am else None),
+            # NK-226: gerechnet ab der Erstellung, nicht ab heute -- so
+            # bleibt der Vorschlag derselbe, den das Anschreiben nannte.
+            'tenant_id': report.tenant_id,
+            'vorauszahlung': _vorauszahlung_vorschlag(
+                report.tenant, version.ergebnis, _auswahl(report),
+                version.erstellt_am),
             'versionen': [
                 {'nummer': v.nummer,
                  'erstellt_am': v.erstellt_am.isoformat() if v.erstellt_am else None,
@@ -3297,6 +3342,35 @@ def _regelstand_veraltet(report) -> bool:
     return version is not None and stand < REGEL_VERSION
 
 
+def _regelstand_aenderungen(report) -> list:
+    """NK-229 (R-DOC-03): was sich seit dem Regelstand der Abrechnung geaendert hat."""
+    if not _regelstand_veraltet(report):
+        return []
+    version = report.aktuelle_version
+    return aenderungen_seit(max(version.regel_version or '', report.regelstand_geprueft or ''))
+
+
+def _korrektur_richtung(saldo) -> str | None:
+    """NK-229 (R-DOC-03): ein hoeherer Saldo geht zulasten des Mieters."""
+    if saldo['alt'] is None or saldo['neu'] is None or Decimal(saldo['alt']) == Decimal(saldo['neu']):
+        return None
+    return 'zulasten' if Decimal(saldo['neu']) > Decimal(saldo['alt']) else 'zugunsten'
+
+
+def _auswahl(report):
+    """Die Kostenarten, die der Vermieter gewählt hat, oder None für alle.
+
+    Aus dem Schnappschuss der gültigen Version: die gespeicherten
+    Kostenarten älterer Abrechnungen ohne Auswahl sind unvollständig, der
+    Heizposten mit Anlage fehlt dort (NK-233). Nur der Altbestand ohne
+    Version hat nichts anderes.
+    """
+    version = report.aktuelle_version
+    if version is not None:
+        return (version.eingangsdaten or {}).get('kategorien_filter') or None
+    return [c.category_id for c in report.categories] or None
+
+
 def _neu_gerechnet(report):
     """Die Abrechnung gegen die heutigen Daten -- fuer Korrektur und Vorschau."""
     from nebenkostenfix.billing_engine import BillingEngine
@@ -3304,7 +3378,7 @@ def _neu_gerechnet(report):
         tenant_id=report.tenant_id,
         start_date=report.start_date,
         end_date=report.end_date,
-        category_ids=[c.category_id for c in report.categories] or None
+        category_ids=_auswahl(report)
     )
     return engine, engine.calculate_bill()
 
@@ -3339,8 +3413,21 @@ def korrektur_vorschau(id):
 
     alt_je, neu_je = _je_kostenart(alt), _je_kostenart(neu)
     kostenarten = list(dict.fromkeys([*alt_je, *neu_je]))
+    saldo = paar('balance')
+    richtung = _korrektur_richtung(saldo)
+    # R-DOC-03: zugunsten des Mieters ist jederzeit frei; zulasten nach dem
+    # Fristende nur, wenn der Vermieter die Verspaetung nicht zu vertreten hat.
+    # Die Software warnt und entscheidet das nicht.
+    frist_warnung = None
+    if richtung == 'zulasten' and report.frist_ende and date.today() > report.frist_ende:
+        frist_warnung = (
+            f'Die Frist für Nachforderungen endete am {report.frist_ende:%d.%m.%Y} '
+            '(§ 556 Abs. 3 S. 3 BGB). Den Mehrbetrag zulasten des Mieters können Sie nur '
+            'noch verlangen, wenn Sie die Verspätung nicht zu vertreten haben.')
     return jsonify({
-        'unveraendert': alt is not None and alt == neu,
+        'richtung': richtung,
+        'frist_warnung': frist_warnung,
+        'unveraendert': alt is not None and gleich_gerechnet(alt, neu),
         'veraltet': _regelstand_veraltet(report),
         'positionen': [{'kostenart': k,
                         'alt': str(alt_je[k]) if alt is not None and k in alt_je else None,
@@ -3348,7 +3435,7 @@ def korrektur_vorschau(id):
                        for k in kostenarten],
         'summe': paar('total_amount'),
         'vorauszahlungen': paar('prepaid_amount'),
-        'saldo': paar('balance'),
+        'saldo': saldo,
     })
 
 
@@ -3374,7 +3461,7 @@ def korrigiere_billing_report(id):
     
     ersetzt = report.aktuelle_version
     neue_ergebnis = json_sicher(bill_data)
-    if ersetzt is not None and ersetzt.ergebnis == neue_ergebnis:
+    if ersetzt is not None and gleich_gerechnet(ersetzt.ergebnis, neue_ergebnis):
         if _regelstand_veraltet(report):
             report.regelstand_geprueft = REGEL_VERSION
             db.session.commit()

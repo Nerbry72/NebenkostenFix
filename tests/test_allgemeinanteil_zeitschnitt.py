@@ -148,7 +148,7 @@ def test_quartal_berechnet_den_allgemeinanteil_nur_fuer_sein_fenster():
     # NK-213: gezeigt wird die Rechnung -- 40 m³ allgemein, Annas 90 von
     # 730 Personentagen. Derselbe Betrag wie 9,9 m³ und 90 von 180.
     assert 'Anteil: 90 von 730 Personentagen' in posten['description']
-    assert 'Haus gesamt: 40.0 m³' in posten['description']
+    assert 'Haus gesamt: 40,0 m³' in posten['description']
 
 
 def test_quartal_laesst_den_preis_auf_der_rechnung():
@@ -247,7 +247,7 @@ def test_mieterwechsel_traegt_den_allgemeinanteil_seiner_mietzeit():
     # NK-213: der Nenner ist die ganze Rechnung mit Leerstand (F-121):
     # Anna 365, Bert 184, die leere Wohnung 181 -- 400 EUR · 184/730.
     assert 'Anteil: 184 von 730 Personentagen' in posten['description']
-    assert 'Haus gesamt: 40.0 m³' in posten['description']
+    assert 'Haus gesamt: 40,0 m³' in posten['description']
 
 
 def test_mieterwechsel_aendert_nichts_am_ganzjaehrigen_mieter():

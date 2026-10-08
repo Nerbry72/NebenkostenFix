@@ -288,3 +288,51 @@ def test_umschrift_waechter_findet_waehlen(tmp_path):
     verstoesse = pruefe_umschrift(tmp_path)
     assert len(verstoesse) == 2, verstoesse
     assert all("neu.py:4" in v for v in verstoesse)
+
+
+def _media_block(css: str, kopf: str) -> str:
+    """Der Rumpf des ersten @media-Blocks mit genau diesem Kopf."""
+    start = css.index(kopf)
+    tiefe, i = 0, css.index("{", start)
+    for j in range(i, len(css)):
+        tiefe += {"{": 1, "}": -1}.get(css[j], 0)
+        if tiefe == 0:
+            return css[i:j]
+    raise AssertionError(f"{kopf} ohne schließende Klammer")
+
+
+def test_erste_schritte_zweitknopf_bricht_am_handy_um():
+    # NK-223: unter 720 px rutschte nur .btn-primary unter den Text,
+    # „Beispiel löschen“ (.btn-secondary) blieb in der schmalen Spalte.
+    schmal = _media_block(_liest(STYLE), "@media (max-width: 720px)")
+    assert ".erste-schritte-liste .schritt .btn-secondary" in schmal
+
+
+def test_erste_schritte_stand_traegt_klasse_und_bricht_nicht_um():
+    # NK-223: die Regel .erste-schritte-stand griff nie, der Span hatte nur die id.
+    assert re.search(r'<span id="erste-schritte-stand" class="erste-schritte-stand"', _liest(INDEX))
+    regel = re.search(r"\n\.erste-schritte-stand \{([^}]*)\}", _liest(STYLE)).group(1)
+    assert "white-space: nowrap" in regel
+
+
+def test_ablesen_nimmt_das_foto_von_der_kamera():
+    """NK-227: beim Ablesen am Handy öffnet das Foto-Feld direkt die Kamera."""
+    assert 'accept="image/*" capture="environment"' in _liest(APP)
+    assert 'onclick="openAblesen()"' in _liest(INDEX)
+
+
+def test_regelstand_hinweis_klappt_auf_und_fuehrt_zur_vorschau():
+    """NK-229: der Hinweis erklärt sich und zeigt den Unterschied, bevor etwas entsteht."""
+    app = _liest(APP)
+    hinweis = app[app.index('function regelstandHinweis('):]
+    hinweis = hinweis[:hinweis.index('\n}\n')]
+    assert '<details class="regelstand-hinweis"' in hinweis
+    assert 'Unterschied ansehen' in hinweis and 'korrekturErstellen(' in hinweis
+    assert 'REGELSTAND_HINWEIS' not in app
+
+
+def test_heute_ist_das_lokale_datum():
+    """NK-238: ``new Date().toISOString()`` ist UTC -- zwischen Mitternacht und
+    1 bzw. 2 Uhr stand im Ablesedialog und in den anderen Vorbelegungen noch
+    das Datum von gestern."""
+    assert "new Date().toISOString()" not in _liest(APP)

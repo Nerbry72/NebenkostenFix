@@ -51,15 +51,18 @@ Kurze Antworten stehen in den [häufigen Fragen](docs/handbuch/faq.md).
 
 - **Immobilien und Wohnungen** mit beliebig vielen Einheiten und Umlageschlüsseln
 - **Mieter** mit Ein- und Auszug, anteilige Abrechnung und Leerstand inbegriffen
-- **Rechnungen** einzeln, als Sammelrechnung oder als Tabelle, Belege als PDF oder Foto
-- **Zähler** mit Beweisfoto, Zwischenablesung und Doppeltarif (HT/NT), Rückfrage bei unplausiblen Ständen
+- **Rechnungen** einzeln, als Sammelrechnung oder als Tabelle, Belege als PDF oder Foto; die Tabelle lässt sich wie im Vorjahr vorbelegen
+- **Zähler** mit Beweisfoto, Zwischenablesung und Doppeltarif (HT/NT), Rückfrage bei unplausiblen Ständen;
+  alle Zähler einer Immobilie in einem Rutsch ablesen, am Handy mit Foto von der Kamera
 - **Allgemeinverbrauch** (Hauptzähler abzüglich der Wohnungszähler) gemessen zwischen gemeinsamen Ablesungen,
   nach Personentagen geteilt; der Verbrauchsnachweis zeigt die Stände an den Stichtagen
 - **Heizkosten** nach HeizkostenV, CO₂-Kostenaufteilung nach Stufenmodell
-- **Abrechnung** als PDF mit Deckblatt, Anschreiben und Zahlungs-QR-Code (GiroCode)
-- **Korrektur** mit Vorschau alt → neu; Abrechnungen nach älterem Regelstand sind gekennzeichnet.
+- **Abrechnung** als PDF mit Deckblatt, Anschreiben und Zahlungs-QR-Code (GiroCode), danach ein Vorschlag
+  zur Anpassung der Vorauszahlung (§ 560 Abs. 4 BGB)
+- **Korrektur** mit Vorschau alt → neu, zugunsten oder zulasten des Mieters; Abrechnungen nach älterem Regelstand
+  sind gekennzeichnet und erklärt.
   Ab 0.12.0 rechnet der Allgemeinverbrauch bei Mieterwechseln anders, Beträge können sich ändern.
-- **Assistent „Jahr abrechnen“**, Beispielimmobilie, Hilfe mit Begriffen A–Z
+- **Assistent „Jahr abrechnen“** mit Hinweis auf Sprünge gegenüber dem Vorjahr, Beispielimmobilie, Hilfe mit Begriffen A–Z
 - **Import** aus Excel oder CSV, **Umzug** zwischen Rechnern als eine `.nkfix`-Datei
 - **Anmeldung** mit Benutzername und Passwort, bis zu zwei Konten. Vorgabe: in der Windows-App ohne Anmeldung, in Docker mit Anmeldung. Beides lässt sich in den Einstellungen unter „Konto“ umschalten.
 
