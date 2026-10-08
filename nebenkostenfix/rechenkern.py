@@ -598,8 +598,10 @@ def zahl_text(wert) -> str:
     nicht in ein deutsches Dokument.
     """
     # Decimal statt :g -- :g kappt bei sechs Stellen und schreibt grosse
-    # Zahlen als Exponent (NK-222).
-    return format(Decimal(str(wert)).normalize(), 'f').replace('.', ',')
+    # Zahlen als Exponent (NK-222). Ein float erst auf 12 gueltige Stellen:
+    # 55.1 + 62.2 ist 117.30000000000001 (NK-234).
+    zahl = Decimal(f'{wert:.12g}') if isinstance(wert, float) else Decimal(str(wert))
+    return format(zahl.normalize(), 'f').replace('.', ',')
 
 
 def menge_text(wert) -> str:

@@ -31,3 +31,18 @@ def test_umlage_nach_wohnflaeche_mit_komma_und_m2():
     posten = rechne(v)['line_items'][0]
     assert posten['description'] == 'Umlage nach Wohnfläche (52,5 von 113,25 m²)'
     assert all('qm' not in s for s in posten.get('rechenweg', []))
+
+
+def test_zahl_text_ohne_gleitkommareste():
+    """NK-234: Wohnflächen sind floats, ihre Summe trägt Reste wie ...00000001."""
+    assert zahl_text(55.1 + 62.2) == '117,3'
+    assert zahl_text(0.1 + 0.2) == '0,3'
+
+
+def test_umlage_mit_summe_aus_floats():
+    meine = Wohnung(id=1, name='EG links', qm=55.1)
+    andere = Wohnung(id=2, name='EG rechts', qm=62.2)
+    v = replace(vorgang([rechnung('1173.00')]), wohnung=meine, wohnungen=(meine, andere))
+    posten = rechne(v)['line_items'][0]
+    assert posten['description'] == 'Umlage nach Wohnfläche (55,1 von 117,3 m²)'
+    assert not any('0000' in s for s in posten.get('rechenweg', []))
