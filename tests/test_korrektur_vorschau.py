@@ -205,3 +205,37 @@ def test_veraltete_abrechnung_nennt_die_aenderungen_seitdem(auth_client, app_ctx
     db.session.commit()
     erwartet = [REGEL_AENDERUNGEN[REGEL_VERSION]]
     assert aenderungen() == (erwartet, erwartet)
+
+
+# --- NK-235: geänderte Texte allein sind keine Änderung -----------------------
+
+
+def _alte_texte(wert):
+    """Das Ergebnis, wie es eine ältere Fassung beschrieben hätte."""
+    if isinstance(wert, dict):
+        return {k: (f'{v} (alter Text)' if k == 'description' else
+                    [f'{s} qm' for s in v] if k == 'rechenweg' else _alte_texte(v))
+                for k, v in wert.items()}
+    if isinstance(wert, list):
+        return [_alte_texte(v) for v in wert]
+    return wert
+
+
+def test_nur_andere_texte_sind_unveraendert(auth_client, app_ctx):
+    """*Hätte den Fehler gefunden:* nach dem Update von 0.12 auf 0.13 galt jede
+    alte Abrechnung als verändert, weil Beschreibung und Rechenweg „m²“ und
+    deutsche Zahlen bekamen; der Hinweis auf den älteren Regelstand ließ sich
+    nur mit einer Korrektur ohne neue Zahlen entfernen."""
+    mieter_id, _, _ = _welt(app_ctx)
+    bericht_id = _finalisiere(auth_client, mieter_id).id
+    version = _bericht(bericht_id).aktuelle_version
+    version.ergebnis = _alte_texte(version.ergebnis)
+    version.regel_version = '2026-08-28'
+    db.session.commit()
+    assert version.ergebnis['line_items'][0]['description'].endswith('(alter Text)')
+
+    assert _vorschau(auth_client, bericht_id)['unveraendert'] is True
+    antwort = auth_client.post(f'/api/billing/reports/{bericht_id}/korrektur')
+    assert antwort.status_code == 200, antwort.get_data(as_text=True)
+    assert antwort.get_json()['unveraendert'] is True
+    assert BillingReportVersion.query.filter_by(report_id=bericht_id).count() == 1

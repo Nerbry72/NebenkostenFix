@@ -82,6 +82,25 @@ def json_sicher(objekt):
     return str(objekt)
 
 
+# Felder, die nur in Worten sagen, was die Zahlen daneben schon tragen.
+# Ändert eine neue Fassung allein ihren Wortlaut (Zahlformat, „m²“), rechnet
+# die Abrechnung gleich und braucht keine Korrektur (NK-235).
+PROSA = frozenset({'description', 'rechenweg'})
+
+
+def _ohne_prosa(wert):
+    if isinstance(wert, Mapping):
+        return {k: _ohne_prosa(v) for k, v in wert.items() if k not in PROSA}
+    if isinstance(wert, list):
+        return [_ohne_prosa(v) for v in wert]
+    return wert
+
+
+def gleich_gerechnet(alt, neu):
+    """Ob zwei Ergebnisse dieselben Zahlen tragen, gleich wie sie beschrieben sind."""
+    return _ohne_prosa(alt) == _ohne_prosa(neu)
+
+
 def schnappschuss(vorgang, bill_data):
     """Liefert (eingangsdaten, ergebnis) für eine Version (R-DOC-02).
 

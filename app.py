@@ -277,7 +277,7 @@ from nebenkostenfix.heizung import (
 )
 from nebenkostenfix.models import db, User, Property, Apartment, Tenant, Haushaltsgroesse, CostCategory, CostInvoice, Meter, MeterReading, TenantCostProfile, InvoiceDocument, Provider, TenantBillingReport, BillingReportCategory, BillingReportVersion, AnschreibenVorlage, Vermieterdaten, Heizungsanlage
 from nebenkostenfix.girocode_generator import iban_pruefen, iban_saeubern, vermieter_ausweis
-from nebenkostenfix.abrechnung_version import schnappschuss, json_sicher, SOFTWARE_VERSION, REGEL_VERSION, aenderungen_seit
+from nebenkostenfix.abrechnung_version import schnappschuss, json_sicher, SOFTWARE_VERSION, REGEL_VERSION, aenderungen_seit, gleich_gerechnet
 from nebenkostenfix.anschreiben import VORGABE, PLATZHALTER, text_fuer
 from nebenkostenfix import vorauszahlung as vz
 from nebenkostenfix.ablage import Ablage
@@ -3427,7 +3427,7 @@ def korrektur_vorschau(id):
     return jsonify({
         'richtung': richtung,
         'frist_warnung': frist_warnung,
-        'unveraendert': alt is not None and alt == neu,
+        'unveraendert': alt is not None and gleich_gerechnet(alt, neu),
         'veraltet': _regelstand_veraltet(report),
         'positionen': [{'kostenart': k,
                         'alt': str(alt_je[k]) if alt is not None and k in alt_je else None,
@@ -3461,7 +3461,7 @@ def korrigiere_billing_report(id):
     
     ersetzt = report.aktuelle_version
     neue_ergebnis = json_sicher(bill_data)
-    if ersetzt is not None and ersetzt.ergebnis == neue_ergebnis:
+    if ersetzt is not None and gleich_gerechnet(ersetzt.ergebnis, neue_ergebnis):
         if _regelstand_veraltet(report):
             report.regelstand_geprueft = REGEL_VERSION
             db.session.commit()
