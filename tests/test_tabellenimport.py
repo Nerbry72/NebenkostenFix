@@ -442,3 +442,12 @@ def test_vorjahr_braucht_immobilie_und_jahr(haus):
     assert haus.get('/api/import/rechnungen/vorjahr?jahr=2025').status_code == 400
     assert haus.get('/api/import/rechnungen/vorjahr?property_id=1&jahr=x').status_code == 400
     assert haus.get('/api/import/rechnungen/vorjahr?property_id=999&jahr=2025').status_code == 404
+
+
+def test_ein_jahr_weiter_haelt_das_monatsende():
+    """NK-236: der 28.02. vor einem Schaltjahr wird zum 29.02., sonst fiele
+    der letzte Tag des Zeitraums weg."""
+    assert ti._ein_jahr_weiter(date(2027, 2, 28)) == date(2028, 2, 29)
+    assert ti._ein_jahr_weiter(date(2028, 2, 29)) == date(2029, 2, 28)
+    assert ti._ein_jahr_weiter(date(2027, 2, 15)) == date(2028, 2, 15)
+    assert ti._ein_jahr_weiter(date(2027, 12, 31)) == date(2028, 12, 31)

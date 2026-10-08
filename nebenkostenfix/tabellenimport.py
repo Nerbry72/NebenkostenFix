@@ -29,6 +29,7 @@ Betrag: ``1.234,56``, ``1234,56``, ``1234.56``, mit oder ohne ``€``.
 
 from __future__ import annotations
 
+import calendar
 import csv
 import io
 import json
@@ -790,11 +791,15 @@ def verarbeiten(art: str, kopf: list, zeilen: list, zuordnung: dict, uebernehmen
 # --- Routen ----------------------------------------------------------------------
 
 def _ein_jahr_weiter(tag: date) -> date:
-    """Derselbe Tag ein Jahr später; der 29.02. wird zum 28.02."""
-    try:
-        return tag.replace(year=tag.year + 1)
-    except ValueError:
-        return tag.replace(year=tag.year + 1, day=28)
+    """Derselbe Tag ein Jahr später; ein Monatsletzter bleibt Monatsletzter.
+
+    Der 29.02. wird zum 28.02., der 28.02. vor einem Schaltjahr zum 29.02.
+    (NK-236), sonst fiele der letzte Tag eines Zeitraums weg.
+    """
+    letzter = calendar.monthrange(tag.year + 1, tag.month)[1]
+    if tag.day == calendar.monthrange(tag.year, tag.month)[1]:
+        return tag.replace(year=tag.year + 1, day=letzter)
+    return tag.replace(year=tag.year + 1)
 
 
 def init_tabellenimport(app):
