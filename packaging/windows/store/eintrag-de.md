@@ -33,6 +33,7 @@ Version 0.13.0: Vorschlag für die neue Vorauszahlung, alle Zählerstände auf e
 - Der Assistent „Jahr abrechnen“ markiert Kostenarten, die sich gegenüber dem Vorjahr um mehr als 20 % ändern.
 - Der Hinweis „Nach älterem Regelstand erstellt“ erklärt, was sich geändert hat. Die Korrekturvorschau nennt, ob die Korrektur zugunsten oder zulasten des Mieters ausfällt, und warnt nach Ablauf der Frist.
 - Flächen und Mengen in den Umlagetexten stehen mit Dezimalkomma und „m²“.
+- Eine Korrektur rechnet bei einer Heizungsanlage jetzt mit den Heizkosten. Bisher fehlten sie in der neu berechneten Abrechnung.
 
 ## Produktmerkmale
 
