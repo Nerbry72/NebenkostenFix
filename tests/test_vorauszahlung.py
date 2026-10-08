@@ -65,14 +65,39 @@ def test_gerundet_wird_kaufmaennisch_auf_volle_euro():
                      date(2026, 3, 15))['neu'] == '100.00'
 
 
-def test_bisher_ist_die_letzte_vorauszahlung_bis_zum_stichtag():
-    zahlungen = ACHTZIG + [(date(2026, 1, 1), Decimal('95')),
-                           (date(2026, 5, 1), Decimal('95')),
-                           (date(2026, 6, 1), Decimal('95'))]
+def test_bisher_ist_die_aktuelle_vorauszahlung_bis_zum_stichtag():
+    zahlungen = ACHTZIG + [(date(2026, m, 1), Decimal('95')) for m in (1, 2, 3, 5, 6)]
     v = vorschlag(Decimal('1200'), *JAHR_2025, None, zahlungen, date(2026, 3, 15))
     assert v['bisher'] == '95.00'
     # Zwei schon gebuchte Zahlungen ab dem Wirksamwerden: Doppelbuchung droht.
     assert v['kuenftige'] == 2
+
+
+def _bisher(zahlungen):
+    return vorschlag(Decimal('1200'), *JAHR_2025, None, zahlungen,
+                     date(2026, 3, 15))['bisher']
+
+
+def test_bisher_zaehlt_teilzahlungen_eines_monats_zusammen():
+    """NK-237: zwei Teilzahlungen im letzten Monat sind ein Monatsbetrag."""
+    zahlungen = ACHTZIG[:-1] + [(date(2025, 12, 1), Decimal('40')),
+                                (date(2025, 12, 20), Decimal('40'))]
+    assert _bisher(zahlungen) == '80.00'
+
+
+def test_bisher_uebergeht_eine_sammelzahlung():
+    """NK-237: November und Dezember auf einen Schlag ändern die Höhe nicht."""
+    zahlungen = ACHTZIG[:10] + [(date(2025, 11, 1), Decimal('160'))]
+    assert _bisher(zahlungen) == '80.00'
+
+
+def test_bisher_erkennt_eine_erhoehung_ab_zwei_monaten():
+    zahlungen = ACHTZIG + [(date(2026, 1, 1), Decimal('95')),
+                           (date(2026, 2, 1), Decimal('95'))]
+    assert _bisher(zahlungen) == '95.00'
+    # Weniger als drei Monate mit Zahlung: bei Gleichstand gilt der jüngste.
+    assert _bisher([(date(2025, 11, 1), Decimal('80')),
+                    (date(2025, 12, 1), Decimal('95'))]) == '95.00'
 
 
 def test_gleicher_betrag_ist_keine_aenderung():

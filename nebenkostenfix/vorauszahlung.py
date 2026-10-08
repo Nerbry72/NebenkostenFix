@@ -37,12 +37,30 @@ def ab_datum(stichtag: date) -> date:
     return date(stichtag.year + (m - 1) // 12, (m - 1) % 12 + 1, 1)
 
 
+def bisherige_hoehe(zahlungen) -> Decimal:
+    """Die bisherige monatliche Vorauszahlung aus den gebuchten Zahlungen.
+
+    Je Monat summiert, so sind zwei Teilzahlungen ein Monatsbetrag. Von den
+    letzten drei Monaten mit Zahlung zählt der häufigste Betrag, bei
+    Gleichstand der jüngste: eine einzelne Sammel- oder Teilzahlung
+    verfälscht die Höhe nicht (NK-237).
+    """
+    # ponytail: eine Erhöhung zählt erst ab dem zweiten Monat; eine
+    # Serienkennung der Zahlungen gibt es nicht.
+    je_monat = {}
+    for tag, betrag in zahlungen:
+        monat = (tag.year, tag.month)
+        je_monat[monat] = je_monat.get(monat, Decimal(0)) + Decimal(betrag)
+    letzte = [je_monat[m] for m in sorted(je_monat)[-3:]]
+    return max(reversed(letzte), key=letzte.count)
+
+
 def vorschlag(kosten, beginn: date, ende: date, auszug: date | None,
               zahlungen, stichtag: date, teilauswahl: bool = False) -> dict:
     """Der Vorschlag, oder ``{'grund': ...}``, wenn es keinen gibt.
 
     ``zahlungen`` sind die gebuchten Nebenkostenvorauszahlungen des Mieters
-    als (Datum, Betrag); die letzte bis zum Stichtag ist die bisherige Höhe.
+    als (Datum, Betrag); die bis zum Stichtag ergeben die bisherige Höhe.
     """
     if teilauswahl:
         return {'grund': 'Die Abrechnung umfasst nicht alle Kostenarten mit '
@@ -56,7 +74,7 @@ def vorschlag(kosten, beginn: date, ende: date, auszug: date | None,
     if auszug is not None and auszug < ab:
         return {'grund': f'Der Auszug liegt vor dem {ab:%d.%m.%Y}.'}
     anzahl = monate(beginn, ende)
-    bisher = Decimal(bisherige[-1][1])
+    bisher = bisherige_hoehe(bisherige)
     neu = (Decimal(kosten) / anzahl).quantize(Decimal('1'), ROUND_HALF_UP)
     return {
         'ab': ab.isoformat(),
