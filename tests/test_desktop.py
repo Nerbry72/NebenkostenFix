@@ -419,3 +419,12 @@ def test_pdf_oeffnet_auf_der_angegebenen_seite(monkeypatch, tmp_path):
     mit = Path(bruecke.oeffnen('rechnung.pdf', inhalt, 3))
     assert mit.suffix == '.html'
     assert f'{ohne.as_uri()}#page=3' in mit.read_text(encoding='utf-8')
+
+
+def test_haengendes_update_ueber_die_vorversion_bricht_nach_fuenf_minuten_ab():
+    """Der Schritt dauert unter einer Minute; hängt der Installer, soll er
+    nicht den ganzen Windows-Lauf blockieren (NK-239)."""
+    windows = (WURZEL / '.github/workflows/windows.yml').read_text(encoding='utf-8')
+    schritt = windows.split('- name: Vorversion (vor der Umbenennung) installieren', 1)[1]
+    schritt = schritt.split('- name:', 1)[0]
+    assert '\n        timeout-minutes: 5\n' in schritt

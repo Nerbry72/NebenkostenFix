@@ -169,8 +169,9 @@ jobs:
           "- Installer: $($setup.Name), $([math]::Round($setup.Length / 1MB, 1)) MB" >> $env:GITHUB_STEP_SUMMARY
       - name: Vorversion (vor der Umbenennung) installieren, Update darueber, deinstallieren
         # Dauert sonst unter einer Minute. Ein haengender Installer soll nicht
-        # die 40 Minuten des Jobs verbrauchen (PR #12, 2026-09-30).
-        timeout-minutes: 10
+        # die 40 Minuten des Jobs verbrauchen (PR #12, 2026-09-30); er hing
+        # mehrfach, daher 5 statt 10 Minuten.
+        timeout-minutes: 5
         shell: pwsh
         run: |
           $programm = "$env:ProgramFiles\Nebenkostenabrechnung"
