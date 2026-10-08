@@ -428,3 +428,36 @@ def test_haengendes_update_ueber_die_vorversion_bricht_nach_fuenf_minuten_ab():
     schritt = windows.split('- name: Vorversion (vor der Umbenennung) installieren', 1)[1]
     schritt = schritt.split('- name:', 1)[0]
     assert '\n        timeout-minutes: 5\n' in schritt
+
+
+def _paketprobe():
+    sys.path.insert(0, str(WURZEL / 'packaging' / 'windows'))
+    try:
+        import paketprobe
+    finally:
+        sys.path.pop(0)
+    return paketprobe
+
+
+def test_paketprobe_beendet_ein_haengendes_programm_nach_der_frist(monkeypatch, capsys):
+    """Die Probe wartet nicht länger als ihre Frist und meldet den Abbruch
+    (NK-239: der Update-Schritt hing über das timeout-minutes hinaus)."""
+    paketprobe = _paketprobe()
+    monkeypatch.setattr(paketprobe, 'FRIST', 1)
+    monkeypatch.delenv('GITHUB_STEP_SUMMARY', raising=False)
+    assert paketprobe._starten([sys.executable, '-c', 'import time; time.sleep(60)']) is None
+    assert 'ZEITÜBERSCHREITUNG' in capsys.readouterr().out
+    assert paketprobe._starten([sys.executable, '-c', 'print("ok")']) == 0
+
+
+def test_paketprobe_haelt_den_ci_schritt_nicht_ueber_kindprozesse_offen():
+    """Ein Kindprozess, der weiterläuft, erbt nicht die Ausgabe des Schritts.
+    Sonst wartet der Runner auf ihn, obwohl die Probe längst fertig ist
+    (NK-239)."""
+    enkel = ('import subprocess, sys; '
+             'subprocess.Popen([sys.executable, "-c", "import time; time.sleep(20)"])')
+    probe = (f'import sys; sys.path.insert(0, {str(WURZEL / "packaging" / "windows")!r}); '
+             f'import paketprobe; paketprobe._starten([sys.executable, "-c", {enkel!r}])')
+    lauf = subprocess.run([sys.executable, '-c', probe], capture_output=True, timeout=10,
+                          env={k: v for k, v in os.environ.items() if k != 'GITHUB_STEP_SUMMARY'})
+    assert lauf.returncode == 0
