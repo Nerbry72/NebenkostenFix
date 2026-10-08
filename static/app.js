@@ -3247,7 +3247,7 @@ function openAddReadingModal(meterId = null, editReadingId = null) {
     } else {
         meterSelect.disabled = false;
         if (meterId) meterSelect.value = meterId;
-        document.getElementById('reading-date').value = new Date().toISOString().split('T')[0];
+        document.getElementById('reading-date').value = new Date().toLocaleDateString('sv-SE');
         document.getElementById('reading-value').value = '';
         document.getElementById('reading-value-nt').value = '';
         document.getElementById('reading-ablesungsart').value = 'ablesung';
@@ -3372,7 +3372,7 @@ function ablesenListe() {
 function openAblesen() {
     const auswahl = document.getElementById('ablesen-property');
     auswahl.innerHTML = properties.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
-    document.getElementById('ablesen-datum').value = new Date().toISOString().split('T')[0];
+    document.getElementById('ablesen-datum').value = new Date().toLocaleDateString('sv-SE');
     ablesenListe();
     document.getElementById('ablesen-modal').classList.add('active');
 }
@@ -4369,7 +4369,7 @@ async function umzugExportieren() {
     const knopf = document.getElementById('btn-umzug-export');
     knopf.disabled = true;
     try {
-        const name = `NebenkostenFix-${new Date().toISOString().slice(0, 10)}.nkfix`;
+        const name = `NebenkostenFix-${new Date().toLocaleDateString('sv-SE')}.nkfix`;
         if (window.umzugPaket.desktop()) {
             const pfad = await window.umzugPaket.desktopSpeichernUnter(name);
             if (!pfad) return;
@@ -7596,7 +7596,7 @@ async function exportData() {
         }
         let blob;
         let dateiname;
-        const heute = new Date().toISOString().split('T')[0];
+        const heute = new Date().toLocaleDateString('sv-SE');
         if (passphrase) {
             const res = await fetch('/api/export', {
                 method: 'POST',
@@ -7862,7 +7862,7 @@ function openAddPaymentModal() {
         tenantSelect.appendChild(opt);
     });
     
-    document.getElementById('payment-date').value = new Date().toISOString().split('T')[0];
+    document.getElementById('payment-date').value = new Date().toLocaleDateString('sv-SE');
     document.getElementById('payment-amount').value = '';
     document.getElementById('payment-type').value = 'Miete';
     

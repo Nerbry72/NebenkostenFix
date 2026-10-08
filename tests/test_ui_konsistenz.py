@@ -329,3 +329,10 @@ def test_regelstand_hinweis_klappt_auf_und_fuehrt_zur_vorschau():
     assert '<details class="regelstand-hinweis"' in hinweis
     assert 'Unterschied ansehen' in hinweis and 'korrekturErstellen(' in hinweis
     assert 'REGELSTAND_HINWEIS' not in app
+
+
+def test_heute_ist_das_lokale_datum():
+    """NK-238: ``new Date().toISOString()`` ist UTC -- zwischen Mitternacht und
+    1 bzw. 2 Uhr stand im Ablesedialog und in den anderen Vorbelegungen noch
+    das Datum von gestern."""
+    assert "new Date().toISOString()" not in _liest(APP)
