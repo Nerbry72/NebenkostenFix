@@ -2601,11 +2601,15 @@ def finalize_bill():
         # Save Categories
         final_category_ids = category_ids
         if not final_category_ids:
-            # If no explicit categories passed, assume all categories that were billed in line_items
-            cats_billed = set([item['category'] for item in bill_data['line_items']])
-            all_cats = CostCategory.query.filter(CostCategory.name.in_(cats_billed)).all()
-            final_category_ids = [c.id for c in all_cats]
-            
+            # Ohne Auswahl: die Kostenarten der Rechnungen, die den Mieter
+            # treffen. Nicht aus den Postennamen -- der Heizposten heißt
+            # "Heizkosten (Anlage)" und fiel dort heraus (NK-233).
+            vorgang = engine.vorgang
+            final_category_ids = sorted({
+                r.kategorie.id for r in vorgang.rechnungen
+                if r.wohnung_id in (None, vorgang.wohnung.id)
+                and vorgang.profile.get(r.kategorie.id) != 'ignoriert'})
+
         for cid in final_category_ids:
             rc = BillingReportCategory(
                 report_id=report.id,
@@ -3132,8 +3136,8 @@ def get_billing_report_details(id):
             # bleibt der Vorschlag derselbe, den das Anschreiben nannte.
             'tenant_id': report.tenant_id,
             'vorauszahlung': _vorauszahlung_vorschlag(
-                report.tenant, version.ergebnis,
-                [c.category_id for c in report.categories], version.erstellt_am),
+                report.tenant, version.ergebnis, _auswahl(report),
+                version.erstellt_am),
             'versionen': [
                 {'nummer': v.nummer,
                  'erstellt_am': v.erstellt_am.isoformat() if v.erstellt_am else None,
@@ -3353,6 +3357,20 @@ def _korrektur_richtung(saldo) -> str | None:
     return 'zulasten' if Decimal(saldo['neu']) > Decimal(saldo['alt']) else 'zugunsten'
 
 
+def _auswahl(report):
+    """Die Kostenarten, die der Vermieter gewählt hat, oder None für alle.
+
+    Aus dem Schnappschuss der gültigen Version: die gespeicherten
+    Kostenarten älterer Abrechnungen ohne Auswahl sind unvollständig, der
+    Heizposten mit Anlage fehlt dort (NK-233). Nur der Altbestand ohne
+    Version hat nichts anderes.
+    """
+    version = report.aktuelle_version
+    if version is not None:
+        return (version.eingangsdaten or {}).get('kategorien_filter') or None
+    return [c.category_id for c in report.categories] or None
+
+
 def _neu_gerechnet(report):
     """Die Abrechnung gegen die heutigen Daten -- fuer Korrektur und Vorschau."""
     from nebenkostenfix.billing_engine import BillingEngine
@@ -3360,7 +3378,7 @@ def _neu_gerechnet(report):
         tenant_id=report.tenant_id,
         start_date=report.start_date,
         end_date=report.end_date,
-        category_ids=[c.category_id for c in report.categories] or None
+        category_ids=_auswahl(report)
     )
     return engine, engine.calculate_bill()
 

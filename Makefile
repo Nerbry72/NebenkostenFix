@@ -54,6 +54,7 @@ kern:
 	  tests/test_allgemein_messabschnitte.py tests/test_allgemein_negativ.py \
 	  tests/test_zahlformat_umlage.py \
 	  tests/test_vorauszahlung.py tests/test_jahressprung.py \
+	  tests/test_heizung_kostenarten.py \
 	  -q --no-header \
 	  --cov=nebenkostenfix.rechenkern --cov-branch --cov-report=term-missing --cov-fail-under=95
 
