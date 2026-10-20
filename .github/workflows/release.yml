@@ -58,6 +58,13 @@ jobs:
             echo "::error file=nebenkostenfix/abrechnung_version.py::v$v ist schon veroeffentlicht. SOFTWARE_VERSION anheben."
             exit 1
           fi
+          # Ohne Release-Notizen bricht der Release hier ab, nicht erst nach
+          # dem Bau: 0.16.0 ging ohne sie hinaus und der Release-Text bestand
+          # danach aus der Installationsanleitung und einer PR-Titelzeile.
+          if [ ! -s "docs/release-notizen/$v.md" ]; then
+            echo "::error::docs/release-notizen/$v.md fehlt oder ist leer. Was ist neu, was ist behoben? Vorlage: docs/release-notizen/LIESMICH.md"
+            exit 1
+          fi
           echo "wert=$v" >> "$GITHUB_OUTPUT"
           echo "## NebenkostenFix $v" >> "$GITHUB_STEP_SUMMARY"
 
@@ -194,10 +201,25 @@ jobs:
           oder in der Compose-Datei \`NK_VERSION=${VERSION}\` setzen und \`docker compose pull && docker compose up -d\`.
 
           **Prüfsumme (SHA256):** \`$(cut -d' ' -f1 SHA256SUMS.txt)\`
+
+          ---
+
           NOTIZ
+          # Was neu ist, steht im Repo und nicht in --generate-notes: das
+          # erzeugt nur eine Zeile je Pull Request, haengt an dessen Labels
+          # und schreibt "What's Changed" -- englisch, in einer deutschen App.
+          cat "docs/release-notizen/${VERSION}.md" >> notizen.md
+          # Die Vorversion ist die zuletzt veroeffentlichte; dieser Release
+          # entsteht erst in der naechsten Zeile.
+          vorher=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1 --json tagName --jq '.[0].tagName // empty')
+          if [ -n "$vorher" ]; then
+            basis="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare"
+            printf '\n---\n\n**Alle Änderungen im Einzelnen:** [%s...v%s](%s/%s...v%s)\n' \
+              "$vorher" "$VERSION" "$basis" "$vorher" "$VERSION" >> notizen.md
+          fi
           gh release create "v${VERSION}" "${dateien[@]}" \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "NebenkostenFix ${VERSION}" --notes-file notizen.md --generate-notes
+            --title "NebenkostenFix ${VERSION}" --notes-file notizen.md
           echo "- Release: v${VERSION}" >> "$GITHUB_STEP_SUMMARY"
 
   # Die MSIX aus dem Bau geht als neue Einreichung in den Microsoft Store.
