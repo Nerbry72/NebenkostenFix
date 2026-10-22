@@ -24,7 +24,11 @@ def _job_website() -> str:
 def test_die_website_wird_nach_dem_release_angestossen():
     job = _job_website()
     assert 'needs: release' in job
-    assert 'gh workflow run deploy.yml --repo Nerbry72/NebenkostenFix-Website' in job
+    assert ('gh api -X POST repos/Nerbry72/NebenkostenFix-Website/actions/workflows/'
+            'deploy.yml/dispatches -f ref=main') in job
+    # gh workflow run fragt per GraphQL den Default-Branch ab; das scheiterte
+    # beim Release 0.17.0 am Fine-grained Token ohne Contents-Recht.
+    assert 'gh workflow run' not in job
     assert 'GH_TOKEN: ${{ secrets.WEBSITE_TOKEN }}' in job
     assert 'permissions: {}' in job
 
@@ -34,5 +38,5 @@ def test_ohne_token_bleibt_der_release_gruen():
     assert 'if [ -z "$GH_TOKEN" ]; then' in job
     assert 'exit 0' in job
     # Der Aufruf steht in einem if, ein Fehlschlag beendet den Schritt nicht.
-    assert 'if gh workflow run deploy.yml' in job
+    assert 'if gh api -X POST' in job
     assert 'exit 1' not in job

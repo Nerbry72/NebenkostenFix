@@ -253,7 +253,10 @@ jobs:
             echo "::warning::WEBSITE_TOKEN fehlt, die Website folgt mit dem taeglichen Lauf."
             exit 0
           fi
-          if gh workflow run deploy.yml --repo Nerbry72/NebenkostenFix-Website; then
+          # Direkt per REST und mit fester ref: der Unterbefehl "workflow run" fragt per
+          # GraphQL den Default-Branch ab, das darf das Token ohne Contents-Recht
+          # nicht (beim Release 0.17.0 gescheitert).
+          if gh api -X POST repos/Nerbry72/NebenkostenFix-Website/actions/workflows/deploy.yml/dispatches -f ref=main; then
             echo "- Website: Deploy angestossen" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "::warning::Website-Anstoss gescheitert (Token abgelaufen?), die Website folgt mit dem taeglichen Lauf."
