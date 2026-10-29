@@ -763,3 +763,25 @@ class User(db.Model):
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+
+class ApiSchluessel(db.Model):
+    """Zugriffsschluessel fuer Programme ohne Browser (siehe
+    ``nebenkostenfix/zugriffsschluessel.py``).
+
+    Der Schluessel selbst steht nirgends, nur sein SHA-256. Ein langsamer
+    Passwort-Hash waere hier verschenkt: der Schluessel ist ein Zufallswert
+    mit 256 Bit, kein Wort, das jemand mit einem Woerterbuch erraten kann.
+    Auch keine ersten Zeichen: der Schluessel erscheint genau einmal, danach
+    erkennt man ihn am Namen.
+    """
+    __tablename__ = 'api_schluessel'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    name = db.Column(db.String(60), nullable=False)
+    hash = db.Column(db.String(64), unique=True, nullable=False)
+    umfang = db.Column(db.String(10), nullable=False)
+    angelegt_am = db.Column(db.DateTime, nullable=False, default=zeit.jetzt_utc)
+    zuletzt_benutzt_am = db.Column(db.DateTime, nullable=True)
+
+    user = db.relationship('User')

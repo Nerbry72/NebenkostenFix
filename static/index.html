@@ -637,6 +637,78 @@
                             </div>
                     </div>
 
+                    <!-- Zugriffsschluessel fuer Programme ohne Browser, etwa einen
+                         MCP-Server fuer einen KI-Assistenten. Der Server nennt den
+                         Schluessel genau einmal; die Box zeigt ihn in diesem Moment,
+                         danach erkennt man ihn in der Liste nur am Namen. -->
+                    <div data-gruppe="konto" class="dashboard-card glass-panel" id="zugriffsschluessel-karte">
+                        <div class="karten-kopf">
+                            <h3>Zugriffsschlüssel</h3>
+                        </div>
+                        <p class="karten-text">
+                            Mit einem Zugriffsschlüssel arbeitet ein Programm ohne Browser mit Ihren Daten,
+                            zum Beispiel ein KI-Assistent über einen MCP-Server. „Nur lesen“ erlaubt Abfragen
+                            und Prüfungen, „Lesen und erfassen“ zusätzlich neue Rechnungen mit Beleg, Zählerstände
+                            und Zahlungen. Löschen, Abrechnungen festsetzen und Sicherungen gehen nur hier in der
+                            Oberfläche.
+                        </p>
+                        <div class="warnkasten" role="note">
+                            <h4><i class="ph ph-warning-circle" aria-hidden="true"></i> Achtung: Ein
+                                KI-Assistent sieht alle Ihre Daten</h4>
+                            <p>
+                                Ein Programm mit Zugriffsschlüssel sieht alles, was Sie hier sehen: Mieter,
+                                Beträge, Zählerstände. Verbinden Sie einen KI-Assistenten, gehen diese Daten
+                                an dessen Anbieter. Mit einem lokalen Modell bleiben sie auf Ihrem Rechner.
+                            </p>
+                        </div>
+                        <div class="table-container">
+                            <table class="tabelle">
+                                <thead>
+                                    <tr class="tabellen-kopfzeile">
+                                        <th class="zelle">Name</th>
+                                        <th class="zelle">Umfang</th>
+                                        <th class="zelle">Konto</th>
+                                        <th class="zelle">Zuletzt benutzt</th>
+                                        <th class="spalte-knopf"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="zugriffsschluessel-zeilen"></tbody>
+                            </table>
+                        </div>
+                        <div class="karten-abschnitt-getrennt">
+                            <h4 class="abstand-unten-klein">Neuen Schlüssel anlegen</h4>
+                            <div class="form-group">
+                                <label for="zugriffsschluessel-name">Name</label>
+                                <input type="text" id="zugriffsschluessel-name" maxlength="60"
+                                    placeholder="z. B. Claude auf dem Laptop">
+                            </div>
+                            <div class="form-group">
+                                <label for="zugriffsschluessel-umfang">Umfang</label>
+                                <select id="zugriffsschluessel-umfang">
+                                    <option value="lesen">Nur lesen</option>
+                                    <option value="erfassen">Lesen und erfassen</option>
+                                </select>
+                            </div>
+                            <button class="btn-primary" id="btn-zugriffsschluessel-anlegen"
+                                onclick="zugriffsschluesselAnlegen()">Schlüssel anlegen</button>
+                        </div>
+                        <div class="karten-abschnitt-getrennt" id="zugriffsschluessel-neu" hidden>
+                            <h4 class="abstand-unten-klein">Ihr neuer Schlüssel</h4>
+                            <p class="karten-text">
+                                Kopieren Sie ihn jetzt in das Programm. Er wird nur dieses eine Mal angezeigt.
+                            </p>
+                            <div class="form-group">
+                                <label for="zugriffsschluessel-wert">Schlüssel</label>
+                                <input type="text" id="zugriffsschluessel-wert" readonly
+                                    autocomplete="off" spellcheck="false">
+                            </div>
+                            <div class="knopf-zeile">
+                                <button class="btn-primary" onclick="zugriffsschluesselKopieren()">Schlüssel kopieren</button>
+                                <button class="btn-secondary" onclick="zugriffsschluesselAusblenden()">Schließen</button>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- NK-175: Updates kommen von der Projektseite auf GitHub,
                          signiert. Im Store-Paket installiert der Store selbst. -->
                     <div data-gruppe="updates" class="dashboard-card glass-panel">

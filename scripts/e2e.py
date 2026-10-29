@@ -42,6 +42,7 @@ import argparse
 import json
 import os
 import re
+import secrets
 import shutil
 import socket
 import subprocess
@@ -83,9 +84,21 @@ ABBILD_VERSION = 'e2e'
 
 CODE_MUSTER = re.compile(r'\b([0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4})\b')
 
+# Ein Beleg, den die Upload-Pruefung als PDF erkennt (erste Bytes, NK-129).
+PDF = b'%PDF-1.7\n%\xe2\xe3\xcf\xd3\n1 0 obj\n<<>>\nendobj\n%%EOF\n'
+
 
 class Abbruch(Exception):
     """Ein Schritt ist gescheitert. Die Meldung geht so an den Nutzer."""
+
+
+class HttpFehler(Abbruch):
+    """Der Server hat mit einem Fehlerstatus geantwortet. ``status`` traegt
+    ihn, damit ein Schritt eine erwartete Sperre von einem Fehler trennt."""
+
+    def __init__(self, meldung: str, status: int):
+        super().__init__(meldung)
+        self.status = status
 
 
 # --- Teile, die sich ohne Docker pruefen lassen ------------------------------
@@ -133,6 +146,19 @@ def umgebung_bauen(port: int, puid: int, pgid: int, version: str) -> str:
             f'NK_VERSION={version}\n')
 
 
+def formular(felder: dict, dateiname: str, inhalt: bytes) -> tuple[bytes, str]:
+    """multipart/form-data mit einer Datei im Feld ``file``, wie es die
+    Oberflaeche beim Beleg schickt. urllib baut das nicht selbst."""
+    grenze = f'nk-e2e-{secrets.token_hex(8)}'
+    teile = [f'--{grenze}\r\nContent-Disposition: form-data; name="{name}"'
+             f'\r\n\r\n{wert}\r\n'.encode() for name, wert in felder.items()]
+    teile.append(f'--{grenze}\r\nContent-Disposition: form-data; name="file"; '
+                 f'filename="{dateiname}"\r\nContent-Type: application/pdf'
+                 f'\r\n\r\n'.encode() + inhalt + b'\r\n')
+    teile.append(f'--{grenze}--\r\n'.encode())
+    return b''.join(teile), f'multipart/form-data; boundary={grenze}'
+
+
 def tabelle(schritte: list[tuple[str, float]], gesamt: float,
             marke: float = MARKE_SEKUNDEN) -> str:
     """Die Schlussabrechnung: was wie lange gedauert hat, und ob es reicht."""
@@ -164,6 +190,9 @@ class Lauf:
         self.schritte: list[tuple[str, float]] = []
         self.oeffner = urllib.request.build_opener(
             urllib.request.HTTPCookieProcessor(CookieJar()))
+        # Fuer Aufrufe mit Zugriffsschluessel: kein Keksglas, damit keine
+        # Sitzung aus dem Login mitreist.
+        self.ohne_sitzung = urllib.request.build_opener()
 
     # -- Werkzeug --
 
@@ -177,17 +206,26 @@ class Lauf:
     def _url(self, pfad: str) -> str:
         return f'http://127.0.0.1:{self.port}{pfad}'
 
-    def _ruf(self, methode: str, pfad: str, nutzlast=None, roh: bool = False):
-        """Ein API-Aufruf mit der Sitzung aus dem Login."""
+    def _ruf(self, methode: str, pfad: str, nutzlast=None, roh: bool = False,
+             schluessel: str | None = None, datei: tuple[bytes, str] | None = None):
+        """Ein API-Aufruf mit der Sitzung aus dem Login -- oder, mit
+        ``schluessel``, ohne Cookie nur mit dem Zugriffsschluessel. ``datei``
+        ist ein fertiges Formular aus ``formular()``."""
         daten = None
         kopf = {}
         if nutzlast is not None:
             daten = json.dumps(nutzlast).encode()
             kopf['Content-Type'] = 'application/json'
+        if datei is not None:
+            daten, kopf['Content-Type'] = datei
+        oeffner = self.oeffner
+        if schluessel is not None:
+            kopf['Authorization'] = f'Bearer {schluessel}'
+            oeffner = self.ohne_sitzung
         anfrage = urllib.request.Request(
             self._url(pfad), data=daten, headers=kopf, method=methode)
         try:
-            with self.oeffner.open(anfrage, timeout=120) as antwort:
+            with oeffner.open(anfrage, timeout=120) as antwort:
                 inhalt = antwort.read()
                 if roh:
                     return inhalt
@@ -198,8 +236,21 @@ class Lauf:
                 return json.loads(inhalt) if inhalt else {}
         except urllib.error.HTTPError as fehler:
             text = fehler.read().decode('utf-8', 'replace')[:500]
-            raise Abbruch(
-                f'{methode} {pfad} antwortet {fehler.code}: {text}') from fehler
+            raise HttpFehler(
+                f'{methode} {pfad} antwortet {fehler.code}: {text}',
+                fehler.code) from fehler
+
+    def _erwarte(self, status: int, methode: str, pfad: str, schluessel: str,
+                 nutzlast=None) -> None:
+        """Der Aufruf muss mit genau diesem Status scheitern."""
+        try:
+            self._ruf(methode, pfad, nutzlast, schluessel=schluessel)
+        except HttpFehler as fehler:
+            if fehler.status == status:
+                return
+            raise
+        raise Abbruch(f'{methode} {pfad} mit Zugriffsschluessel ging durch, '
+                      f'erwartet war {status}.')
 
     def _schritt(self, name: str, arbeit) -> None:
         start = time.monotonic()
@@ -371,6 +422,85 @@ class Lauf:
             raise Abbruch(f'Der Download ist kein PDF: {pdf[:40]!r}')
         return f'{summe:.2f} Euro, PDF mit {len(pdf)} Bytes heruntergeladen'
 
+    def zugriffsschluessel(self) -> str:
+        """Der Weg eines MCP-Servers (#47): ohne Browser und ohne Cookie, nur
+        mit Zugriffsschluessel. Gegen waitress im gebauten Abbild, nicht
+        gegen den Testclient -- hier zeigt sich, ob Header und Upload
+        wirklich durchkommen."""
+        def anlegen(name, umfang):
+            return self._ruf('POST', '/api/zugriffsschluessel',
+                             {'name': name, 'umfang': umfang})['schluessel']
+        lesen = anlegen('E2E lesen', 'lesen')
+        erfassen = anlegen('E2E erfassen', 'erfassen')
+
+        # Lesen und pruefen
+        wer = self._ruf('GET', '/api/auth/me', schluessel=lesen)
+        if wer.get('username') != KONTO or (wer.get('schluessel') or {}).get('umfang') != 'lesen':
+            raise Abbruch(f'/api/auth/me mit Schluessel meldet {wer!r}.')
+        haus = next(h['id'] for h in self._ruf('GET', '/api/properties', schluessel=lesen)
+                    if h['name'] == 'E2E-Haus')
+        mieter = next(m['id'] for m in self._ruf('GET', '/api/tenants', schluessel=lesen)
+                      if m['name'] == 'Erika Mustermann')
+        kategorien = {k['name']: k['id']
+                      for k in self._ruf('GET', '/api/categories', schluessel=lesen)}
+        vorpruefung = self._ruf('POST', '/api/billing/preflight', {
+            'tenant_id': mieter, 'start_date': '2025-01-01', 'end_date': '2025-12-31',
+            'category_ids': [kategorien['Grundsteuer']]}, schluessel=lesen)
+        if 'overall' not in vorpruefung:
+            raise Abbruch(f'Die Vorpruefung liefert kein Ergebnis: {vorpruefung!r}')
+
+        # Erfassen: eine Rechnung mit Beleg, ein Sammelbeleg mit Rechnung
+        rechnung = {'category_id': kategorien['Wasserversorgung'], 'property_id': haus,
+                    'amount': '310.00', 'start_date': '2026-01-01', 'end_date': '2026-03-31'}
+        self._erwarte(403, 'POST', '/api/invoices', lesen, rechnung)
+        mit_beleg = self._ruf('POST', '/api/invoices', schluessel=erfassen,
+                              datei=formular(rechnung, 'e2e-stadtwerke.pdf', PDF))['id']
+        sammel = self._ruf('POST', '/api/invoice_documents', schluessel=erfassen,
+                           datei=formular({'property_id': haus}, 'e2e-sammel.pdf', PDF))['id']
+        self._ruf('POST', '/api/invoices', {**rechnung, 'invoice_document_id': sammel},
+                  schluessel=erfassen)
+        belege = self._ruf('GET', '/api/invoice_documents', schluessel=lesen)
+        if sammel not in [b['id'] for b in belege]:
+            raise Abbruch(f'Der Sammelbeleg {sammel} fehlt in /api/invoice_documents.')
+
+        # Zaehlerstand und Zahlung. Den Zaehler legt der Mensch an.
+        zaehler = self._ruf('POST', '/api/meters', {
+            'category_id': kategorien['Wasserversorgung'], 'property_id': haus,
+            'is_main_meter': True, 'meter_number': 'E2E-W1'})['id']
+        self._ruf('POST', '/api/readings', {'meter_id': zaehler,
+                  'reading_date': '2026-01-01', 'value': '100'}, schluessel=erfassen)
+        self._ruf('POST', '/api/payments', {
+            'tenant_id': mieter, 'amount': '80.00', 'type': 'Nebenkostenvorauszahlung',
+            'payment_date': '2026-01-03'}, schluessel=erfassen)
+
+        # Eine Serie ab einem vorhandenen Soll laesst es stehen: berichtigen
+        # darf nur der Mensch (Review zu #48).
+        self._ruf('POST', f'/api/tenants/{mieter}/vorauszahlung_soll',
+                  {'gueltig_ab': '2026-01-01', 'betrag': '80.00'})
+        serie = self._ruf('POST', '/api/payments', {
+            'tenant_id': mieter, 'amount': '1.00', 'type': 'Nebenkostenvorauszahlung',
+            'payment_date': '2026-01-01', 'end_date': '2026-02-28', 'is_recurring': True},
+            schluessel=erfassen)
+        soll = self._ruf('GET', f'/api/tenants/{mieter}/vorauszahlungen',
+                         schluessel=lesen)['soll']
+        if not serie.get('soll_unveraendert') or \
+                [(s['gueltig_ab'], s['betrag']) for s in soll] != [('2026-01-01', '80.00')]:
+            raise Abbruch(f'Die Serie mit Schluessel hat das Soll veraendert: {soll!r}')
+
+        # Was nur die Oberflaeche darf
+        self._erwarte(403, 'DELETE', f'/api/invoices/{mit_beleg}', erfassen)
+        self._erwarte(403, 'GET', '/api/export', erfassen)
+        self._erwarte(403, 'POST', '/api/billing/finalize', erfassen, {
+            'tenant_id': mieter, 'start_date': '2026-01-01', 'end_date': '2026-12-31'})
+        self._erwarte(403, 'GET', '/api/zugriffsschluessel', erfassen)
+
+        # Widerrufen
+        for eintrag in self._ruf('GET', '/api/zugriffsschluessel'):
+            self._ruf('DELETE', f'/api/zugriffsschluessel/{eintrag["id"]}')
+        self._erwarte(401, 'GET', '/api/properties', erfassen)
+        return ('lesen, pruefen, Rechnung mit Beleg, Sammelbeleg, Zaehlerstand, '
+                'Zahlung, Soll bleibt; Sperren 403, nach dem Widerruf 401')
+
     def _bindziele(self) -> list[str]:
         """Wohin docker-compose.yml die Bind-Mounts im Container legt.
 
@@ -447,10 +577,11 @@ class Lauf:
             self._schritt('5 Einrichtung im Browser', self.konto_anlegen)
             self._schritt('6 anmelden', self.anmelden)
             self._schritt('7 Abrechnung erzeugen', self.abrechnung_erzeugen)
+            self._schritt('8 Zugriffsschluessel', self.zugriffsschluessel)
         finally:
             gesamt = time.monotonic() - beginn
             if self.arbeit is not None:
-                self._schritt('8 herunterfahren', self.stapel_runter)
+                self._schritt('9 herunterfahren', self.stapel_runter)
 
         print(tabelle(self.schritte, gesamt))
         return 0 if marke_gehalten(gesamt) else 1

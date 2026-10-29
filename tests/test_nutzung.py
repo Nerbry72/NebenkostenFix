@@ -620,7 +620,8 @@ def test_die_ausfuhr_nimmt_jede_tabelle_mit_ausser_den_konten(auth_client, app_c
     """NK-269: Zahlungen, Soll und Versionen fehlten -- „alle Daten“ waren es nicht.
 
     Nur die Anmeldekonten bleiben draussen: ein Passwort-Hash gehoert in
-    keine Datei, die den Rechner verlaesst.
+    keine Datei, die den Rechner verlaesst. Dasselbe gilt fuer die
+    Zugriffsschluessel: ihr Hash oeffnet die API.
     """
     from nebenkostenfix.models import Payment, VorauszahlungSoll, db
 
@@ -632,7 +633,7 @@ def test_die_ausfuhr_nimmt_jede_tabelle_mit_ausser_den_konten(auth_client, app_c
 
     antwort = auth_client.get('/api/export')
     ausfuhr = _json(antwort)
-    assert set(ausfuhr) == {t.name for t in db.metadata.sorted_tables} - {'users'}
+    assert set(ausfuhr) == {t.name for t in db.metadata.sorted_tables} - {'users', 'api_schluessel'}
     assert [z['payment_date'] for z in ausfuhr['payments']] == ['2024-02-01']
     assert [z['gueltig_ab'] for z in ausfuhr['vorauszahlung_soll']] == ['2024-01-01']
     assert 'password_hash' not in antwort.get_data(as_text=True)
