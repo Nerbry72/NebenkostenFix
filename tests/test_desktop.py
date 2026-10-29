@@ -839,6 +839,9 @@ class _ServerFenster:
     def get_current_url(self):
         return self.url
 
+    def set_title(self, titel):
+        self.titel = titel
+
     def evaluate_js(self, _):
         pass
 
@@ -906,6 +909,40 @@ def test_servermodus_startet_keinen_lokalen_server(servermodus, testserver):
     assert offen.geladen == [basis + '/', basis + '/']
     offen.navigiert(basis + '/#/abrechnung')
     assert offen.geladen == [basis + '/', basis + '/']
+
+
+def test_navigationssperre_endet_bei_fremder_weiterleitung(servermodus, testserver, monkeypatch):
+    """Leitet „/“ auf einen anderen Host (Anmelde-Proxy), lädt das Fenster
+    nicht ewig neu: nach wenigen Rücksprüngen kommt die Offline-Seite."""
+    fenster, _ = servermodus
+    basis, antworten = testserver
+    antworten['/api/health'] = GESUND
+    windows_ordner.einstellungen_schreiben(server=basis)
+
+    def load_url(self, url):
+        self.geladen.append(url)
+        self.navigiert('https://anmeldung.example/login')
+
+    monkeypatch.setattr(_ServerFenster, 'load_url', load_url)
+    assert desktop.main([]) == 0
+    (offen,) = fenster
+    assert offen.geladen == [basis + '/'] * (1 + desktop.RUECKSPRUENGE)
+    (seite,) = offen.html
+    assert 'Keine Verbindung zum Server' in seite and 'anmeldung.example' in seite
+
+
+def test_fenstertitel_folgt_der_geprueften_adresse(servermodus, monkeypatch):
+    fenster, _ = servermodus
+    # Die Prüfung übernimmt http → https: der Titel sagt nicht mehr „unverschlüsselt“.
+    monkeypatch.setattr(desktop, 'server_pruefen', lambda _: (True, None, 'https://nk.example'))
+    windows_ordner.einstellungen_schreiben(server='http://nk.example')
+    assert desktop.main([]) == 0
+    assert fenster[-1].titel == 'NebenkostenFix – verbunden mit nk.example'
+    # Von Hand ohne Schema eingetragen: der Host steht trotzdem im Titel.
+    monkeypatch.setattr(desktop, 'server_pruefen', lambda _: (False, desktop.NICHT_ERREICHBAR, None))
+    windows_ordner.einstellungen_schreiben(server='nk.example:8443')
+    assert desktop.main([]) == 0
+    assert fenster[-1].titel == 'NebenkostenFix – verbunden mit nk.example:8443'
 
 
 def test_servermodus_ohne_server_zeigt_offline_seite(servermodus):
@@ -997,6 +1034,17 @@ def zeitgeber(monkeypatch):
     return geplant
 
 
+LOKAL_BASIS = 'http://127.0.0.1:50123'
+
+
+def _lokale_bruecke(ordner, url=LOKAL_BASIS + '/#/einstellungen'):
+    """Die Brücke der lokalen App, das Fenster zeigt die eigene Oberfläche."""
+    bruecke = desktop.Bruecke()
+    bruecke._fenster = _UrlFenster(ordner / 'unbenutzt.bin', url)
+    bruecke._basis = LOKAL_BASIS
+    return bruecke
+
+
 def test_server_verbinden_schreibt_nur_server(lokal, testserver, zeitgeber):
     basis, antworten = testserver
     antworten['/api/health'] = GESUND
@@ -1005,7 +1053,7 @@ def test_server_verbinden_schreibt_nur_server(lokal, testserver, zeitgeber):
     datei = windows_ordner.einstellungen_datei()
     vorher = _abschnitte(datei)
     neu_gestartet = []
-    bruecke = desktop.Bruecke()
+    bruecke = _lokale_bruecke(lokal)
     bruecke._neustart = lambda: neu_gestartet.append(True)
 
     assert bruecke.server_verbinden(basis + '/') == {'ok': True, 'adresse': basis}
@@ -1024,13 +1072,31 @@ def test_server_verbinden_fehler_schreibt_nichts(lokal, testserver, zeitgeber):
     windows_ordner.einstellungen_schreiben(datenordner=lokal / 'daten')
     datei = windows_ordner.einstellungen_datei()
     vorher = datei.read_bytes()
-    bruecke = desktop.Bruecke()
+    bruecke = _lokale_bruecke(lokal)
     bruecke._neustart = lambda: pytest.fail('Neustart trotz Fehler')
     for adresse, meldung in ((basis, desktop.KEIN_NK), ('https://nk.example/nk', desktop.OHNE_PFAD),
                              ('ftp://nk.example', desktop.OHNE_PFAD)):
         assert bruecke.server_verbinden(adresse) == {'ok': False, 'meldung': meldung}
     assert datei.read_bytes() == vorher
     assert zeitgeber == []
+
+
+def test_server_verbinden_nur_aus_der_eigenen_oberflaeche(lokal, zeitgeber, monkeypatch):
+    """Eine fremde Seite im lokalen Fenster stellt die App nicht still um."""
+    windows_ordner.einstellungen_schreiben(datenordner=lokal / 'daten')
+    datei = windows_ordner.einstellungen_datei()
+    vorher = datei.read_bytes()
+    monkeypatch.setattr(desktop, 'server_pruefen', lambda _: pytest.fail('geprüft trotz Fremder'))
+    for fremd in ('https://angreifer.example/', 'http://127.0.0.1:50124/', None, RuntimeError('zu')):
+        bruecke = _lokale_bruecke(lokal, fremd)
+        bruecke._neustart = lambda: pytest.fail('Neustart trotz Fremder')
+        assert bruecke.server_verbinden('https://angreifer.example') == {
+            'ok': False, 'meldung': desktop.FREMDE_SEITE}
+    # Vor dem Start des lokalen Servers kennt die Brücke keinen Ursprung.
+    ohne = desktop.Bruecke()
+    ohne._fenster = _UrlFenster(lokal / 'unbenutzt.bin', LOKAL_BASIS + '/')
+    assert ohne.server_verbinden('https://nk.example')['ok'] is False
+    assert datei.read_bytes() == vorher and zeitgeber == []
 
 
 def test_neustart_umgebung_bereinigt(monkeypatch):

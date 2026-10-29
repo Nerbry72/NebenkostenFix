@@ -18,10 +18,16 @@ Server im eigenen Fenster, wie ein Browser, nur ohne Adressleiste.
   Jede Methode prüft vorher, ob das Fenster noch die Seite des Servers zeigt. Ordnerwahl,
   Umzug, Umschalten und Neustart gibt es dort nicht.
 - **Navigationssperre:** Landet das Fenster auf einer fremden Seite, lädt es die
-  Startseite des Servers neu.
+  Startseite des Servers neu. Schickt der Server selbst immer wieder weg (etwa ein
+  Anmelde-Proxy vor „/“), zeigt das Fenster nach drei Rücksprüngen binnen zehn Sekunden
+  die Offline-Seite mit der Weiterleitungsmeldung, statt endlos neu zu laden.
+- **Umschalten nur aus der eigenen Oberfläche:** `server_verbinden` der lokalen App prüft,
+  ob das Fenster die Seite des lokalen Servers zeigt. Eine fremde Seite kann die App nicht
+  umstellen.
 - **Menü im Servermodus:** Datei → Drucken, Neu laden, Auf diesem Rechner arbeiten …,
   Beenden; Hilfe → Über. Der Fenstertitel nennt den Server, bei `http://` mit dem Zusatz
-  „(unverschlüsselt)“.
+  „(unverschlüsselt)“. Nach der Prüfung folgt er der geprüften Adresse, also ohne den
+  Zusatz, wenn der Server von `http://` auf `https://` weiterleitet.
 - **Updates:** Auch im Servermodus sucht die App beim Start nach einer neuen Version (von
   der Projektseite, nicht vom Server). Sie fragt vor der Installation und startet danach
   wieder im Servermodus. Gemerkt wird der Zeitpunkt der Suche im lokalen App-Ordner, nicht

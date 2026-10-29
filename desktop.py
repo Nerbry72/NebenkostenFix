@@ -218,6 +218,7 @@ class Bruecke:
         # .NET-Objekten blockierte dabei die Oberfläche (0.9.0).
         self._fenster = None
         self._neustart = None
+        self._basis = None  # der lokale Server, sobald er läuft
 
     def speichern(self, dateiname: str, inhalt_base64: str):
         import webview
@@ -305,6 +306,9 @@ class Bruecke:
         """Karte „Mit einem Server verbinden“ (#45): erst prüfen, dann nur
         ``[Server] Adresse`` eintragen und neu starten. Scheitert die
         Prüfung, bleibt die INI, wie sie ist. Der Datenordner bleibt immer."""
+        if not _fenster_bei(self._fenster, self._basis):
+            # Eine fremde Seite im Fenster soll die App nicht still umstellen.
+            return {'ok': False, 'meldung': FREMDE_SEITE}
         ok, meldung, endadresse = server_pruefen(adresse)
         if not ok:
             return {'ok': False, 'meldung': meldung}
@@ -329,10 +333,12 @@ VERSCHLUESSELUNG = ('Eine verschlüsselte Verbindung ist nicht möglich. Läuft 
 WEITERLEITUNG = ('Der Server leitet auf eine andere Adresse weiter ({ziel}). Bitte tragen '
                  'Sie diese Adresse direkt ein.')
 OHNE_PFAD = 'Bitte nur die Adresse ohne Pfad eintragen, zum Beispiel https://server:8080.'
+FREMDE_SEITE = 'Die Verbindung lässt sich nur in den Einstellungen dieser App ändern.'
 STANDARDPORT = {'http': 80, 'https': 443}
 ZURUECK_FRAGE = ('Zurück zu den Daten auf diesem Rechner? Die Verbindung zum Server wird '
                  'getrennt. Auf dem Server und auf diesem Rechner geht nichts verloren.')
 NEUSTART_NACH = 1.5  # Sekunden
+RUECKSPRUENGE = 3  # binnen 10 Sekunden, danach die Offline-Seite
 UPDATE_FRAGE = ('Eine neue Version von NebenkostenFix ist verfügbar ({version}). Jetzt '
                 'installieren? Die App startet danach neu.')
 
@@ -396,6 +402,19 @@ def _ursprung(url) -> tuple | None:
 def _gleicher_ursprung(url, basis) -> bool:
     eigen = _ursprung(url)
     return eigen is not None and eigen == _ursprung(basis)
+
+
+def _fenster_bei(fenster, basis) -> bool:
+    """Zeigt das Fenster gerade eine Seite von ``basis``? Grundlage jeder
+    Brückenmethode, die mehr kann als ein Browser."""
+    try:
+        jetzt = fenster.get_current_url()
+    except Exception:  # noqa: BLE001 -- ohne Adresse kein Zugriff
+        jetzt = None
+    if _gleicher_ursprung(jetzt, basis):
+        return True
+    protokoll.warning('Brücke verweigert: Seite %s gehört nicht zu %s', jetzt, basis)
+    return False
 
 
 def _nach_https(basis: str, ziel: str) -> str | None:
@@ -469,12 +488,7 @@ class ServerBruecke:
         self._basis = basis
 
     def _innen(self) -> Bruecke | None:
-        try:
-            jetzt = self._fenster.get_current_url()
-        except Exception:  # noqa: BLE001 -- ohne Adresse kein Zugriff
-            jetzt = None
-        if not _gleicher_ursprung(jetzt, self._basis):
-            protokoll.warning('Brücke verweigert: Seite %s gehört nicht zu %s', jetzt, self._basis)
+        if not _fenster_bei(self._fenster, self._basis):
             return None
         innen = Bruecke()
         innen._fenster = self._fenster
@@ -710,6 +724,7 @@ def fenster_starten(datenordner: Path) -> int:  # pragma: no cover - braucht GUI
             server, _ = server_starten(HuellenSchutz(app_modul.app, token, nach_vorne))
             zustand.update(server=server, app_modul=app_modul,
                            basis=f'http://127.0.0.1:{server.effective_port}')
+            bruecke._basis = zustand['basis']
             instanz.eintragen(server.effective_port, token)
             fenster.load_url(f"{zustand['basis']}/huelle/start?t={token}")
         except Exception as ausnahme:
@@ -785,6 +800,14 @@ def update_anbieten(fenster) -> None:
         _meldung(f'Das Update konnte nicht installiert werden. {fehler}')
 
 
+def server_titel(adresse) -> str:
+    """Fenstertitel im Servermodus, auch für eine von Hand eingetragene Adresse."""
+    basis = adresse_normieren(adresse) or str(adresse)
+    host = urllib.parse.urlsplit(basis).netloc or basis
+    return f'{TITEL} – verbunden mit {host}' + (
+        ' (unverschlüsselt)' if basis.startswith('http://') else '')
+
+
 def server_fenster_starten(adresse: str) -> int:
     """Servermodus (#45): kein lokaler Server, der Datenordner bleibt zu."""
     import webview
@@ -796,20 +819,19 @@ def server_fenster_starten(adresse: str) -> int:
         _meldung(f'{TITEL} läuft bereits.')
         return 1
 
-    host = urllib.parse.urlsplit(adresse).netloc
-    zusatz = f' – verbunden mit {host}' + (' (unverschlüsselt)' if adresse.startswith('http://')
-                                           else '')
     bruecke = ServerBruecke(adresse)
-    zustand = {'basis': None}
+    zustand = {'basis': None, 'spruenge': []}
     fenster = webview.create_window(
-        TITEL + zusatz, html=startseite(), js_api=bruecke,
+        server_titel(adresse), html=startseite(), js_api=bruecke,
         width=1440, height=900, min_size=(1024, 700), text_select=True)
     bruecke._fenster = fenster
 
     def laden():
         ok, meldung, endadresse = server_pruefen(adresse)
+        zustand['spruenge'] = []
         if ok:
             zustand['basis'] = bruecke._basis = endadresse
+            fenster.set_title(server_titel(endadresse))  # http → https übernommen
             fenster.load_url(endadresse + '/')
         else:
             zustand['basis'] = None
@@ -826,6 +848,14 @@ def server_fenster_starten(adresse: str) -> int:
             return
         if jetzt and not _gleicher_ursprung(jetzt, zustand['basis']):
             protokoll.warning('Fremde Seite %s, zurück zu %s', jetzt, zustand['basis'])
+            # Leitet „/“ selbst weiter (Anmelde-Proxy), käme sie immer wieder.
+            zeit = time.monotonic()
+            zustand['spruenge'] = [t for t in zustand['spruenge'] if zeit - t < 10] + [zeit]
+            if len(zustand['spruenge']) > RUECKSPRUENGE:
+                zustand['basis'] = None
+                fenster.load_html(offline_seite(WEITERLEITUNG.format(ziel=str(jetzt)[:200]),
+                                                adresse))
+                return
             fenster.load_url(zustand['basis'] + '/')
 
     fenster.events.loaded += beim_laden
