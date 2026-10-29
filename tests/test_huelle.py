@@ -116,6 +116,9 @@ def test_verbindungskarte_nur_mit_server_verbinden():
     # Ohne den Haken bleibt der Knopf aus.
     knopf = INDEX[INDEX.index('id="btn-server-verbinden"'):]
     assert knopf[:knopf.index('>')].count('disabled') == 1
+    # Konzept Abschnitt 7: „Verbinden“. „prüfen“ hieße Probelauf ohne Änderung (Glossar),
+    # der Knopf schreibt aber die INI und startet neu.
+    assert knopf[:knopf.index('</button>')].rstrip().endswith('> Verbinden')
 
 
 def _node(probe):

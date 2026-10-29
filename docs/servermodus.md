@@ -38,7 +38,7 @@ Server im eigenen Fenster, wie ein Browser, nur ohne Adressleiste.
 2. Adresse eintragen, zum Beispiel `https://nebenkosten.example.de` oder
    `http://192.168.1.10:8080`. Ohne `http://` oder `https://` nimmt die App `https://`.
    Ein Pfad (`/nk`), Benutzername oder Passwort in der Adresse werden abgelehnt.
-3. Den Haken setzen und **Verbindung prüfen** wählen. Bei `http://` fragt die App noch
+3. Den Haken setzen und **Verbinden** wählen. Bei `http://` fragt die App noch
    einmal nach.
 4. Die App fragt `/api/health` ab. Antwortet dort ein NebenkostenFix, trägt sie die
    Adresse ein und startet neu. Sonst bleibt alles, wie es war, und die Karte nennt den
