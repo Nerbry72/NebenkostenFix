@@ -355,6 +355,7 @@ def neustart_umgebung(umgebung=None) -> dict:
 
 def neu_starten() -> None:
     """Nach dem Schließen des Fensters dieselbe App noch einmal starten."""
+    # Bandit-Ausnahme (B404): nur das eigene Programm, feste Argumente
     import subprocess  # nosec B404
     befehl = [sys.executable]
     if not getattr(sys, 'frozen', False):
@@ -410,6 +411,7 @@ def _fenster_bei(fenster, basis) -> bool:
     try:
         jetzt = fenster.get_current_url()
     except Exception:  # noqa: BLE001 -- ohne Adresse kein Zugriff
+        protokoll.debug('Adresse des Fensters nicht lesbar', exc_info=True)
         jetzt = None
     if _gleicher_ursprung(jetzt, basis):
         return True
@@ -845,6 +847,7 @@ def server_fenster_starten(adresse: str) -> int:
         try:
             jetzt = fenster.get_current_url()
         except Exception:  # noqa: BLE001 -- Fenster schon zu
+            protokoll.debug('Adresse des Fensters nicht lesbar', exc_info=True)
             return
         if jetzt and not _gleicher_ursprung(jetzt, zustand['basis']):
             protokoll.warning('Fremde Seite %s, zurück zu %s', jetzt, zustand['basis'])
