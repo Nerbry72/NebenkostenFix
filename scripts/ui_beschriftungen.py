@@ -85,8 +85,7 @@ VERBEN: set[str] = {
     "verstanden", "erinnern",
     # NK-230: die Tabelle wie im Vorjahr füllen (ohne Beträge).
     "f\u00fcllen",
-    # #45: die Windows-App auf einen Server umstellen (Konzept Abschnitt 7).
-    # Die Zeile in docs/SPEC/glossar.md Par. 6 tr\u00e4gt Fabi nach (SPEC gesperrt).
+    # #45: die Windows-App auf einen Server umstellen.
     "verbinden",
 }
 
