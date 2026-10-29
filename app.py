@@ -3539,12 +3539,7 @@ def hausgeld_pruefen():
 def ueber_anzeigen():
     """„Über NebenkostenFix“ im Hilfe-Tab (NK-179): Stand, feste Adressen,
     Haftungshinweis. Nichts aus der Datenbank."""
-    if aktualisierung.paketmodus():
-        weg = 'Microsoft Store'
-    elif app.config.get('DESKTOP'):
-        weg = 'Windows-App'
-    else:
-        weg = 'Docker'
+    weg = aktualisierung.WEGE[aktualisierung.zielsystem(bool(app.config.get('DESKTOP')))]
     system = f'{platform.system()} {platform.release()}'
     return jsonify({
         'version': SOFTWARE_VERSION, 'weg': weg,
