@@ -1961,6 +1961,16 @@ def _anlagenzaehler(vorgang: Vorgang, anlage_id: int,
     return [z for z in zaehler if ist_warmwasserzaehler(z) is warm]
 
 
+def anlagen_zweckzaehler(vorgang: Vorgang, anlage_id: int, zweck: str, ids) -> dict:
+    """``{wohnung_id: zaehler}`` eines Zwecks für die Wohnungen ``ids``.
+
+    Abrechnung (``_anlagenzeilen``) und Schätzquote (``schaetzquoten``)
+    holen ihre Zähler hier, damit die Warnung nie andere zählt als das Blatt.
+    """
+    return {z.wohnung_id: z for z in _anlagenzaehler(vorgang, anlage_id, zweck)
+            if z.wohnung_id in ids}
+
+
 def anlagen_wohnungen(vorgang: Vorgang, anlage, mehrere: bool) -> list:
     """Die Wohnungen, die an dieser Anlage haengen.
 
@@ -2691,9 +2701,7 @@ def _anlagenzeilen(vorgang: Vorgang, anlage, rechnungen: Sequence[Rechnung],
                         (heizung.WARMWASSER, ww_anteil)):
         if teil <= 0:
             continue
-        zaehler = {z.wohnung_id: z
-                   for z in _anlagenzaehler(vorgang, anlage.id, zweck)
-                   if z.wohnung_id in ids}
+        zaehler = anlagen_zweckzaehler(vorgang, anlage.id, zweck, ids)
         zeile = _verteilzeile(
             vorgang, anlage, rechnungen, vermieter_positionen,
             zweck=zweck, ww_anteil=ww_anteil, wohnungen=wohnungen, ids=ids,
@@ -2703,6 +2711,94 @@ def _anlagenzeilen(vorgang: Vorgang, anlage, rechnungen: Sequence[Rechnung],
         if zeile is not None:
             zeilen.append(zeile)
     return zeilen
+
+
+#: § 9a Abs. 2 HeizkostenV: „überschreitet“ die betroffene Fläche 25 %, ist
+#: nur nach Fläche zu verteilen. Strikt größer, verglichen ungerundet.
+SCHAETZQUOTE_GRENZE = Decimal(25)
+
+
+def schaetzquoten(vorgang: Vorgang, anlage_ids, von: date, bis: date) -> list:
+    """Je Anlage und Zweck der Flächenanteil ohne ordnungsgemäße Erfassung.
+
+    Nur eine Auskunft für den Prüfstand (§ 9a HeizkostenV), gerechnet wird
+    damit nichts. Sie nimmt dieselben Wohnungen (``anlagen_wohnungen``) und
+    dieselben Zähler (``anlagen_zweckzaehler``, Zählerwechsel schon verkettet)
+    wie ``_anlagenzeilen`` -- sonst stünde in der Warnung ein anderer Nenner
+    als auf dem Blatt. ``anlage_ids`` sind die Anlagen mit Rechnungen im
+    Jahr; ihre Zahl entscheidet wie im Kern, ob die Zähler die Zuordnung
+    tragen. ``bis`` ist der letzte Tag.
+
+    Nicht erfasst ist eine Wohnung, wenn ihr Zähler weniger als zwei Stände
+    hat (die Abrechnung setzt dann 0 an) oder seine Ablesungen weniger als
+    die Hälfte des Zeitraums abdecken. Ein Randversatz, den der Kern nach
+    Gradtagen umrechnet, ist eine ordnungsgemäße Erfassung; liegt aber mehr
+    als die Hälfte außerhalb jeder Ablesung, ist die Zahl überwiegend
+    hochgerechnet und keine Messung mehr. Die Hälfte ist eine Wertung, die
+    Verordnung nennt keine Grenze. Gemessen wird sie so, wie der Kern
+    hochrechnet: beim Heizwärmezähler nach Gradtagen, sonst nach Tagen.
+
+    Fehlt einer Wohnung der Zähler, sind die Einheiten gemischt oder ist gar
+    nichts gemessen, steht hier nichts: dann verteilt der Kern die ganze
+    Masse schon nach Fläche und warnt selbst.
+    """
+    bis_grenze = grenze(bis)
+    mehrere = len(anlage_ids) > 1
+    quoten = []
+    for anlage in vorgang.heizungsanlagen:
+        if anlage.id not in anlage_ids:
+            continue
+        wohnungen = anlagen_wohnungen(vorgang, anlage, mehrere)
+        ids = {w.id for w in wohnungen}
+        gesamt_qm = sum((dec(w.qm or 0) for w in wohnungen), NULL)
+        if gesamt_qm <= 0:
+            continue
+        ww_anteil, _ = anlagen_warmwasseranteil(anlage, gesamt_qm)
+        for zweck, teil in ((heizung.HEIZUNG, dec(1) - ww_anteil),
+                            (heizung.WARMWASSER, ww_anteil)):
+            if teil <= 0:
+                continue
+            zaehler = anlagen_zweckzaehler(vorgang, anlage.id, zweck, ids)
+            if (any(w.id not in zaehler for w in wohnungen)
+                    or len({zaehler_einheit(z) for z in zaehler.values()}) > 1):
+                continue
+            angaben = {w.id: verbrauch_in(zaehler[w.id], von, bis_grenze)
+                       for w in wohnungen}
+            if sum(a['consumption'] for a in angaben.values()) <= 0:
+                continue
+            betroffen = []
+            for w in wohnungen:
+                a = angaben[w.id]
+                if a['status'] == 'no_data':
+                    abgedeckt = None
+                else:
+                    erste = date.fromisoformat(a['r_start']['date'])
+                    letzte = date.fromisoformat(a['r_end']['date'])
+                    mess_von, mess_bis = max(von, erste), min(bis_grenze, letzte)
+                    abgedeckt = max(0, (mess_bis - mess_von).days)
+                    if ist_heizwaermezaehler(zaehler[w.id]):
+                        # Gemessen wie hochgerechnet wird: nach Gradtagen (D-115).
+                        gemessen = (heizung.gradtage(mess_von, mess_bis) * 2
+                                    >= heizung.gradtage(von, bis_grenze))
+                    else:
+                        gemessen = abgedeckt * 2 >= a['target_days']
+                    if gemessen:
+                        continue
+                betroffen.append({
+                    'wohnung': w.name, 'qm': dec(w.qm or 0),
+                    'zaehler_id': zaehler[w.id].id, 'nummer': zaehler[w.id].nummer or '',
+                    'abgedeckt': abgedeckt, 'tage': tage(von, bis_grenze)})
+            qm = sum((b['qm'] for b in betroffen), NULL)
+            if qm <= 0:
+                continue
+            quote = qm * 100 / gesamt_qm
+            quoten.append({
+                'anlage_id': anlage.id, 'anlage': anlage.name, 'zweck': zweck,
+                'gesamt_qm': gesamt_qm, 'qm': qm, 'quote': quote,
+                'ueberschritten': quote > SCHAETZQUOTE_GRENZE,
+                'wohnungen': betroffen,
+            })
+    return quoten
 
 
 def rechnungen_im_umfang(vorgang: Vorgang) -> list:

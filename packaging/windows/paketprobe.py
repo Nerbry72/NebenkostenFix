@@ -6,7 +6,8 @@
     python packaging/windows/paketprobe.py installieren <setup.exe> <protokoll>
     python packaging/windows/paketprobe.py update <datenordner> <sha256-vorher> <version>
     python packaging/windows/paketprobe.py datenordner <exe> <erwarteter-ordner> <bericht.json>
-    python packaging/windows/paketprobe.py deinstallieren <programmordner> <datenordner>
+    python packaging/windows/paketprobe.py lokale-reste
+    python packaging/windows/paketprobe.py deinstallieren <programmordner> <datenordner> [behalten|entfernen]
     python packaging/windows/paketprobe.py umzug <exe> <paket.nkfix> <erwartet.json> <datenordner> <bericht.json>
     python packaging/windows/paketprobe.py msix <alias-exe> <paketfamilie> <datenordner> <berichtordner>
     python packaging/windows/paketprobe.py msix-entfernt <paketfamilie> <datenordner>
@@ -176,9 +177,57 @@ def sha256_datei(pfad: Path) -> str:
     return hasher.hexdigest()
 
 
-def probe_deinstallieren(programm: Path, datenordner: Path) -> bool:
+def _windows_ordner():
+    """Die INI so lesen und schreiben wie die App (UTF-16, #45)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from nebenkostenfix import windows_ordner
+    return windows_ordner
+
+
+# Was „Einstellungen dieses Rechners entfernen“ nimmt (#45, installer.iss).
+LOKALE_RESTE = ('WebView2', 'konsole.log', 'app-einstellungen.json')
+
+
+def lokale_reste_anlegen() -> bool:
+    """Wie ein Rechner im Servermodus: Serveradresse, WebView2-Profil, Protokoll,
+    Merker der Update-Suche -- dazu eine Datei im lokalen Datenausweich."""
+    wo = _windows_ordner()
+    wo.einstellungen_schreiben(server='https://nk.example')
+    lokal = wo.lokaler_ordner()
+    (lokal / 'WebView2').mkdir(parents=True, exist_ok=True)
+    (lokal / 'WebView2' / 'Cookies').write_bytes(b'probe')
+    (lokal / 'konsole.log').write_text('probe\n', encoding='utf-8')
+    (lokal / 'app-einstellungen.json').write_text('{}', encoding='utf-8')
+    (lokal / 'Daten').mkdir(exist_ok=True)
+    (lokal / 'Daten' / 'probe.txt').write_text('bleibt', encoding='utf-8')
+    return True
+
+
+def probe_lokale_reste(entfernt: bool, datenordner: str) -> bool:
+    """Nach der Deinstallation: mit /EINSTELLUNGEN=1 sind Serveradresse und
+    LOKALE_RESTE weg, ohne bleiben sie. [Daten] und der Ausweich bleiben immer."""
+    wo = _windows_ordner()
+    stand = wo.einstellungen_lesen()
+    lokal = wo.lokaler_ordner()
+    weg = [stand['server'] is None] + [not (lokal / n).exists() for n in LOKALE_RESTE]
+    bleibt = (bool(datenordner) and stand['datenordner'] == datenordner
+              and (lokal / 'Daten' / 'probe.txt').is_file())
+    ok = bleibt and all(w == entfernt for w in weg)
+    _zusammenfassung(f'- Einstellungen dieses Rechners {"entfernt" if entfernt else "behalten"}: '
+                     f'{"wie erwartet" if ok else "NICHT wie erwartet"} '
+                     f'([Daten] und Ausweich {"erhalten" if bleibt else "WEG"})')
+    return ok
+
+
+def probe_deinstallieren(programm: Path, datenordner: Path, einstellungen: str = '') -> bool:
+    """``einstellungen`` leer: nur Programm und Daten prüfen; ``behalten`` oder
+    ``entfernen`` (mit /EINSTELLUNGEN=1) prüft zusätzlich die lokalen Reste."""
     deinstaller = programm / 'unins000.exe'
-    _starten([str(deinstaller), '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'])
+    befehl = [str(deinstaller), '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART']
+    if einstellungen == 'entfernen':
+        befehl.append('/EINSTELLUNGEN=1')
+    vorher = _windows_ordner().einstellungen_lesen()['datenordner'] if einstellungen else None
+    _starten(befehl)
     # Der Deinstaller kopiert sich nach %TEMP% und laeuft dort weiter; der
     # erste Prozess endet frueher. Warten, bis das Programm wirklich weg ist.
     frist = time.monotonic() + 120
@@ -188,6 +237,8 @@ def probe_deinstallieren(programm: Path, datenordner: Path) -> bool:
     daten = (datenordner / 'nebenkosten.db').is_file()
     _zusammenfassung(f'- Deinstallation: Programm {"entfernt" if weg else "NOCH DA"}, '
                      f'Daten {"erhalten" if daten else "WEG"}')
+    if einstellungen:
+        return probe_lokale_reste(einstellungen == 'entfernen', vorher) and weg and daten
     return weg and daten
 
 
@@ -315,7 +366,8 @@ def main(argv: list[str]) -> int:
         'installieren': lambda: probe_installieren(Path(rest[0]), Path(rest[1])),
         'update': lambda: probe_update(Path(rest[0]), rest[1], rest[2]),
         'datenordner': lambda: probe_datenordner(Path(rest[0]), Path(rest[1]), Path(rest[2])),
-        'deinstallieren': lambda: probe_deinstallieren(Path(rest[0]), Path(rest[1])),
+        'lokale-reste': lokale_reste_anlegen,
+        'deinstallieren': lambda: probe_deinstallieren(Path(rest[0]), Path(rest[1]), *rest[2:3]),
         'umzug': lambda: probe_umzug(*(Path(r) for r in rest[:5])),
         'msix': lambda: probe_msix(Path(rest[0]), rest[1], Path(rest[2]), Path(rest[3])),
         'msix-entfernt': lambda: probe_msix_entfernt(rest[0], Path(rest[1])),

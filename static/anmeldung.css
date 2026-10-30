@@ -19,7 +19,7 @@
     --surface: #FFFFFF;
     --border-color: #ECEDF2;
     --control-border: #D4D5E0;
-    --field-border: #8C8FA6;
+    --field-border: #82859C;
     --success-color: #2F7D5B;
     --danger-color: #A3312A;
     --font-sans: 'Geist', 'Segoe UI', system-ui, sans-serif;
@@ -205,7 +205,6 @@ body.anmeldung {
     color: var(--primary-text);
 }
 .umzug-karte[open] summary { margin-bottom: var(--space-4); }
-.umzug-karte input[type=file] { padding: 9px var(--space-3); }
 .umzug-karte .zweitknopf {
     background: var(--surface);
     color: var(--text-main);

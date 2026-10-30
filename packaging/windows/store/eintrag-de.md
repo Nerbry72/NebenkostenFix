@@ -25,14 +25,12 @@ Die Nebenkostenabrechnung für private Vermieter. Kostenlos, und Ihre Daten blei
 
 ## Neuerungen in dieser Version
 
-Version 0.17.1: Fehlerbehebungen beim Löschen und im Anschreiben. Die Rechenregeln sind unverändert.
+Version 0.18.0: Die App verbindet sich auf Wunsch mit einem NebenkostenFix-Server, und der Prüfstand nennt die Schätzquote. Die Rechenregeln sind unverändert.
 
-- Behoben: Wer eine Wohnung oder Immobilie löschte, löschte auch Abrechnungen, deren Aufbewahrungsfrist noch lief. Jetzt gilt die Frist auch dort.
-- Behoben: Eine Immobilie mit Rechnungen ließ sich nicht löschen, und es kam keine Erklärung. Jetzt sagt die App, was noch dazugehört.
-- Behoben: Gelöschte Wohnungen und Immobilien hinterließen Rechnungen, Belege und Zähler ohne Bezug.
-- Behoben: Eine gelöschte Kostenart konnte in einer alten Abrechnung unter fremdem Namen wieder auftauchen.
-- Behoben: Der Dialog „Anschreiben bearbeiten“ ging nicht auf.
-- Behoben: „Vorlage löschen“ ließ angefangenen Text im Anschreiben stehen.
+- Neu: Beim ersten Start wählen Sie, ob Sie auf diesem Rechner arbeiten oder sich mit einem NebenkostenFix-Server verbinden. Später geht das über das Menü Datei oder Einstellungen → Sicherung. Die lokalen Daten bleiben unberührt.
+- Neu: Dateiwähler, Kästchen und Eingabefelder sehen überall gleich aus und sprechen Deutsch.
+- Neu: Der Prüfstand zeigt je Heizungsanlage, welcher Anteil geschätzt ist, und warnt ab mehr als 25 % (§ 9a HeizkostenV).
+- Behoben: Aus der App öffnen sich nur noch PDF und Bilder direkt, alle anderen Dateien bietet sie zum Speichern an.
 
 ## Produktmerkmale
 

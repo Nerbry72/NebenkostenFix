@@ -28,7 +28,7 @@
     --border-color: #ECEDF2;
     --divider: #ECEDF2;
     --control-border: #D4D5E0;
-    --field-border: #8C8FA6;
+    --field-border: #82859C;
 
     /* Indigo aus dem Logo */
     --primary: #4F46E5;
@@ -506,6 +506,29 @@ a:hover {
     color: var(--warning-strong);
 }
 
+/* #45: ruhig bei https, Warnton nur ohne Verschlüsselung. */
+.chip-server {
+    gap: var(--space-1);
+    max-width: 260px;
+    background: var(--primary-tint);
+    color: var(--primary-text);
+}
+.chip-server span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.chip-server:hover {
+    color: var(--primary-hover);
+}
+.chip-server.unverschluesselt {
+    background: var(--warning-bg);
+    color: var(--warning-text);
+}
+.chip-server.unverschluesselt:hover {
+    color: var(--warning-strong);
+}
+
 /* Tasten: Mono, unten doppelt gerandet wie eine Taste. */
 kbd {
     display: inline-grid;
@@ -918,15 +941,12 @@ kbd {
 }
 
 /* Felder: 44 px, Rand 1 px, im Fokus 2 px Indigo; das
-   Polster schrumpft um den einen Pixel, damit der Text nicht springt. */
-.form-group input[type="text"],
-.form-group input[type="number"],
-.form-group input[type="date"],
-.form-group input[type="password"],
-.form-group input[type="email"],
-.form-group select,
-.form-group textarea {
-    width: 100%;
+   Polster schrumpft um den einen Pixel, damit der Text nicht springt.
+   Formulare: gilt für jedes Feld der App, nicht nur in .form-group.
+   :where() hat die Spezifität 0, jede Sonderregel gewinnt weiter. */
+:where(input:is([type="text"], [type="number"], [type="date"], [type="password"],
+                [type="email"], [type="search"], [type="tel"], [type="url"], :not([type])),
+       select, textarea) {
     min-height: var(--knopf-hoehe);
     padding: 0 var(--space-3);
     border-radius: var(--radius-md);
@@ -941,21 +961,24 @@ kbd {
     /* Phase 65: zu lange Werte und Platzhalter enden mit „…". */
     text-overflow: ellipsis;
 }
+/* Volle Breite nur im Formular; frei stehende Felder behalten ihre Breite. */
+.form-group :where(input, select, textarea):not([type="checkbox"], [type="radio"], [type="file"]) {
+    width: 100%;
+}
 
-.form-group textarea {
+:where(textarea) {
     padding: var(--space-3);
     line-height: 1.5;
     resize: vertical;
 }
 
-.form-group input[type="number"],
-.form-group input[type="date"] {
+:where(input[type="number"], input[type="date"]) {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
 }
 
 /* Custom dropdown arrow for select */
-.form-group select {
+:where(select) {
     background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235A5C72' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
     background-repeat: no-repeat;
     background-position: right var(--space-3) center;
@@ -963,35 +986,37 @@ kbd {
     padding-right: 40px;
 }
 
-.form-group input[type="text"]:focus,
-.form-group input[type="number"]:focus,
-.form-group input[type="date"]:focus,
-.form-group input[type="password"]:focus,
-.form-group input[type="email"]:focus,
-.form-group select:focus,
-.form-group textarea:focus {
+/* Fokus: der 2-px-Rand ersetzt den globalen :focus-visible-Ring (0,1,0),
+   also kein doppelter Ring. select/textarea bleiben bei 0,1,1, damit die
+   beiden Polsterregeln darunter per Reihenfolge gewinnen. */
+:is(input:is([type="text"], [type="number"], [type="date"], [type="password"],
+                [type="email"], [type="search"], [type="tel"], [type="url"], :not([type]))):focus,
+select:focus,
+textarea:focus {
     outline: none;
     border: 2px solid var(--primary);
     padding-left: 11px;
     padding-right: 11px;
 }
 
-.form-group select:focus {
+select:focus {
     padding-right: 39px;
 }
 
-.form-group textarea:focus {
+textarea:focus {
     padding: 11px;
 }
 
-.form-group input[aria-invalid="true"],
-.form-group select[aria-invalid="true"] {
+/* Nach dem Fokus und gleich stark: ein Fehler bleibt auch im Fokus rot. */
+:is(input:is([type="text"], [type="number"], [type="date"], [type="password"],
+                [type="email"], [type="search"], [type="tel"], [type="url"], :not([type])),
+    select, textarea)[aria-invalid="true"] {
     border-color: var(--danger-color);
 }
 
-.form-group input:disabled,
-.form-group select:disabled,
-.form-group textarea:disabled {
+:is(input:is([type="text"], [type="number"], [type="date"], [type="password"],
+                [type="email"], [type="search"], [type="tel"], [type="url"], :not([type])),
+    select, textarea):disabled {
     background-color: var(--bg-color);
     color: var(--text-muted);
 }
@@ -1073,8 +1098,12 @@ kbd {
 }
 .file-upload-wrapper input[type="file"] {
     position: absolute;
-    left: -9999px;
+    left: 0;
+    bottom: 0;
+    width: 1px;
+    height: 1px;
     opacity: 0;
+    pointer-events: none;   /* kein Tooltip „No file chosen“, der Klick geht ans Label */
 }
 .file-upload-label {
     display: flex;
@@ -1095,6 +1124,11 @@ kbd {
     background: var(--primary-tint);
     border-color: var(--primary);
 }
+/* Tastaturfokus liegt auf dem unsichtbaren Input, gezeigt wird er am Label. */
+.file-upload-wrapper:has(input:focus-visible) .file-upload-label {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
 
 /* Hide spin buttons */
 input[type="number"]::-webkit-outer-spin-button,
@@ -1108,11 +1142,70 @@ input[type="number"] {
     appearance: textfield;
 }
 
-input[type="checkbox"],
-input[type="radio"],
 input[type="range"],
 progress {
     accent-color: var(--primary);
+}
+
+/* Kästchen und Optionsfeld im Hausstil statt des 13-px-Systemkästchens.
+   Ohne neues Markup; der globale :focus-visible-Ring greift weiter. */
+input[type="checkbox"], input[type="radio"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    flex-shrink: 0;
+    display: inline-grid;
+    place-content: center;
+    vertical-align: middle;
+    border: 1.5px solid var(--field-border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    cursor: pointer;
+    transition: var(--transition);
+    print-color-adjust: exact;   /* gedruckt bleibt der Haken sichtbar */
+}
+input[type="radio"] { border-radius: 50%; }
+
+input[type="checkbox"]::before,
+input[type="radio"]::before {
+    content: "";
+    background: var(--on-primary);
+    transform: scale(0);
+    transition: transform 120ms ease-out;
+}
+input[type="checkbox"]::before {
+    width: 12px;
+    height: 12px;
+    clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+}
+input[type="radio"]::before {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+input:is([type="checkbox"], [type="radio"]):checked,
+input[type="checkbox"]:indeterminate {
+    background: var(--primary);
+    border-color: var(--primary);
+}
+input:is([type="checkbox"], [type="radio"]):checked::before { transform: scale(1); }
+input[type="checkbox"]:indeterminate::before {
+    clip-path: none;
+    width: 10px;
+    height: 2px;
+    transform: scale(1);
+}
+
+input:is([type="checkbox"], [type="radio"]):hover:not(:disabled) { border-color: var(--primary); }
+input:is([type="checkbox"], [type="radio"]):disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Hochkontrast: das System malt Kästchen und Haken selbst. */
+@media (forced-colors: active) {
+    input[type="checkbox"],
+    input[type="radio"] { appearance: auto; }
 }
 
 .checkbox-group {
@@ -2519,6 +2612,14 @@ i.feld-hilfe:hover {
     line-height: 1.5;
 }
 
+/* #45: Eine gescheiterte Prüfung beim Verbinden fällt auf, rot mit Warnsymbol. */
+#server-meldung.fehler { color: var(--danger-color); font-weight: 600; }
+#server-meldung-symbol {
+    color: var(--danger-color);
+    margin-right: var(--space-1);
+    vertical-align: -2px;
+}
+
 /* NK-179: Über NebenkostenFix im Hilfe-Tab. */
 .ueber-zeichen { vertical-align: -5px; margin-right: var(--space-1); }
 .ueber-links li { margin-bottom: var(--space-2); }
@@ -2551,6 +2652,66 @@ i.feld-hilfe:hover {
     margin-top: 0;
     line-height: 1.5;
     white-space: pre-line;
+}
+
+/* #45: Startwahl. Zwei gleichwertige Wege, je Marke | Knopf und Satz.
+   Der Knopf deckt mit ::after die ganze Karte ab: Klick überall, ein Tabstopp. */
+.startwahl-wege {
+    display: grid;
+    gap: var(--space-3);
+}
+
+.startwahl-weg {
+    position: relative;
+    display: grid;
+    grid-template-columns: 32px 1fr;
+    align-items: start;
+    gap: var(--space-4);
+    min-height: 64px;
+    padding: var(--space-4);
+    background: var(--surface);
+    border: 1px solid var(--control-border);
+    border-radius: var(--radius-md);
+}
+
+.startwahl-weg:hover {
+    background: var(--bg-hover);
+    border-color: var(--primary);
+}
+
+.startwahl-knopf {
+    padding: 0;
+    font: inherit;
+    font-weight: 600;
+    text-align: left;
+    color: var(--text-main);
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+.startwahl-knopf::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    /* Die Rundung der Karte; inherit nähme die des Knopfs (keine). */
+    border-radius: var(--radius-md);
+}
+
+/* Der Fokusring umrahmt die ganze Karte, nicht nur die Beschriftung. */
+.startwahl-knopf:focus-visible {
+    outline: none;
+}
+
+.startwahl-knopf:focus-visible::after {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+.startwahl-satz {
+    margin: var(--space-1) 0 0;
+    color: var(--text-muted);
+    line-height: 1.45;
 }
 
 .karten-abschnitt {
@@ -2662,6 +2823,7 @@ a.btn-primary:hover {
 .knopf-zeile {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: var(--space-2);
 }
 
@@ -2919,7 +3081,9 @@ a.btn-primary:hover {
 }
 
 /* NK-164: Umzugskarte. */
-.haken-zeile {
+/* Auch in .form-group normal gewichtet: dort setzt .form-group label sonst 600. */
+.haken-zeile,
+.form-group .haken-zeile {
     display: flex;
     gap: var(--space-2);
     align-items: center;
@@ -3625,6 +3789,11 @@ td .btn-icon,
     border-radius: 0;
     background: transparent;
     font-size: 18px;
+}
+/* Randlos bleibt randlos: die Fokusregel der Felder malt sonst einen Rand. */
+.befehl-eingabe input:focus {
+    border: 0;
+    padding: 0;
 }
 
 .befehl-liste {

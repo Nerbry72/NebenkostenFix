@@ -25,7 +25,12 @@
 ;   einstellungen.ini übernommen.
 ; - Update = derselbe Installer mit höherer Version über die bestehende
 ;   Installation (gleiche AppId, NK-081). Die Daten bleiben, wo sie sind.
-; - Deinstallation entfernt nur das Programm und sagt, wo die Daten liegen.
+; - Deinstallation entfernt das Programm und sagt, wo die Daten liegen. Auf
+;   Wunsch (Frage mit Vorgabe Nein, still nur mit /EINSTELLUNGEN=1) auch die
+;   Einstellungen dieses Rechners (#45): [Server] der einstellungen.ini, das
+;   WebView2-Profil, konsole.log und den Merker der Update-Suche. Nie den
+;   Datenordner, nie [Daten] und nie den ganzen lokalen Ordner -- darin kann
+;   der OneDrive-Ausweich „Daten“ liegen (F-82).
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
@@ -165,27 +170,33 @@ begin
     Result := ExpandConstant('{userdocs}\{#AlterOrdner}');
 end;
 
+function LiegtUnter(Pfad, Wurzel: String): Boolean;
+var
+  P, W: String;
+begin
+  // Gleich oder darunter; ohne Rücksicht auf Groß- und Kleinschreibung.
+  P := RemoveBackslashUnlessRoot(Pfad);
+  W := RemoveBackslashUnlessRoot(Wurzel);
+  Result := (W <> '') and
+    ((CompareText(P, W) = 0) or
+     (CompareText(Copy(P, 1, Length(W) + 1), W + '\') = 0));
+end;
+
 function LiegtInOneDrive(Pfad: String): Boolean;
 var
   Namen: array[0..2] of String;
   I: Integer;
-  Wurzel: String;
 begin
   Result := False;
   Namen[0] := 'OneDrive';
   Namen[1] := 'OneDriveConsumer';
   Namen[2] := 'OneDriveCommercial';
   for I := 0 to 2 do
-  begin
-    Wurzel := RemoveBackslashUnlessRoot(GetEnv(Namen[I]));
-    if (Wurzel <> '') and
-       ((CompareText(Pfad, Wurzel) = 0) or
-        (CompareText(Copy(Pfad, 1, Length(Wurzel) + 1), Wurzel + '\') = 0)) then
+    if LiegtUnter(Pfad, GetEnv(Namen[I])) then
     begin
       Result := True;
       Exit;
     end;
-  end;
 end;
 
 procedure InitializeWizard;
@@ -251,10 +262,45 @@ begin
     Result := '0';
 end;
 
+procedure EinstellungenEntfernen;
+var
+  Lokal, Ini, Daten: String;
+begin
+  // #45: nur, was sicher keine Nutzerdaten sind. [Daten] bleibt, sonst fände
+  // eine Neuinstallation einen eigenen Datenordner nicht wieder.
+  Lokal := ExpandConstant('{localappdata}\{#Ordner}');
+  Ini := Lokal + '\einstellungen.ini';
+  Daten := VorhandenerOrdner;
+  DeleteIniSection('Server', Ini);
+  if not LiegtUnter(Daten, Lokal + '\WebView2') then
+    DelTree(Lokal + '\WebView2', True, True, True);
+  DeleteFile(Lokal + '\konsole.log');
+  // Merker der Update-Suche im Servermodus. Liegt daneben eine Datenbank, ist
+  // der Ordner ein Datenordner (auch per --datenordner, Junction, Kurzname),
+  // und die Datei gehört zu den Daten (Haftungshinweis, Anmeldung).
+  if not FileExists(Lokal + '\nebenkosten.db') then
+    DeleteFile(Lokal + '\app-einstellungen.json');
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Ordner: String;
+  Entfernen: Boolean;
 begin
+  if CurUninstallStep = usUninstall then
+  begin
+    if UninstallSilent then
+      Entfernen := ExpandConstant('{param:EINSTELLUNGEN|0}') = '1'
+    else
+      // Das WebView2-Profil teilen beide Modi: mit ihm gehen auch Anzeige und
+      // Assistenten-Fortschritt der lokalen App (localStorage).
+      Entfernen := MsgBox('Sollen auch die Einstellungen dieses Rechners entfernt ' +
+        'werden (Verbindung zu einem Server und die Anmeldung dort, Anzeige, ' +
+        'Fortschritt von Assistenten, Protokolle)? Ihre Daten und Benutzerkonten ' +
+        'bleiben in jedem Fall erhalten.', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES;
+    if Entfernen then
+      EinstellungenEntfernen;
+  end;
   if (CurUninstallStep = usPostUninstall) and not UninstallSilent then
   begin
     Ordner := VorhandenerOrdner;

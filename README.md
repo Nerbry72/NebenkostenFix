@@ -137,7 +137,7 @@ Store. Die Daten liegen wie beim Installer unter `Dokumente\NebenkostenFix`.
 Die Prüfsumme jeder Setup-Exe steht im Release (`SHA256SUMS.txt`):
 
 ```powershell
-Get-FileHash .\NebenkostenFix-0.17.1-Setup.exe -Algorithm SHA256
+Get-FileHash .\NebenkostenFix-0.18.0-Setup.exe -Algorithm SHA256
 ```
 
 **Warnung von Windows SmartScreen:** Die Setup-Exe ist nicht mit einem Code-Signing-Zertifikat
@@ -147,6 +147,16 @@ vergleichen Sie die Prüfsumme. Stimmt sie, klicken Sie auf „Weitere Informati
 auf „Trotzdem ausführen“. Updates aus der App heraus prüft NebenkostenFix selbst über eine
 digitale Signatur. Die Fassung aus dem [Microsoft Store](https://apps.microsoft.com/detail/9pjqssqgbnz8)
 kommt ohne diese Warnung aus.
+
+#### Mit einem Server verbinden
+
+Die Windows-App kann statt der lokalen Daten eine NebenkostenFix-Instanz auf einem Server
+öffnen, zum Beispiel eine Docker-Instanz im Heimnetz: Einstellungen → Sicherung → Karte
+„Mit einem Server verbinden“. Die App prüft die Adresse, trägt sie in
+`%LOCALAPPDATA%\NebenkostenFix\einstellungen.ini` ein und startet neu. Im Servermodus läuft
+kein lokaler Server, die lokalen Daten bleiben unberührt. Zurück geht es über Datei →
+„Auf diesem Rechner arbeiten …“. Zertifikate, Anmeldung über http und die Prüfliste stehen
+in `docs/servermodus.md`.
 
 ### Docker
 
@@ -262,7 +272,7 @@ docker compose pull && docker compose up -d    # Update auf die neueste Version
 ```
 
 Nach einem Update passt die Anwendung das Datenbankschema beim Start selbst an und sichert
-vorher automatisch. Eine bestimmte Version starten Sie mit `NK_VERSION=0.17.1` in der `.env`.
+vorher automatisch. Eine bestimmte Version starten Sie mit `NK_VERSION=0.18.0` in der `.env`.
 Mit `NK_VERSION=0.17` bleiben Sie bei der Reihe 0.17 und erhalten trotzdem deren Fehlerbehebungen.
 
 Tritt ein unerwarteter Fehler auf, zeigt die Anwendung eine **Vorgangsnummer**. Unter dieser

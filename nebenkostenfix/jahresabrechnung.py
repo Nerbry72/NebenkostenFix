@@ -26,12 +26,16 @@ Rechnung über die Jahresgrenze zählt mit den Tagen im Jahr (NK-242).
 - **Prüfstand** (Schritt 5, NK-265): die Warnungen vor dem Festsetzen, je
   Befund ein Satz, was auffällt, einer, was zu tun ist, und das Ziel, an dem
   es sich beheben lässt. Er blockiert nichts.
+- **Schätzquote** (im Prüfstand, § 9a HeizkostenV): je Heizungsanlage und
+  Zweck, wie viel Fläche im Jahr ohne ordnungsgemäß erfassten Verbrauch ist;
+  über 25 % sagt er, dass die App die dann verlangte Verteilung nur nach
+  Fläche noch nicht kann.
 """
 
 from __future__ import annotations
 
 from datetime import date, timedelta
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
 
 from nebenkostenfix import betrkv
 
@@ -206,6 +210,62 @@ def _befund(art, text, tun, aktion, kennung=None) -> dict:
     return {'art': art, 'text': text, 'tun': tun, 'ziel': {'aktion': aktion, 'id': kennung}}
 
 
+def _schaetzquote(rechnungen, mieter, von, bis) -> list:
+    """§ 9a HeizkostenV: je Anlage und Zweck, wie viel Fläche nicht erfasst ist.
+
+    Die Quote rechnet der Kern aus demselben Vorgang wie die Abrechnung
+    (``rechenkern.schaetzquoten``); hier entstehen nur die Sätze.
+    """
+    from nebenkostenfix import heizung
+    from nebenkostenfix.abrechnungsdaten import lade_vorgang
+    from nebenkostenfix.rechenkern import schaetzquoten, zahl_text
+
+    anlage_ids = {r.heizungsanlage_id for r in rechnungen
+                  if r.heizungsanlage_id and _ueberlappt(r.start_date, r.end_date, von, bis)}
+    if not anlage_ids or not mieter:
+        return []
+    # shortcut: Wohnungen, Zähler und Anlagen sind für jeden Mieter des Hauses
+    # dieselben; gerechnet wird über das Jahr, nicht über die Rechnungszeiträume.
+    vorgang = lade_vorgang(mieter[0]['id'], von, bis)
+    befunde = []
+    for q in schaetzquoten(vorgang, anlage_ids, von, bis):
+        gruende = []
+        for w in q['wohnungen']:
+            if w['abgedeckt'] is None:
+                gruende.append(f'{w["wohnung"]}: Zähler {w["nummer"]} hat weniger als zwei '
+                               'Ablesungen, die Abrechnung setzt dort keinen Verbrauch an')
+            else:
+                gruende.append(f'{w["wohnung"]}: die Ablesungen von Zähler {w["nummer"]} decken '
+                               f'nur {w["abgedeckt"]} von {w["tage"]} Tagen, den Rest rechnet '
+                               'die Abrechnung hoch')
+        # Aufgerundet: eine Quote über 25 % soll nie als „25,0 %“ erscheinen.
+        prozent = str(q['quote'].quantize(Decimal('0.1'), ROUND_CEILING)).replace('.', ',')
+        text = (f'Heizungsanlage „{q["anlage"]}“, {heizung.VERBRAUCHSART[q["zweck"]]}: '
+                f'Für {zahl_text(q["qm"])} von {zahl_text(q["gesamt_qm"])} m² ({prozent} %) '
+                f'ist der Verbrauch im Abrechnungsjahr nicht ordnungsgemäß erfasst – '
+                f'{"; ".join(gruende)}.')
+        if q['ueberschritten']:
+            text += (' Das ist mehr als ein Viertel der Fläche an dieser Anlage: Nach § 9a '
+                     'Abs. 2 HeizkostenV sind diese Kosten dann ausschließlich nach Fläche zu '
+                     'verteilen. Das kann die App noch nicht – verschicken Sie die Abrechnung '
+                     'für diese Anlage so nicht.')
+        else:
+            # Der Kern schätzt durchaus, nur nicht nach § 9a Abs. 1: der Satz nennt, was er tut.
+            tut = []
+            if any(w['abgedeckt'] is None for w in q['wohnungen']):
+                tut.append('setzt ohne zwei Ablesungen 0 an')
+            if any(w['abgedeckt'] is not None for w in q['wohnungen']):
+                tut.append('rechnet Lücken nach Tagen bzw. Gradtagen hoch')
+            text += (' Bis zu einem Viertel der Fläche erlaubt § 9a Abs. 1 HeizkostenV eine '
+                     'Schätzung aus vergleichbaren früheren Zeiträumen oder Räumen. So schätzt '
+                     f'die App nicht: sie {" und ".join(tut)}.')
+        befunde.append(_befund(
+            'schaetzquote', text,
+            'Tragen Sie die fehlenden Ablesungen nach oder prüfen Sie die Zählerstände.',
+            'ablesung', q['wohnungen'][0]['zaehler_id']))
+    return befunde
+
+
 def _pruefstand(haus, rechnungen, kostenarten, ablesungen, mieter,
                 von, bis, vorjahr_von, vorjahr_bis) -> list:
     """Die Warnungen vor dem Festsetzen (NK-265), in der Reihenfolge der Karte."""
@@ -219,7 +279,7 @@ def _pruefstand(haus, rechnungen, kostenarten, ablesungen, mieter,
     def tag(d):
         return d.strftime('%d.%m.%Y')
 
-    befunde = []
+    befunde = _schaetzquote(rechnungen, mieter, von, bis)
 
     # €/m² gegen Vorjahr: die Kostenarten mit Sprung (NK-228), je Wohnfläche.
     flaeche = sum(Decimal(str(w.sqm or 0)) for w in haus.apartments if w.is_active)

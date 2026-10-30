@@ -476,7 +476,8 @@ def test_einrichtung_bietet_die_uebernahme_an(bestand):
     seite = bestand.app.test_client().get('/einrichtung').get_data(as_text=True)
     assert 'Daten aus einer anderen Installation übernehmen' in seite
     assert '<script src="/static/umzug.js"></script>' in seite
-    assert 'id="umzug-code"' in seite and 'data-desktop="0"' in seite
+    # Browser oder App entscheidet der Knopf beim Klick (umzug.js), kein Merker in der Seite.
+    assert 'id="umzug-code"' in seite and 'data-desktop' not in seite
     antwort = bestand.app.test_client().get('/static/umzug.js')
     assert antwort.status_code == 200
     antwort.close()
@@ -489,7 +490,7 @@ def test_einrichtung_in_der_app_ohne_code(bestand, monkeypatch):
     einstellungen.schreiben(ohne_anmeldung=False)
     monkeypatch.setitem(bestand.app.config, 'DESKTOP', True)
     seite = bestand.app.test_client().get('/einrichtung').get_data(as_text=True)
-    assert 'data-desktop="1"' in seite and 'id="umzug-code"' not in seite
+    assert 'id="umzug-code"' not in seite and 'data-desktop' not in seite
 
 
 def test_uebernahme_bei_der_einrichtung_mit_stuecken_und_code(bestand, tmp_path, monkeypatch):

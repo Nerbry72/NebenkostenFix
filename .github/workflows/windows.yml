@@ -170,8 +170,8 @@ jobs:
       - name: Vorversion (vor der Umbenennung) installieren, Update darueber, deinstallieren
         # Dauert sonst unter einer Minute. Ein haengender Installer soll nicht
         # die 40 Minuten des Jobs verbrauchen (PR #12, 2026-09-30); er hing
-        # mehrfach, daher 5 statt 10 Minuten.
-        timeout-minutes: 5
+        # mehrfach, daher 5 statt 10 Minuten; 7 seit der zweiten Deinstallation (#45).
+        timeout-minutes: 7
         shell: pwsh
         run: |
           $programm = "$env:ProgramFiles\Nebenkostenabrechnung"
@@ -200,8 +200,18 @@ jobs:
           # 3. Die aktualisierte App laeuft (frischer Datenordner, die alten Daten bleiben unberuehrt)
           python packaging/windows/paketprobe.py selbsttest "$programm\NebenkostenFix.exe" "$env:RUNNER_TEMP\nk-nach-update" "$env:RUNNER_TEMP\bericht-installiert.json"
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          # 4. Deinstallation laesst die Daten stehen
-          python packaging/windows/paketprobe.py deinstallieren $programm $daten
+          # 4. Deinstallation laesst die Daten stehen, ohne /EINSTELLUNGEN=1 auch
+          #    Serveradresse und WebView2-Profil (#45)
+          python packaging/windows/paketprobe.py lokale-reste
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          python packaging/windows/paketprobe.py deinstallieren $programm $daten behalten
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          # 5. Neu installieren, still mit /EINSTELLUNGEN=1 deinstallieren: [Server]
+          #    und WebView2 weg; [Daten], Datenordner und lokaler Ausweich "Daten" bleiben.
+          #    Ohne Uninstall-Eintrag geht das Programm in den Vorgabeordner.
+          python packaging/windows/paketprobe.py installieren $setup "$env:RUNNER_TEMP\installation-neu.log"
+          if ($LASTEXITCODE -ne 0) { Get-Content "$env:RUNNER_TEMP\installation-neu.log"; exit 1 }
+          python packaging/windows/paketprobe.py deinstallieren "$env:ProgramFiles\NebenkostenFix" $daten entfernen
           if ($LASTEXITCODE -ne 0) { exit 1 }
       - name: MSIX fuer den Store packen (NK-173)
         id: msix

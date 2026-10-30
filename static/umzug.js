@@ -132,7 +132,6 @@
     function einrichtungVerdrahten() {
         const form = document.getElementById('umzug-form');
         if (!form) return;
-        const desktop = form.dataset.desktop === '1';
         const datei = document.getElementById('umzug-datei');
         const waehlen = document.getElementById('umzug-auswahl-knopf');
         const gewaehlt = document.getElementById('umzug-auswahl-name');
@@ -140,15 +139,21 @@
         const balken = document.getElementById('umzug-fortschritt');
         let pfad = null;
 
-        datei.hidden = desktop;
-        waehlen.hidden = !desktop;
+        // Ein Knopf für beide Wege: im Browser öffnet er das versteckte
+        // Dateifeld, in der Desktop-App den Dialog der Hülle (Pfad statt Upload).
         waehlen.addEventListener('click', async () => {
+            if (!umzugPaket.desktop()) { datei.click(); return; }
             try {
                 pfad = await umzugPaket.desktopWaehlen();
-                gewaehlt.textContent = pfad || '';
+                datei.value = '';
+                gewaehlt.textContent = pfad || 'Keine Datei ausgewählt';
             } catch (e) {
                 status.textContent = 'Der Datei-Dialog ließ sich nicht öffnen.';
             }
+        });
+        datei.addEventListener('change', () => {
+            pfad = null;
+            gewaehlt.textContent = (datei.files[0] || {}).name || 'Keine Datei ausgewählt';
         });
 
         function melden(text, art) {
@@ -164,8 +169,7 @@
             knopf.disabled = true;
             try {
                 let quelle;
-                if (desktop) {
-                    if (!pfad) throw hinweis('Bitte wählen Sie zuerst das Paket aus.');
+                if (pfad) {
                     quelle = {pfad};
                 } else {
                     const gewaehlteDatei = datei.files && datei.files[0];

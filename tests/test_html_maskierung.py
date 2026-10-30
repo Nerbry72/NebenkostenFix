@@ -78,6 +78,8 @@ AUSNAHMEN = {
     'aktion.fn': 'Funktionsaufruf aus dem Code (leerzustand)',
     'aktion.icon': 'Symbolklasse aus dem Code (leerzustand)',
     'aktion.label': 'Knopftext aus dem Code (Glossar-Pruefung)',
+    "knopfHtml(aktion, 'btn-primary')": 'Knopf aus aktion.fn/label/icon (leerzustand, #45)',
+    "knopfHtml(aktion2, 'btn-secondary')": 'Knopf aus aktion.fn/label/icon (leerzustand, #45)',
     'titel': 'Leerzustand-Titel, alle Aufrufer mit Konstanten',
     'text': 'Leerzustand-Text bzw. HEIZKOSTENARTEN_TEXT (Konstanten)',
     'schluessel': 'Schluessel aus HEIZKOSTENARTEN_TEXT (Konstante)',
