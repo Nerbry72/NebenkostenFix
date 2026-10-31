@@ -57,6 +57,7 @@ from nebenkostenfix import anmeldeschutz
 from nebenkostenfix import einstellungen
 from nebenkostenfix import marke
 from nebenkostenfix import umzug
+from nebenkostenfix import zugriffsschluessel
 from nebenkostenfix.dateisperre import datei_einmalig_anlegen, dateisperre
 from nebenkostenfix.models import User, db
 
@@ -197,6 +198,11 @@ def _loese_secret_key():
 
 def current_user():
     """Der angemeldete Benutzer oder None."""
+    schluessel = zugriffsschluessel.aktueller()
+    if schluessel is not None:
+        # Mit Zugriffsschluessel zaehlt die Sitzung nicht, auch wenn der
+        # Client eine mitschickt (zugriffsschluessel.anfrage_pruefen).
+        return schluessel.user
     user_id = session.get(SESSION_USER_KEY)
     if user_id is None:
         return None
@@ -861,6 +867,10 @@ def init_auth(app):
             if session.get(SESSION_USER_KEY) is not None:
                 session.clear()
             return None
+        if zugriffsschluessel.im_kopf() is not None:
+            # Ein Programm mit Zugriffsschluessel: keine Sitzung, kein
+            # Leerlauf, nur die Listen in zugriffsschluessel.py.
+            return zugriffsschluessel.anfrage_pruefen(app, _anmeldeschutz_ordner())
         if (request.endpoint in umzug.VOR_DER_EINRICHTUNG and current_user() is None
                 and (app.config.get('DESKTOP') or request.headers.get('X-Einmal-Code')
                      or (request.get_json(silent=True) or {}).get('code'))
@@ -1081,6 +1091,9 @@ def init_auth(app):
             'desktop': bool(app.config.get('DESKTOP')),
             # NK-162: die Oberfläche warnt fünf Minuten vor der Abmeldung.
             'leerlauf_s': _leerlauf_s(),
+            # Mit welchem Zugriffsschluessel ein Programm hier ist, sonst None.
+            'schluessel': {'name': schluessel.name, 'umfang': schluessel.umfang}
+                          if (schluessel := zugriffsschluessel.aktueller()) else None,
         }), 200
 
     @app.route('/api/konto/passwort', methods=['PUT'])
@@ -1136,6 +1149,9 @@ def init_auth(app):
         # NK-204: erst den Schalter, dann die Konten — schlägt das Schreiben
         # fehl, bleiben die Konten bestehen und es bleibt angemeldet.
         einstellungen.schreiben(ohne_anmeldung=True)
+        # Ohne Konto kein Schluessel. Die Zeilen blieben sonst als Waisen
+        # stehen und gehoerten dem naechsten Konto mit derselben Id.
+        zugriffsschluessel.alle_loeschen()
         geloescht = User.query.delete()
         db.session.commit()
         # Wer das Passwort kannte, war drin; Zaehler und Sperren sind wertlos.
@@ -1194,6 +1210,8 @@ def init_auth(app):
         db.session.commit()
         return jsonify({'username': username}), 201
 
+    zugriffsschluessel.init_zugriffsschluessel(
+        app, current_user, ohne_anmeldung_aktiv, FEHLTEXT_KONTO)
     _huelle_routen(app)
     _register_cli(app)
     return app

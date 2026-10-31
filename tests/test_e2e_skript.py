@@ -294,3 +294,119 @@ def test_gesperrter_port_faellt_schon_im_aufruf_durch(monkeypatch, capsys):
     monkeypatch.setattr(e2e.Path, 'exists', lambda selbst: False)
     assert e2e.main(['--port', '6060']) == 1
     assert '6060' in capsys.readouterr().err
+
+
+# --- Zugriffsschluessel: der Weg eines MCP-Servers (#47) ---------------------
+
+class _Antwort:
+    """Was ``oeffner.open`` liefert, so weit ``_ruf`` es liest."""
+
+    def __init__(self, inhalt=b'{}', typ='application/json'):
+        self._inhalt = inhalt
+        self.headers = {'Content-Type': typ}
+
+    def read(self):
+        return self._inhalt
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+
+class _Oeffner:
+    def __init__(self, antwort=None, fehler=None):
+        self.anfragen = []
+        self._antwort = antwort or _Antwort()
+        self._fehler = fehler
+
+    def open(self, anfrage, timeout=None):
+        self.anfragen.append(anfrage)
+        if self._fehler:
+            raise self._fehler
+        return self._antwort
+
+
+def _http_fehler(code):
+    import io
+    import urllib.error
+    return urllib.error.HTTPError('http://x', code, 'nein', {}, io.BytesIO(b'{"code": "x"}'))
+
+
+def test_formular_mit_datei_versteht_werkzeug():
+    """urllib baut kein multipart/form-data. Das Skript baut es selbst, und
+    der Server muss es so lesen wie das Formular der Oberflaeche."""
+    import io
+
+    from werkzeug.formparser import parse_form_data
+
+    rumpf, typ = e2e.formular({'property_id': 7, 'description': 'Sammel'},
+                              'stadtwerke.pdf', e2e.PDF)
+    umgebung = {'REQUEST_METHOD': 'POST', 'CONTENT_TYPE': typ,
+                'CONTENT_LENGTH': str(len(rumpf)), 'wsgi.input': io.BytesIO(rumpf)}
+    _, felder, dateien = parse_form_data(umgebung)
+    assert felder['property_id'] == '7'
+    assert felder['description'] == 'Sammel'
+    assert dateien['file'].filename == 'stadtwerke.pdf'
+    assert dateien['file'].read() == e2e.PDF
+
+
+def test_mit_schluessel_ohne_cookie_mit_bearer():
+    lauf = e2e.Lauf(e2e.STANDARD_PORT, cache=False, behalten=False)
+    lauf.oeffner = mit_sitzung = _Oeffner()
+    lauf.ohne_sitzung = ohne = _Oeffner()
+    lauf._ruf('GET', '/api/properties', schluessel='nkf_probe')
+    assert mit_sitzung.anfragen == []
+    assert ohne.anfragen[0].get_header('Authorization') == 'Bearer nkf_probe'
+
+
+def test_ohne_schluessel_bleibt_es_bei_der_sitzung():
+    lauf = e2e.Lauf(e2e.STANDARD_PORT, cache=False, behalten=False)
+    lauf.oeffner = mit_sitzung = _Oeffner()
+    lauf.ohne_sitzung = ohne = _Oeffner()
+    lauf._ruf('GET', '/api/properties')
+    assert ohne.anfragen == []
+    assert mit_sitzung.anfragen[0].get_header('Authorization') is None
+
+
+def test_ein_http_fehler_nennt_seinen_status():
+    lauf = e2e.Lauf(e2e.STANDARD_PORT, cache=False, behalten=False)
+    lauf.ohne_sitzung = _Oeffner(fehler=_http_fehler(403))
+    with pytest.raises(e2e.HttpFehler) as fehler:
+        lauf._ruf('DELETE', '/api/invoices/1', schluessel='nkf_probe')
+    assert fehler.value.status == 403
+    assert isinstance(fehler.value, e2e.Abbruch)
+
+
+def test_erwartete_sperre_ist_kein_abbruch():
+    lauf = e2e.Lauf(e2e.STANDARD_PORT, cache=False, behalten=False)
+    lauf.ohne_sitzung = _Oeffner(fehler=_http_fehler(403))
+    lauf._erwarte(403, 'GET', '/api/export', 'nkf_probe')
+
+
+def test_was_durchgeht_obwohl_es_gesperrt_sein_soll_bricht_ab():
+    lauf = e2e.Lauf(e2e.STANDARD_PORT, cache=False, behalten=False)
+    lauf.ohne_sitzung = _Oeffner()
+    with pytest.raises(e2e.Abbruch, match='erwartet war 403'):
+        lauf._erwarte(403, 'GET', '/api/export', 'nkf_probe')
+
+
+def test_ein_anderer_fehler_als_erwartet_bricht_ab():
+    lauf = e2e.Lauf(e2e.STANDARD_PORT, cache=False, behalten=False)
+    lauf.ohne_sitzung = _Oeffner(fehler=_http_fehler(500))
+    with pytest.raises(e2e.HttpFehler):
+        lauf._erwarte(403, 'GET', '/api/export', 'nkf_probe')
+
+
+def test_der_schluesselschritt_laeuft_vor_dem_herunterfahren(tmp_path, monkeypatch):
+    lauf = e2e.Lauf(e2e.STANDARD_PORT, cache=False, behalten=False)
+    gefahren = []
+    schritte = ('baum_auspacken', 'umgebung_anlegen', 'stapel_hoch',
+                'gesundheit_abwarten', 'konto_anlegen', 'anmelden',
+                'abrechnung_erzeugen', 'zugriffsschluessel', 'stapel_runter')
+    for name in schritte:
+        monkeypatch.setattr(lauf, name, lambda name=name: gefahren.append(name))
+    lauf.arbeit = tmp_path
+    lauf.fahren()
+    assert gefahren == list(schritte)

@@ -75,6 +75,10 @@ ROUTEN_INVENTAR = frozenset({
     'konto_passwort_aendern',
     'anmeldung_ausschalten',
     'konten_auflisten',
+    # Zugriffsschluessel: verwalten nur mit Sitzung, nie per Schluessel.
+    'zugriffsschluessel_auflisten',
+    'zugriffsschluessel_anlegen',
+    'zugriffsschluessel_widerrufen',
     'billing_preflight',
     'billing_suggestions',
     'bulk_delete_payments',

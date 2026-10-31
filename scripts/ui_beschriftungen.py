@@ -85,6 +85,8 @@ VERBEN: set[str] = {
     "verstanden", "erinnern",
     # NK-230: die Tabelle wie im Vorjahr füllen (ohne Beträge).
     "f\u00fcllen",
+    # Zugriffsschlüssel: den einmal gezeigten Schlüssel in die Zwischenablage.
+    "kopieren",
 }
 
 # Knopftexte, die zwar mit einem Verb aus der Liste beginnen, aber das

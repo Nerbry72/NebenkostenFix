@@ -236,7 +236,7 @@ async function zeigeAngemeldetenBenutzer() {
         // ueber die Einrichtung offen.
         const offen = !!daten.ohne_anmeldung;
         ['angemeldeterBenutzer', 'kopf-abmelden', 'konto-liste',
-            'konto-passwort-bereich'].forEach(kennung => {
+            'konto-passwort-bereich', 'zugriffsschluessel-karte'].forEach(kennung => {
             const teil = document.getElementById(kennung);
             if (teil) teil.hidden = offen;
         });
@@ -355,6 +355,7 @@ function initApp() {
     fetchProviders();
     fetchVermieterdaten();
     ladeKonten();
+    ladeZugriffsschluessel();
     ladeSicherungsStatus();
     ladeUmzug();
     ladeGesperrteMieter();
@@ -586,6 +587,7 @@ function initTabs() {
                     zeigeEinstellungsgruppe(gemerkteEinstellungsgruppe());
                     fetchVermieterdaten();
                     ladeKonten();
+                    ladeZugriffsschluessel();
                     ladeSicherungsStatus();
                     ladeUmzug();
                     ladeGesperrteMieter();
@@ -2701,6 +2703,7 @@ function zeigeEinstellungsgruppe(gruppe) {
     }
     // Phase 54: die Kostenarten-Liste lädt, wenn ihre Gruppe gezeigt wird.
     if (gruppe === 'kostenarten') ladeKostenarten();
+    if (gruppe === 'konto') ladeZugriffsschluessel();
 }
 window.zeigeEinstellungsgruppe = zeigeEinstellungsgruppe;
 
@@ -6455,6 +6458,106 @@ async function zweitesKontoAnlegen() {
         ladeKonten();
     } catch (e) {
         showError(meldungZu(e, 'Das Konto konnte nicht angelegt werden.'));
+    }
+}
+
+// --- Zugriffsschlüssel (Programme ohne Browser, z. B. ein MCP-Server) ---
+// Der Server nennt den Schlüssel genau einmal, in der Antwort auf das
+// Anlegen. Er steht dann nur im Feld der Box; „Schließen“ leert es wieder.
+
+const UMFANG_TEXT = { lesen: 'Nur lesen', erfassen: 'Lesen und erfassen' };
+
+async function ladeZugriffsschluessel() {
+    try {
+        const res = await fetch('/api/zugriffsschluessel');
+        if (!res.ok) throw await serverFehler(res);
+        const liste = await res.json();
+        document.getElementById('zugriffsschluessel-zeilen').innerHTML = liste.length === 0
+            ? '<tr><td colspan="5" class="text-muted" style="padding: 8px;">Noch kein Zugriffsschlüssel angelegt.</td></tr>'
+            : liste.map(s => `<tr>
+            <td style="padding: 8px;">${escapeHtml(s.name)}</td>
+            <td style="padding: 8px;">${escapeHtml(UMFANG_TEXT[s.umfang] || s.umfang)}</td>
+            <td style="padding: 8px;">${escapeHtml(s.konto || '')}</td>
+            <td style="padding: 8px;">${escapeHtml(s.zuletzt_benutzt || 'nie')}</td>
+            <td class="spalte-knopf"><button class="btn-secondary"
+                onclick="zugriffsschluesselWiderrufen(${Number(s.id)})">Löschen</button></td>
+        </tr>`).join('');
+    } catch (e) {
+        console.error('Fehler beim Laden der Zugriffsschlüssel', e);
+    }
+}
+
+// Den Schlüssel probiert man im Terminal oder im Assistenten aus und kommt
+// zurück: dann soll „zuletzt benutzt“ stimmen, ohne die Seite neu zu laden.
+// Nur wenn die Karte zu sehen ist, sonst wäre jeder Fensterwechsel ein Abruf.
+function zugriffsschluesselAuffrischen() {
+    if (document.getElementById('zugriffsschluessel-karte').offsetParent !== null) {
+        ladeZugriffsschluessel();
+    }
+}
+window.addEventListener('focus', zugriffsschluesselAuffrischen);
+
+async function zugriffsschluesselAnlegen() {
+    const feld = document.getElementById('zugriffsschluessel-name');
+    const name = feld.value.trim();
+    if (!name) {
+        showError('Bitte geben Sie dem Schlüssel einen Namen, damit Sie ihn später wiedererkennen.');
+        return;
+    }
+    const umfang = document.getElementById('zugriffsschluessel-umfang').value;
+    try {
+        const res = await fetch('/api/zugriffsschluessel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, umfang })
+        });
+        if (!res.ok) throw await serverFehler(res);
+        const neu = await res.json();
+        const wert = document.getElementById('zugriffsschluessel-wert');
+        wert.value = neu.schluessel;
+        document.getElementById('zugriffsschluessel-neu').hidden = false;
+        feld.value = '';
+        // Ansage und Fokus: Ein Screenreader liest den Schlüssel vor, und
+        // Strg+C bzw. Cmd+C kopiert ihn sofort.
+        showSuccess('Zugriffsschlüssel angelegt. Er wird nur dieses eine Mal angezeigt.');
+        wert.focus();
+        wert.select();
+        ladeZugriffsschluessel();
+    } catch (e) {
+        showError(meldungZu(e, 'Der Zugriffsschlüssel konnte nicht angelegt werden.'));
+    }
+}
+
+async function zugriffsschluesselKopieren() {
+    const feld = document.getElementById('zugriffsschluessel-wert');
+    try {
+        await navigator.clipboard.writeText(feld.value);
+        showSuccess('Schlüssel kopiert.');
+    } catch (e) {
+        // Ohne HTTPS gibt der Browser die Zwischenablage nicht her: dann
+        // ist der Text markiert, und Strg+C bzw. Cmd+C erledigt den Rest.
+        feld.focus();
+        feld.select();
+        showError('Kopieren ging nicht automatisch. Der Schlüssel ist markiert, kopieren Sie ihn mit Strg+C.');
+    }
+}
+
+function zugriffsschluesselAusblenden() {
+    document.getElementById('zugriffsschluessel-wert').value = '';
+    document.getElementById('zugriffsschluessel-neu').hidden = true;
+}
+
+async function zugriffsschluesselWiderrufen(id) {
+    const ja = await frage('Programme, die diesen Schlüssel benutzen, kommen danach nicht mehr an Ihre Daten.',
+        'Löschen', true, 'Zugriffsschlüssel löschen?');
+    if (!ja) return;
+    try {
+        const res = await fetch(`/api/zugriffsschluessel/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw await serverFehler(res);
+        showSuccess('Zugriffsschlüssel gelöscht.');
+        ladeZugriffsschluessel();
+    } catch (e) {
+        showError(meldungZu(e, 'Der Zugriffsschlüssel konnte nicht gelöscht werden.'));
     }
 }
 

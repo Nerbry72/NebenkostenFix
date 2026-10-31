@@ -31,6 +31,9 @@ Anmeldung, Ersteinrichtung und Konto -- alles in auth.py, nicht hier
   POST        /api/konten                                  -> konto_anlegen
   PUT         /api/konto/passwort                          -> konto_passwort_aendern
   POST        /api/anmeldung/aus                           -> anmeldung_ausschalten
+  GET         /api/zugriffsschluessel                      -> zugriffsschluessel_auflisten
+  POST        /api/zugriffsschluessel                      -> zugriffsschluessel_anlegen
+  DELETE      /api/zugriffsschluessel/<int:id>             -> zugriffsschluessel_widerrufen
   GET,POST    /huelle/passwort                             -> huelle_passwort
 
 Oberflaeche und Betrieb
@@ -383,6 +386,7 @@ from nebenkostenfix import einstellungen
 from nebenkostenfix import haftung
 from nebenkostenfix import marke
 from nebenkostenfix import drittlizenzen
+from nebenkostenfix import zugriffsschluessel
 import platform
 from nebenkostenfix.aktualisierung import AktualisierungsFehler
 if not (os.environ.get('DATABASE_URL') or '').strip() or \
@@ -3725,11 +3729,13 @@ def export_data():
                 for name, wert in zeile.items()}
 
     # NK-269: jede Tabelle, damit eine neue nicht wieder fehlt (Zahlungen,
-    # Soll und Versionen fehlten); die Konten bleiben draussen (Passwort-Hash).
+    # Soll und Versionen fehlten); die Konten bleiben draussen (Passwort-Hash),
+    # die Zugriffsschluessel auch (ihr Hash oeffnet die API).
     data = {
         tabelle.name: [to_dict(z) for z in db.session.execute(
             tabelle.select().order_by(*tabelle.primary_key.columns)).mappings()]
-        for tabelle in db.metadata.sorted_tables if tabelle.name != 'users'
+        for tabelle in db.metadata.sorted_tables
+        if tabelle.name not in ('users', 'api_schluessel')
     }
     if request.method == 'GET':
         return jsonify(data)
@@ -4563,12 +4569,27 @@ def add_payment():
                 break
         # NK-261: die Serie ist der vereinbarte Betrag; er bleibt als Soll
         # stehen. Vor dem Einzug gibt es kein Soll (wie in der Route dazu).
+        # Ein Zugriffsschluessel erfasst nur: Gibt es schon ein Soll, legt er
+        # weder einen Stichtag an noch berichtigt er einen. Auch ein neuer
+        # Stichtag aenderte die Vereinbarung ab seinem Tag (Review zu #48).
         tenant = db.session.get(Tenant, tenant_id)
+        antwort = {'message': f'{created_count} Zahlungen erfolgreich erfasst'}
         if (type_ == 'Nebenkostenvorauszahlung' and tenant is not None
                 and start_date >= tenant.move_in_date):
-            _soll_setzen(tenant, start_date, amount)
+            if zugriffsschluessel.aktueller() is None or not tenant.vorauszahlung_soll:
+                soll, _ = _soll_setzen(tenant, start_date, amount)
+            else:
+                # Verglichen wird mit dem Soll am Startdatum, davor mit dem ersten.
+                soll = next((s for s in reversed(tenant.vorauszahlung_soll)
+                             if s.gueltig_ab <= start_date), tenant.vorauszahlung_soll[0])
+            if soll.betrag != amount:
+                from nebenkostenfix.rechenkern import euro_text
+                antwort['soll_unveraendert'] = True
+                antwort['message'] += (
+                    f'. Das vereinbarte Soll von {euro_text(soll.betrag)} bleibt; '
+                    'ändern lässt es sich nur in der Oberfläche.')
         db.session.commit()
-        return jsonify({'message': f'{created_count} Zahlungen erfolgreich erfasst'}), 201
+        return jsonify(antwort), 201
     else:
         payment = Payment(
             tenant_id=tenant_id,
