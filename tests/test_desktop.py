@@ -687,11 +687,37 @@ def test_oeffnen_bekannte_typen_wie_bisher(oeffnen_umgebung):
     ('https://', None),
     ('https://nk.example:99999', None),
     ('https://mein server', None),
+    ('bücher.example', 'https://xn--bcher-kva.example'),  # WebView2 meldet Punycode
+    ('https://BÜCHER.example:8443', 'https://xn--bcher-kva.example:8443'),
+    ('https://a..b', None),
     ('', None),
     (None, None),
 ])
 def test_adresse_normieren(eingabe, erwartet):
     assert desktop.adresse_normieren(eingabe) == erwartet
+
+
+def test_umlautdomain_bleibt_eigener_ursprung():
+    """Review 0.18: sonst gilt jede Seite als fremd, und die Sperre lädt im Kreis."""
+    basis = desktop.adresse_normieren('bücher.example')
+    assert desktop._gleicher_ursprung('https://xn--bcher-kva.example/start', basis)
+
+
+def test_webbrowser_nur_http_und_https(monkeypatch):
+    """Review 0.18: pywebview gibt window.open und target=_blank ungefiltert an
+    webbrowser.open, unter Windows ist das os.startfile mit jedem Schema."""
+    import webbrowser
+    geoeffnet = []
+    monkeypatch.setattr(webbrowser, 'open', lambda adresse, *a, **k: geoeffnet.append(adresse) or True)
+    desktop.webbrowser_absichern()
+    desktop.webbrowser_absichern()  # zweimal: kein doppelter Mantel
+    for adresse in ('search-ms:query=x', 'file:///C:/Windows/System32/calc.exe',
+                    'ms-settings:', 'javascript:alert(1)', '\\\\server\\freigabe', ''):
+        assert webbrowser.open(adresse) is False
+    assert webbrowser.open('https://example.com/') and webbrowser.open('HTTP://nk.example')
+    assert geoeffnet == ['https://example.com/', 'HTTP://nk.example']
+    for start in (desktop.fenster_starten, desktop.server_fenster_starten):
+        assert 'webbrowser_absichern()' in inspect.getsource(start)
 
 
 @pytest.fixture

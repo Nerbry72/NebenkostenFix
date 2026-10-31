@@ -202,6 +202,26 @@ def datenordner_bestimmen(fragen: bool = True, vorgabe: str | None = None) -> Pa
     return ordner
 
 
+def webbrowser_absichern() -> None:
+    """pywebview gibt window.open und target=_blank ungefiltert an webbrowser.open
+    (OPEN_EXTERNAL_LINKS_IN_BROWSER); unter Windows ist das os.startfile mit jedem
+    Schema (search-ms:, file:, ms-…). Die App selbst braucht den Weg nicht: sie
+    fängt solche Links ab. Eine Seite vom Server soll ihn nicht nutzen können."""
+    import webbrowser
+    if getattr(webbrowser.open, 'nur_web', False):
+        return
+    roh = webbrowser.open
+
+    def nur_web(adresse, *args, **kwargs):
+        if urllib.parse.urlsplit(str(adresse)).scheme.lower() not in ('http', 'https'):
+            protokoll.warning('Externe Adresse abgelehnt: %s', str(adresse)[:200])
+            return False
+        return roh(adresse, *args, **kwargs)
+
+    nur_web.nur_web = True
+    webbrowser.open = nur_web
+
+
 def extern_erlaubt(adresse: str) -> bool:
     return any(adresse == ziel or adresse.startswith(ziel + '/')
                for ziel in (marke.REPO_URL, marke.KOFI_URL))
@@ -389,6 +409,12 @@ def adresse_normieren(text) -> str | None:
     host = teile.hostname
     if ':' in host:
         host = f'[{host}]'  # IPv6
+    else:
+        # WebView2 meldet Umlautdomains als Punycode; sonst wäre jede Seite fremd.
+        try:
+            host = host.encode('idna').decode('ascii')
+        except UnicodeError:
+            return None
     return f'{schema}://{host}' + (f':{port}' if port is not None else '')
 
 
@@ -705,6 +731,7 @@ def fehlerseite(text: str) -> str:
 
 def fenster_starten(datenordner: Path) -> int:  # pragma: no cover - braucht GUI
     import webview
+    webbrowser_absichern()
     from webview.menu import Menu, MenuAction, MenuSeparator
 
     instanz = EineInstanz(windows_ordner.lokaler_ordner())
@@ -837,6 +864,7 @@ def server_titel(adresse) -> str:
 def server_fenster_starten(adresse: str) -> int:
     """Servermodus (#45): kein lokaler Server, der Datenordner bleibt zu."""
     import webview
+    webbrowser_absichern()
     from webview.menu import Menu, MenuAction, MenuSeparator
 
     instanz = EineInstanz(windows_ordner.lokaler_ordner())
