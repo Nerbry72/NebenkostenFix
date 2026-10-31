@@ -19,7 +19,7 @@ Manifest (JSON)::
                "docker": "ghcr.io/nerbry72/nebenkostenfix:0.10.0"},
      "signatur": "…"}
 
-Drei Wege:
+Die Wege je Zielsystem (``zielsystem``):
 
 - **Docker:** nur der Hinweis auf das neue Abbild; aktualisiert wird per Tag
   (``docker compose pull`` und ``up -d``). Vor jeder Wanderung sichert die
@@ -30,6 +30,9 @@ Drei Wege:
   die App dabei sauber (Restart Manager).
 - **Microsoft Store (MSIX, NK-173):** der Store aktualisiert; hier ist alles
   aus (``paketmodus``).
+- **macOS und Linux (aus den Quellen, #44):** nur der Hinweis auf die
+  Projektseite; der Windows-Installer wird gar nicht erst geladen. Eine
+  spätere Mac-App bekommt einen eigenen Block im Manifest.
 """
 
 from __future__ import annotations
@@ -63,6 +66,12 @@ MAX_INSTALLER = 500 * 1024 * 1024
 # Beim Start: kurz fragen und still bleiben, wenn niemand antwortet.
 AUTOMATISCH_ZEIT_S = 5
 AUTOMATISCH_ABSTAND = timedelta(hours=24)
+# „Installiert als“ im Über-Dialog und in „Fehler melden“ je ``zielsystem``;
+# die Namen sind die Optionen in .github/ISSUE_TEMPLATE/fehler.yml.
+WEGE = {'store': 'Microsoft Store', 'docker': 'Docker', 'windows': 'Windows-App',
+        'macos': 'aus dem Quellcode', 'linux': 'aus dem Quellcode'}
+OHNE_INSTALLER = ('Unter macOS und Linux installiert die App Updates nicht selbst. '
+                  'Die neue Version gibt es auf der Projektseite.')
 
 # Öffentlicher Ed25519-Schlüssel des Herausgebers (32 Byte, base64). Der
 # Herausgeber erzeugt das Paar einmal offline (``scripts/update_signieren.py schluessel``),
@@ -122,6 +131,11 @@ def signatur_pruefen(umschlag: dict, art: str = FORMAT,
     return daten
 
 
+def betriebssystem() -> str:
+    """``sys.platform``; eigene Funktion, damit Tests es umschalten."""
+    return sys.platform
+
+
 def paketmodus() -> bool:
     """Läuft die App als MSIX-Paket (Microsoft Store, NK-173)? Dann
     aktualisiert der Store, der eigene Updater ist aus."""
@@ -136,6 +150,19 @@ def paketmodus() -> bool:
             ctypes.byref(laenge), None) != 15700
     except (AttributeError, OSError):  # pragma: no cover - Windows vor 8
         return False
+
+
+def zielsystem(desktop: bool) -> str:
+    """Wohin das Update geht (#44): ``store``, ``docker``, ``windows``,
+    ``macos`` oder ``linux``. Daran hängen Angebot, Text und Installer."""
+    if paketmodus():
+        return 'store'
+    if not desktop:
+        return 'docker'
+    system = betriebssystem()
+    if system == 'win32':
+        return 'windows'
+    return 'macos' if system == 'darwin' else 'linux'
 
 
 def quelle() -> str:
@@ -198,7 +225,7 @@ def suchen(aktuelle_version: str, desktop: bool, oeffentlich: str | None = None,
     daten = manifest_pruefen(laden(adresse, MAX_MANIFEST, zeit), oeffentlich)
     neu = version_als_tupel(daten['version']) > version_als_tupel(aktuelle_version)
     windows = daten.get('windows') or {}
-    paket = paketmodus()
+    ziel = zielsystem(desktop)
     ergebnis = {
         'aktuell': aktuelle_version,
         'version': daten['version'],
@@ -207,16 +234,18 @@ def suchen(aktuelle_version: str, desktop: bool, oeffentlich: str | None = None,
         'notizen': notizen_url(daten),
         'neu': neu,
         'docker': daten.get('docker'),
-        'installierbar': bool(neu and desktop and not paket and windows.get('url')
+        'installierbar': bool(neu and ziel == 'windows' and windows.get('url')
                               and windows.get('sha256')),
     }
     if not neu:
         ergebnis['text'] = f'Sie haben die neueste Version ({aktuelle_version}).'
-    elif paket:
+    elif ziel == 'store':
         ergebnis['text'] = (f'Version {daten["version"]} ist erschienen. Der Microsoft '
                             'Store installiert sie automatisch.')
-    elif desktop:
+    elif ziel == 'windows':
         ergebnis['text'] = f'Version {daten["version"]} ist verfügbar.'
+    elif ziel in ('macos', 'linux'):
+        ergebnis['text'] = f'Version {daten["version"]} ist verfügbar. {OHNE_INSTALLER}'
     else:
         ergebnis['text'] = (
             f'Version {daten["version"]} ist verfügbar. Aktualisieren Sie das '
@@ -282,6 +311,9 @@ def automatisch(aktuelle_version: str, desktop: bool, ordner=None,
 def installer_laden(aktuelle_version: str, oeffentlich: str | None = None,
                     laden=None, ziel: Path | None = None) -> Path:
     """Lädt und prüft den Installer; liefert seinen Pfad."""
+    # Vor jedem Netzzugriff: den Windows-Installer braucht nur Windows (#44).
+    if betriebssystem() != 'win32':
+        raise AktualisierungsFehler(OHNE_INSTALLER)
     laden = laden or _laden
     daten = manifest_pruefen(laden(quelle(), MAX_MANIFEST), oeffentlich)
     if version_als_tupel(daten['version']) <= version_als_tupel(aktuelle_version):

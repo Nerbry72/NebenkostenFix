@@ -62,6 +62,7 @@ kern:
 	  tests/test_mehrjahresblick.py \
 	  tests/test_jahreswechsel.py \
 	  tests/test_pruefstand.py \
+	  tests/test_schaetzquote.py \
 	  tests/test_belegeinsicht.py \
 	  tests/test_abrechnungstabelle.py \
 	  tests/test_heizung_kostenarten.py tests/test_zaehlerwechsel.py \

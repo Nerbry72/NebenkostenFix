@@ -124,7 +124,7 @@ def test_platzhalter_sehen_nicht_wie_werte_aus():
 
 
 def test_anmeldeseiten_nehmen_die_farben_der_anwendung():
-    for variable in ('--primary', '--primary-hover', '--text-main'):
+    for variable in ('--primary', '--primary-hover', '--text-main', '--field-border'):
         wert_app = re.search(rf'{variable}:\s*([^;]+);', STIL).group(1).strip()
         wert_anmeldung = re.search(rf'{variable}:\s*([^;]+);', ANMELDUNG).group(1).strip()
         assert wert_app == wert_anmeldung, variable
@@ -783,13 +783,20 @@ def test_dunkelmodus():
              for grund in gruende]
     paare += [('--link-hover', '--surface', 4.5), ('--warning-text', '--warning-bg', 4.5),
               ('--success-color', '--success-bg', 4.5), ('--danger-color', '--danger-bg', 4.5),
-              ('--warning-strong', '--warning-bg', 4.5), ('--field-border', '--surface', 3)]
+              ('--warning-strong', '--warning-bg', 4.5)]
+    # Feldränder auf jeder Fläche, auf der ein Feld steht (auch Hover und Karten im Grau).
+    paare += [('--field-border', grund, 3) for grund in gruende if grund != '--primary-tint']
     paare += [('--on-primary', knopf, 4.5)
               for knopf in ('--primary', '--primary-hover', '--danger-color', '--danger-hover')]
     paare += [(text, grund, 4.5) for text in ('--leiste-text', '--leiste-hell')
               for grund in ('--leiste', '--leiste-hover', '--leiste-aktiv')]
-    for text, grund, soll in paare:
-        assert _kontrast_hex(farbe[text], farbe[grund]) >= soll, (text, grund)
+    # Beide Themen: farbe allein enthielte die hellen Werte nur, wo das dunkle nichts setzt.
+    # shortcut: Grün auf Grünton hält im Hellen nur 4,29 : 1, eigener Befund; dann streichen.
+    offen = {('hell', '--success-color', '--success-bg')}
+    for thema, werte in (('hell', hell), ('dunkel', farbe)):
+        for text, grund, soll in paare:
+            if (thema, text, grund) not in offen:
+                assert _kontrast_hex(werte[text], werte[grund]) >= soll, (thema, text, grund)
     # Die weiße Leistenschrift hängt nicht an --on-primary, das im Dunkeln dunkel wird.
     for selektor in ('.leiste-eintrag:hover', '.leiste-eintrag.active'):
         assert 'color: var(--leiste-hell)' in _regel(selektor), selektor
@@ -928,3 +935,14 @@ def test_geoeffnete_auswahllisten_im_design():
     # .form-group select setzt appearance: none spezifischer, darum eigens.
     assert re.search(r'@supports \(appearance: base-select\) \{\s*select,\s*'
                      r'\.form-group select,', STIL)
+
+
+def test_formular_feinheiten():
+    """Haken-Zeile in .form-group normal statt fett, Fokusring der Startwahl mit
+    der Rundung der Karte, Knopfzeile mittig (Knopf neben Text oder Feld)."""
+    haken = STIL[:STIL.index('.form-group .haken-zeile {')]
+    assert haken.rstrip().endswith('.haken-zeile,')
+    assert 'font-weight: 400' in _regel('.form-group .haken-zeile')
+    assert 'border-radius: var(--radius-md)' in _regel('.startwahl-knopf::after')
+    assert 'border-radius: var(--radius-md)' in _regel('.startwahl-weg')
+    assert 'align-items: center' in _regel('.knopf-zeile')

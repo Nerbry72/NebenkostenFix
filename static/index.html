@@ -66,6 +66,11 @@
                 </label>
                 <a class="chip-anmeldung" id="kopf-anmeldung-aus" href="/einrichtung" hidden
                     title="Die Anmeldung ist ausgeschaltet. Jeder in Ihrem Netz kann alle Daten sehen.">Anmeldung aus</a>
+                <!-- #45: nur im Servermodus der Windows-App (huelle.kann('lokal_arbeiten')). -->
+                <a class="chip-anmeldung chip-server" id="kopf-server" href="#" hidden
+                    onclick="zeigeServerKarte(); return false;"
+                    title="Diese App zeigt die Daten eines Servers. Klicken Sie für Verbindung und Rückweg."><i
+                    class="ph ph-plugs-connected" aria-hidden="true"></i> <span id="kopf-server-text"></span></a>
                 <div class="kopf-aktionen">
                     <!-- Angemeldeter Benutzer und Abmelden (NK-021). Der Name
                          wird von zeigeAngemeldetenBenutzer() aus /api/auth/me
@@ -710,19 +715,19 @@
                         <!-- NK-130 (D-86): Sicherungen, die den Rechner verlassen,
                              mit Passphrase verschluesseln (AES-256-GCM). -->
                         <div class="form-group abstand-unten-klein">
-                            <label style="display: flex; gap: 8px; align-items: center; font-weight: normal;">
+                            <label class="haken-zeile">
                                 <input type="checkbox" id="sicherung-verschluesseln"
                                     onchange="document.getElementById('sicherung-passphrase-felder').style.display = this.checked ? '' : 'none'">
                                 Sicherung mit Passphrase verschlüsseln (empfohlen für USB-Laufwerk und Cloud)
                             </label>
                             <div id="sicherung-passphrase-felder" style="display: none; margin-top: 8px;">
-                                <div class="knopf-zeile">
-                                    <input type="password" id="sicherung-passphrase" autocomplete="new-password"
-                                        minlength="12" placeholder="Passphrase (mindestens 12 Zeichen)" style="flex: 1; min-width: 200px;">
-                                    <input type="password" id="sicherung-passphrase2" autocomplete="new-password"
-                                        minlength="12" placeholder="Passphrase wiederholen" style="flex: 1; min-width: 200px;">
+                                <div class="form-group feld-zeile">
+                                    <input class="feld-breit" type="password" id="sicherung-passphrase" autocomplete="new-password"
+                                        minlength="12" placeholder="Passphrase (mindestens 12 Zeichen)" aria-label="Passphrase">
+                                    <input class="feld-breit" type="password" id="sicherung-passphrase2" autocomplete="new-password"
+                                        minlength="12" placeholder="Passphrase wiederholen" aria-label="Passphrase wiederholen">
                                 </div>
-                                <p style="font-size: 13px; color: var(--text-muted); margin: 8px 0 0;">
+                                <p style="font-size: 13px; color: var(--text-muted); margin: 0;">
                                     Ohne die Passphrase lässt sich die Sicherung nicht mehr öffnen — niemand
                                     kann sie wiederherstellen. Bewahren Sie sie getrennt von der Sicherung auf.
                                 </p>
@@ -766,6 +771,67 @@
                         </div>
                     </div>
 
+                    <!-- #45: nur im Servermodus der Windows-App (huelle.kann('lokal_arbeiten')).
+                         Der Rückweg fragt in einem Dialog von Windows, nie in der Seite. -->
+                    <div data-gruppe="sicherung" class="dashboard-card glass-panel" id="server-verbunden-karte" style="display: none;">
+                        <div class="karten-kopf">
+                            <h3>Mit einem Server verbunden</h3>
+                        </div>
+                        <p class="karten-text">
+                            Diese App zeigt die Daten von <strong id="server-verbunden-adresse"></strong>. Was Sie hier
+                            ändern, speichert der Server. Ihre Daten auf diesem Rechner bleiben unverändert und sind
+                            wieder da, sobald Sie zurückwechseln.
+                        </p>
+                        <p class="karten-text" id="server-verbunden-unverschluesselt" hidden>
+                            Die Verbindung ist nicht verschlüsselt. Nutzen Sie sie nur im eigenen Heimnetz.
+                        </p>
+                        <p id="server-verbunden-meldung" class="karten-text" role="status" aria-live="polite"></p>
+                        <div class="knopf-zeile">
+                            <button class="btn-secondary" type="button" id="btn-lokal-arbeiten" onclick="lokalArbeiten(this)">
+                                <i class="ph ph-house-line" aria-hidden="true"></i> Zurück zu den Daten auf diesem Rechner
+                            </button>
+                        </div>
+                    </div>
+                    <!-- #45: nur in der Windows-App mit lokalen Daten sichtbar (huelle.kann
+                         ('server_verbinden')). Die Daten auf diesem Rechner bleiben, wie sie sind. -->
+                    <div data-gruppe="sicherung" class="dashboard-card glass-panel" id="server-karte" style="display: none;">
+                        <div class="karten-kopf">
+                            <h3>Mit einem Server verbinden</h3>
+                        </div>
+                        <p class="karten-text">
+                            Statt der Daten auf diesem Rechner können Sie eine NebenkostenFix-Installation auf
+                            einem Server öffnen, zum Beispiel im Heimnetz.
+                        </p>
+                        <div class="form-group">
+                            <label for="server-adresse">Adresse des Servers</label>
+                            <input class="feld-breit" type="text" inputmode="url" id="server-adresse"
+                                autocomplete="url" spellcheck="false" placeholder="nebenkosten.example.de">
+                        </div>
+                        <div class="karten-abschnitt karten-abschnitt-getrennt" role="note">
+                            <p class="karten-text">
+                                Ihre Daten auf diesem Rechner bleiben unverändert. Sie sehen sie erst wieder, wenn
+                                Sie zurückschalten. Wenn Sie Ihre Daten auf den Server bringen möchten, nutzen Sie
+                                den Umzug. <strong>Achtung: Die Übernahme ersetzt alles, was schon auf dem Server
+                                ist.</strong>
+                            </p>
+                        </div>
+                        <label class="haken-zeile">
+                            <input type="checkbox" id="server-verstanden"
+                                onchange="document.getElementById('btn-server-verbinden').disabled = !this.checked">
+                            Ich habe verstanden, dass ich danach mit den Daten auf dem Server arbeite.
+                        </label>
+                        <p class="karten-text" role="status" aria-live="polite"><i id="server-meldung-symbol" class="ph ph-warning-circle" aria-hidden="true" hidden></i><span id="server-meldung"></span></p>
+                        <div class="knopf-zeile">
+                            <button class="btn-primary" type="button" id="btn-server-verbinden" disabled
+                                onclick="serverVerbinden(this)">
+                                <i class="ph ph-plugs-connected" aria-hidden="true"></i> Verbinden
+                            </button>
+                            <!-- #45: nur, wenn man aus der Startwahl hierher kam. -->
+                            <button class="btn-secondary" type="button" id="btn-startwahl-zurueck" hidden
+                                onclick="startwahlZurueck()">Zurück zur Startwahl</button>
+                        </div>
+                    </div>
+
                     <!-- NK-164 (E-13 → D-96): Umzugspaket. Dasselbe .nkfix wie eine
                          Sicherung, hier als Weg auf einen anderen Rechner: Docker ↔
                          Windows-App in beide Richtungen. Hochladen in Stücken
@@ -786,7 +852,7 @@
                                     onchange="document.getElementById('umzug-export-passphrase').hidden = !this.checked">
                                 Mit Passphrase verschlüsseln (empfohlen, wenn das Paket über Cloud oder USB reist)
                             </label>
-                            <div id="umzug-export-passphrase" class="knopf-zeile abstand-oben" hidden>
+                            <div id="umzug-export-passphrase" class="form-group feld-zeile abstand-oben" hidden>
                                 <input class="feld-breit" type="password" id="umzug-export-pass1" autocomplete="new-password"
                                     minlength="12" placeholder="Passphrase (mindestens 12 Zeichen)" aria-label="Passphrase">
                                 <input class="feld-breit" type="password" id="umzug-export-pass2" autocomplete="new-password"
@@ -806,12 +872,15 @@
                                 Konto aus dem Paket an, falls das Paket eines enthält.
                             </p>
                             <div class="form-group">
-                                <label for="umzug-datei-einstellungen">Paket</label>
-                                <input type="file" id="umzug-datei-einstellungen" accept=".nkfix,.nkbak,.gz">
+                                <label for="umzug-datei-einstellungen" id="umzug-datei-einstellungen-label">Paket</label>
+                                <input type="file" id="umzug-datei-einstellungen" accept=".nkfix,.nkbak,.gz" hidden
+                                    onchange="umzugDateiGewaehlt(this)">
                                 <div class="knopf-zeile">
-                                    <button class="btn-secondary" type="button" id="btn-umzug-auswahl" hidden
+                                    <button class="btn-secondary" type="button" id="btn-umzug-auswahl"
+                                        aria-labelledby="umzug-datei-einstellungen-label btn-umzug-auswahl"
+                                        aria-describedby="umzug-auswahl-einstellungen"
                                         onclick="umzugPaketWaehlen()">Paket auswählen</button>
-                                    <span class="text-muted" id="umzug-auswahl-einstellungen"></span>
+                                    <span class="text-muted" id="umzug-auswahl-einstellungen" aria-live="polite">Keine Datei ausgewählt</span>
                                 </div>
                             </div>
                             <div class="form-group" id="umzug-importordner-gruppe" hidden>
@@ -1628,7 +1697,13 @@
                     </div>
                     <div class="form-group abstand-oben">
                         <label for="import-datei">Ihre Tabelle (.xlsx oder .csv)</label>
-                        <input type="file" id="import-datei" accept=".xlsx,.csv">
+                        <div class="file-upload-wrapper">
+                            <input type="file" id="import-datei" accept=".xlsx,.csv"
+                                onchange="document.getElementById('import-datei-name').textContent = this.files[0] ? this.files[0].name : 'Tabelle auswählen …'">
+                            <label for="import-datei" class="file-upload-label">
+                                <i class="ph ph-file-xls" aria-hidden="true"></i><span id="import-datei-name">Tabelle auswählen …</span>
+                            </label>
+                        </div>
                     </div>
                 </div>
                 <div id="import-schritt-zuordnung" hidden>
@@ -1829,13 +1904,13 @@
                     <input type="date" id="tenant-last-billed">
                 </div>
                 <div class="form-group abstand-oben">
-                    <label>Mietvertrag hochladen (PDF/DOCX, Optional)</label>
+                    <label>Mietvertrag (PDF oder Foto, optional)</label>
                     <div class="file-upload-wrapper">
                         <input type="file" id="tenant-contract-file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,application/pdf,image/jpeg,image/png,image/webp,image/heic"
-                            onchange="document.getElementById('tenant-contract-name').textContent = this.files[0] ? this.files[0].name : 'Datei auswählen...'">
+                            onchange="document.getElementById('tenant-contract-name').textContent = this.files[0] ? this.files[0].name : 'Datei auswählen …'">
                         <label for="tenant-contract-file" class="file-upload-label">
-                            <i class="ph ph-file-pdf"></i>
-                            <span id="tenant-contract-name">Datei auswählen...</span>
+                            <i class="ph ph-file-pdf" aria-hidden="true"></i>
+                            <span id="tenant-contract-name">Datei auswählen …</span>
                         </label>
                     </div>
                     <div id="tenant-contract-info" style="font-size: 13px; color: var(--text-muted); margin-top: 4px; display: none;"></div>
@@ -2359,17 +2434,17 @@
                         <label>Beweisfoto (Optional)</label>
                         <div class="file-upload-wrapper">
                             <input type="file" id="reading-file" accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.pdf,image/jpeg,image/png,image/webp,image/heic,application/pdf"
-                                onchange="document.getElementById('reading-file-name').textContent = this.files[0] ? this.files[0].name : 'Datei auswählen...'">
+                                onchange="document.getElementById('reading-file-name').textContent = this.files[0] ? this.files[0].name : 'Datei auswählen …'">
                             <label for="reading-file" class="file-upload-label">
-                                <i class="ph ph-upload-simple"></i>
-                                <span id="reading-file-name">Datei auswählen...</span>
+                                <i class="ph ph-upload-simple" aria-hidden="true"></i>
+                                <span id="reading-file-name">Datei auswählen …</span>
                             </label>
                         </div>
                     </div>
                     <div class="form-group abstand-oben">
                         <label
                             style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
-                            <input type="checkbox" id="reading-is-official" style="width: 16px; height: 16px;"
+                            <input type="checkbox" id="reading-is-official"
                                 onchange="document.getElementById('group-reading-provider').style.display = this.checked ? 'block' : 'none';">
                             <span style="font-size: 15px; font-weight: 500; color: var(--text-color);">Ablesung stammt aus
                                 offizieller Rechnung</span>
@@ -2445,10 +2520,10 @@
                         <label>Beleg (PDF oder Foto)</label>
                         <div class="file-upload-wrapper">
                             <input type="file" id="doc-file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,application/pdf,image/jpeg,image/png,image/webp,image/heic" required
-                                onchange="document.getElementById('doc-file-name').textContent = this.files[0] ? this.files[0].name : 'Datei auswählen...'">
+                                onchange="document.getElementById('doc-file-name').textContent = this.files[0] ? this.files[0].name : 'Datei auswählen …'">
                             <label for="doc-file" class="file-upload-label">
-                                <i class="ph ph-file-pdf"></i>
-                                <span id="doc-file-name">PDF auswählen...</span>
+                                <i class="ph ph-file-pdf" aria-hidden="true"></i>
+                                <span id="doc-file-name">Datei auswählen …</span>
                             </label>
                         </div>
                     </div>
@@ -2632,10 +2707,10 @@
                     <div class="form-group" id="group-invoice-file">
                         <div class="file-upload-wrapper">
                             <input type="file" id="invoice-file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,application/pdf,image/jpeg,image/png,image/webp,image/heic"
-                                onchange="document.getElementById('invoice-file-name').textContent = this.files[0] ? this.files[0].name : 'Datei auswählen...'">
+                                onchange="document.getElementById('invoice-file-name').textContent = this.files[0] ? this.files[0].name : 'Datei auswählen …'">
                             <label for="invoice-file" class="file-upload-label">
-                                <i class="ph ph-upload-simple"></i>
-                                <span id="invoice-file-name">Datei auswählen...</span>
+                                <i class="ph ph-upload-simple" aria-hidden="true"></i>
+                                <span id="invoice-file-name">Datei auswählen …</span>
                             </label>
                         </div>
                     </div>
@@ -2818,7 +2893,7 @@
                 <p id="anschreiben-status" style="margin: 0 0 12px 0; color: var(--text-muted); font-size: 13px;"></p>
                 <div class="form-group">
                     <label for="anschreiben-text">Der Text des Anschreibens. Platzhalter füllt die Software aus.</label>
-                    <textarea id="anschreiben-text" rows="12" style="width: 100%; font-family: inherit;"></textarea>
+                    <textarea id="anschreiben-text" rows="12"></textarea>
                 </div>
                 <div class="form-group">
                     <label>Platzhalter</label>
@@ -2868,7 +2943,7 @@
                         </select>
                     </div>
                 </div>
-                <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
+                <div class="form-group checkbox-group">
                     <input type="checkbox" id="heizung-sonderfall" onchange="toggleSonderfall()">
                     <label for="heizung-sonderfall" style="margin: 0;">Sonderfall § 7 Abs. 1 Satz 2 (Öl- oder Gasheizung, ungefördertes Gebäude, gedaemmte Leitungen — dann sind 70 vom Hundert vorgeschrieben)</label>
                 </div>
@@ -2962,6 +3037,42 @@
         </div>
     </div>
 
+    <!-- #45: Startwahl beim ersten Start der Windows-App (leere Datenbank,
+         startwahlZeigen in app.js). Ohne Schließen-Knopf: Weiter geht es nur
+         über einen der beiden Wege. -->
+    <div class="modal-overlay" id="startwahl-modal" data-fest="1">
+        <div class="modal glass-panel" role="dialog" aria-modal="true"
+            aria-labelledby="startwahl-titel" aria-describedby="startwahl-text">
+            <div class="modal-header">
+                <h2 id="startwahl-titel">Wo sollen Ihre Daten liegen?</h2>
+            </div>
+            <div class="modal-body">
+                <p class="modal-text" id="startwahl-text">Sie können später jederzeit wechseln, in den
+                    Einstellungen unter Datensicherung.</p>
+                <div class="startwahl-wege">
+                    <div class="startwahl-weg">
+                        <span class="schritt-marke"><i class="ph ph-desktop" aria-hidden="true"></i></span>
+                        <div>
+                            <button type="button" class="startwahl-knopf" data-autofokus
+                                aria-describedby="startwahl-lokal-satz" onclick="startwahlLokal()">Auf diesem Rechner arbeiten</button>
+                            <p class="startwahl-satz" id="startwahl-lokal-satz">Ihre Daten liegen auf diesem
+                                Rechner. Dafür brauchen Sie keinen Server.</p>
+                        </div>
+                    </div>
+                    <div class="startwahl-weg">
+                        <span class="schritt-marke"><i class="ph ph-plugs-connected" aria-hidden="true"></i></span>
+                        <div>
+                            <button type="button" class="startwahl-knopf"
+                                aria-describedby="startwahl-server-satz" onclick="startwahlServer()">Mit einem NebenkostenFix-Server verbinden</button>
+                            <p class="startwahl-satz" id="startwahl-server-satz">Ihre Daten liegen auf einem
+                                Server, zum Beispiel im Heimnetz. Die App lädt sie von dort.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- NK-174: Haftungshinweis, einmal je Fassung. Ohne Schließen-Knopf:
          der einzige Weg weiter ist „Verstanden“. -->
     <div class="modal-overlay" id="haftung-modal" data-fest="1">
@@ -2971,7 +3082,7 @@
             </div>
             <div class="modal-body modal-text" id="haftung-text"></div>
             <div class="modal-footer">
-                <button type="button" class="btn-primary" onclick="haftungBestaetigen()">Verstanden</button>
+                <button type="button" class="btn-primary" data-autofokus onclick="haftungBestaetigen()">Verstanden</button>
             </div>
         </div>
     </div>
@@ -3034,7 +3145,7 @@
     </div>
     <script src="/static/formular.js?v=2"></script>
     <script src="/static/umzug.js?v=1"></script>
-    <script src="/static/app.js?v=47"></script>
+    <script src="/static/app.js?v=48"></script>
 </body>
 
 </html>

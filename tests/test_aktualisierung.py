@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -30,6 +31,8 @@ def schluessel(monkeypatch):
         Encoding.Raw, PublicFormat.Raw)).decode('ascii')
     monkeypatch.setattr(aktualisierung, 'HERAUSGEBER_SCHLUESSEL', oeffentlich)
     monkeypatch.setattr(aktualisierung, 'paketmodus', lambda: False)
+    # Die Windows-App ohne Store; macOS und Linux prüfen eigene Tests (#44).
+    monkeypatch.setattr(aktualisierung, 'betriebssystem', lambda: 'win32')
     return privat
 
 
@@ -181,6 +184,90 @@ def test_paketmodus_schaltet_den_updater_ab(schluessel, quelle, monkeypatch, tmp
 
 def test_paketmodus_ausserhalb_von_windows_aus():
     assert aktualisierung.paketmodus() is False
+
+
+# --- Zielsystem: Store, Docker, Windows, macOS, Linux (#44) ------------------------
+
+MAC_LINUX_TEXT = ('Version 0.9.1 ist verfügbar. Unter macOS und Linux installiert die App '
+                  'Updates nicht selbst. Die neue Version gibt es auf der Projektseite.')
+
+
+@pytest.mark.parametrize('paket, desktop, system, ziel', [
+    (True, True, 'win32', 'store'),
+    (True, False, 'win32', 'store'),     # der Store geht allem vor
+    (False, False, 'win32', 'docker'),
+    (False, False, 'linux', 'docker'),
+    (False, True, 'win32', 'windows'),
+    (False, True, 'darwin', 'macos'),
+    (False, True, 'linux', 'linux'),
+])
+def test_zielsystem(monkeypatch, paket, desktop, system, ziel):
+    monkeypatch.setattr(aktualisierung, 'paketmodus', lambda: paket)
+    monkeypatch.setattr(aktualisierung, 'betriebssystem', lambda: system)
+    assert aktualisierung.zielsystem(desktop) == ziel
+
+
+def test_betriebssystem_ist_sys_platform():
+    assert aktualisierung.betriebssystem() == sys.platform
+
+
+@pytest.mark.parametrize('system', ['darwin', 'linux'])
+def test_ausserhalb_von_windows_nur_der_hinweis(schluessel, quelle, monkeypatch, system):
+    """Die Desktop-App aus den Quellen bietet keinen Windows-Installer an."""
+    monkeypatch.setattr(aktualisierung, 'betriebssystem', lambda: system)
+    laden = _lader({quelle: _manifest(schluessel)})
+    ergebnis = aktualisierung.suchen('0.9.0', desktop=True, laden=laden)
+    assert ergebnis['neu'] and not ergebnis['installierbar']
+    assert ergebnis['text'] == MAC_LINUX_TEXT
+
+
+def test_unter_windows_bleibt_alles_wie_bisher(schluessel, quelle):
+    laden = _lader({quelle: _manifest(schluessel)})
+    ergebnis = aktualisierung.suchen('0.9.0', desktop=True, laden=laden)
+    assert ergebnis['installierbar'] and ergebnis['text'] == 'Version 0.9.1 ist verfügbar.'
+
+
+@pytest.mark.parametrize('system', ['darwin', 'linux'])
+def test_installer_ausserhalb_von_windows_gar_nicht_erst_laden(
+        schluessel, quelle, monkeypatch, tmp_path, system):
+    monkeypatch.setattr(aktualisierung, 'betriebssystem', lambda: system)
+    gefragt = []
+    laden = _lader({quelle: _manifest(schluessel), SETUP: b'SETUP'}, gefragt)
+    with pytest.raises(AktualisierungsFehler, match='nicht selbst'):
+        aktualisierung.installer_laden('0.9.0', laden=laden, ziel=tmp_path)
+    assert gefragt == []
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_auf_dem_mac_kein_download_und_keine_sicherung(schluessel, auth_client, monkeypatch):
+    from nebenkostenfix import backup
+    from app import app
+    monkeypatch.setitem(app.config, 'DESKTOP', True)
+    monkeypatch.setattr(aktualisierung, 'betriebssystem', lambda: 'darwin')
+    monkeypatch.setenv('NK_UPDATE_QUELLE', QUELLE)
+    gefragt = []
+    monkeypatch.setattr(aktualisierung, '_laden', _lader(
+        {QUELLE: _manifest(schluessel, version='99.0.0'), SETUP: b'SETUP'}, gefragt))
+    gesichert = []
+    monkeypatch.setattr(backup, 'sicherung_erstellen',
+                        lambda *a, **k: gesichert.append(k['praefix']))
+    suche = auth_client.get('/api/aktualisierung').get_json()
+    assert suche['neu'] and not suche['installierbar']
+    gefragt.clear()
+    antwort = auth_client.post('/api/aktualisierung/installieren')
+    assert antwort.status_code == 400
+    assert 'Projektseite' in antwort.get_json()['error']
+    assert gefragt == [] and gesichert == []
+
+
+def test_jeder_weg_steht_in_der_fehlervorlage():
+    """„Fehler melden“ füllt „Installiert als“ vor; GitHub wählt nur eine
+    vorhandene Option aus."""
+    assert set(aktualisierung.WEGE) == {'store', 'docker', 'windows', 'macos', 'linux'}
+    vorlage = (WURZEL / '.github/ISSUE_TEMPLATE/fehler.yml').read_text(encoding='utf-8')
+    feld = vorlage.split('id: weg', 1)[1].split('validations:', 1)[0]
+    for weg in set(aktualisierung.WEGE.values()):
+        assert f'- {weg}\n' in feld, weg
 
 
 # --- Suche beim Start (NK-175) ----------------------------------------------------
@@ -372,6 +459,45 @@ def test_api_haftung(auth_client, monkeypatch, tmp_path):
     # Neue Fassung: der Hinweis kommt noch einmal.
     monkeypatch.setattr(haftung, 'VERSION', haftung.VERSION + 1)
     assert auth_client.get('/api/haftung').get_json()['bestaetigt'] is False
+
+
+def test_startwahl_bei_leerer_app_trotz_alter_bestaetigung(auth_client, monkeypatch, tmp_path):
+    """#45, Rechner mit altem Datenordner: Der Datenordner überlebt die Deinstallation samt
+    Bestätigung, die Datenbank ist leer. Die Startwahl kommt trotzdem."""
+    from app import app
+    from nebenkostenfix import datenordner, einstellungen, haftung
+    monkeypatch.setattr(datenordner, 'datenordner', lambda: tmp_path)
+    monkeypatch.setitem(app.config, 'DESKTOP', True)
+    einstellungen.schreiben(tmp_path, haftung={'version': haftung.VERSION})
+    vorher = (tmp_path / 'app-einstellungen.json').read_bytes()
+    stand = auth_client.get('/api/haftung').get_json()
+    assert stand['startwahl'] is True and stand['bestaetigt'] is True
+    # Ganz neu (nie bestätigt) ebenso.
+    einstellungen.schreiben(tmp_path, haftung=None)
+    assert auth_client.get('/api/haftung').get_json()['startwahl'] is True
+    einstellungen.schreiben(tmp_path, haftung={'version': haftung.VERSION})
+    # Nur gelesen: Die Abfrage schreibt nichts.
+    assert (tmp_path / 'app-einstellungen.json').read_bytes() == vorher
+
+
+def test_startwahl_nie_mit_objekten_und_nie_im_browser(auth_client, monkeypatch, tmp_path):
+    """#45: Mit Objekten (auch nie bestätigt, Update von vor NK-174) keine
+    Startwahl, sonst wären die lokalen Daten scheinbar weg. Docker und der
+    Server hinter der App (kein NK_DESKTOP) fragen nie."""
+    from app import app
+    from nebenkostenfix import datenordner
+    from nebenkostenfix.models import Property, db
+    monkeypatch.setattr(datenordner, 'datenordner', lambda: tmp_path)
+    monkeypatch.setitem(app.config, 'DESKTOP', False)
+    stand = auth_client.get('/api/haftung').get_json()
+    assert stand['startwahl'] is False and stand['bestaetigt'] is False
+    monkeypatch.setitem(app.config, 'DESKTOP', True)
+    db.session.add(Property(name='Haus Bestand'))
+    db.session.commit()
+    stand = auth_client.get('/api/haftung').get_json()
+    assert stand['startwahl'] is False and stand['bestaetigt'] is False
+    assert not (tmp_path / 'app-einstellungen.json').exists()
+    assert Property.query.count() == 1
 
 
 def test_einstellungen_gleichzeitig_geht_nichts_verloren(tmp_path):

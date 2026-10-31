@@ -101,7 +101,7 @@ KURZANLEITUNG = [
         'Der Mieter darf die Belege einsehen und hat zwölf Monate Zeit für Einwände.',
     ]),
     ('9. Daten sichern', [
-        'Unter „Einstellungen → Sicherung“ erstellen Sie eine Sicherung: Datenbank und alle '
+        'Unter „Einstellungen → Datensicherung“ erstellen Sie eine Sicherung: Datenbank und alle '
         'Belege in einer Datei. Legen Sie sie auf einen USB-Stick oder Ihr NAS, nicht nur auf '
         'denselben Rechner.',
         'Die Anwendung erinnert Sie, wenn die letzte Sicherung älter als 30 Tage ist.',

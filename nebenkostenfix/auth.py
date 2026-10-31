@@ -382,15 +382,16 @@ __UMZUG__
 # Paket; angemeldet wird danach mit dem bisherigen Passwort.
 UMZUG_KARTE = """<details class="anmelde-karte umzug-karte">
  <summary>Daten aus einer anderen Installation übernehmen</summary>
- <form id="umzug-form" data-desktop="__DESKTOP__">
+ <form id="umzug-form">
  <p class="hinweis">Sie haben NebenkostenFix schon auf einem anderen Rechner genutzt?
- Exportieren Sie dort unter <b>Einstellungen → Sicherung → Alles exportieren</b> und
+ Exportieren Sie dort unter <b>Einstellungen → Datensicherung → Alles exportieren</b> und
  wählen Sie die <code>.nkfix</code>-Datei hier aus. Danach melden Sie sich mit Ihrem
  bisherigen Konto an.</p>
- <label for="umzug-datei">Umzugspaket (.nkfix)</label>
- <input id="umzug-datei" type="file" accept=".nkfix,.nkbak,.gz">
- <button type="button" id="umzug-auswahl-knopf" class="zweitknopf" hidden>Paket auswählen</button>
- <p class="hilfe" id="umzug-auswahl-name"></p>
+ <label for="umzug-datei" id="umzug-datei-label">Umzugspaket (.nkfix)</label>
+ <input id="umzug-datei" type="file" accept=".nkfix,.nkbak,.gz" hidden>
+ <button type="button" id="umzug-auswahl-knopf" class="zweitknopf"
+  aria-labelledby="umzug-datei-label umzug-auswahl-knopf" aria-describedby="umzug-auswahl-name">Paket auswählen</button>
+ <p class="hilfe" id="umzug-auswahl-name" aria-live="polite">Keine Datei ausgewählt</p>
  <label for="umzug-passphrase">Passphrase (nur bei verschlüsselten Paketen)</label>
  <input id="umzug-passphrase" type="password" autocomplete="off">
  __UMZUGCODE__
@@ -441,8 +442,7 @@ def _einrichtungsseite(fehler=None, mit_code=True, mit_umzug=True,
     seite = seite.replace('__CODEFELD__', CODE_FELD if mit_code else '')
     seite = seite.replace('__OHNE__', OHNE_KNOPF if mit_ohne else '')
     if mit_umzug:
-        umzug_karte = UMZUG_KARTE.replace('__DESKTOP__', '0' if mit_code else '1')
-        umzug_karte = umzug_karte.replace('__UMZUGCODE__', UMZUG_CODE_FELD if mit_code else '')
+        umzug_karte = UMZUG_KARTE.replace('__UMZUGCODE__', UMZUG_CODE_FELD if mit_code else '')
     else:
         umzug_karte = ''
     return seite.replace('__UMZUG__', umzug_karte)

@@ -38,8 +38,11 @@ def test_jedes_eingabefeld_im_formular_ist_gestaltet():
     """Jede Feldart, die index.html in einem Formular benutzt, hat eine Regel."""
     arten = set(re.findall(r'<input[^>]*type="([a-z]+)"', SEITE))
     ohne_regel = {'checkbox', 'file', 'hidden', 'radio'}
+    # Die Feldregel gilt seit „Formulare im Hausstil“ app-weit (:where-Block).
+    anfang = STIL.index(':where(input:is(')
+    feldregel = STIL[anfang:STIL.index('{', anfang)]
     for art in sorted(arten - ohne_regel):
-        assert f'.form-group input[type="{art}"]' in STIL, art
+        assert f'[type="{art}"]' in feldregel, art
 
 
 def test_statistik_ohne_immobilie_zeigt_den_weg_zur_beispielimmobilie():

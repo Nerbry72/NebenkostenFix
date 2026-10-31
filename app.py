@@ -3458,7 +3458,13 @@ def _vermieter_stand():
 @app.route('/api/haftung', methods=['GET'])
 def haftung_anzeigen():
     """Der Haftungshinweis und ob diese Fassung bestaetigt ist (NK-174)."""
-    return jsonify(haftung.stand())
+    stand = haftung.stand()
+    # #45: Startwahl „lokal oder Server“ nur in der lokalen Windows-App
+    # (NK_DESKTOP, also ohne Warten auf die Brücke) und nur ohne Objekte.
+    # Eine alte Bestätigung zählt nicht: Sie liegt im Datenordner, den die
+    # Deinstallation stehen lässt.
+    stand['startwahl'] = bool(app.config.get('DESKTOP')) and Property.query.first() is None
+    return jsonify(stand)
 
 
 @app.route('/api/haftung', methods=['POST'])
@@ -3539,12 +3545,7 @@ def hausgeld_pruefen():
 def ueber_anzeigen():
     """„Über NebenkostenFix“ im Hilfe-Tab (NK-179): Stand, feste Adressen,
     Haftungshinweis. Nichts aus der Datenbank."""
-    if aktualisierung.paketmodus():
-        weg = 'Microsoft Store'
-    elif app.config.get('DESKTOP'):
-        weg = 'Windows-App'
-    else:
-        weg = 'Docker'
+    weg = aktualisierung.WEGE[aktualisierung.zielsystem(bool(app.config.get('DESKTOP')))]
     system = f'{platform.system()} {platform.release()}'
     return jsonify({
         'version': SOFTWARE_VERSION, 'weg': weg,

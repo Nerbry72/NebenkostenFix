@@ -12,7 +12,7 @@ Alles, was Sie eingeben, liegt in einem Ordner auf Ihrem Rechner oder Server: Im
 Mieter, Zählerstände, Rechnungen, Belege und Abrechnungen. Bei Docker ist das `daten/`
 neben der Compose-Datei, bei Windows `Dokumente\NebenkostenFix`. Der Herausgeber sieht davon
 nichts. Er kann die Daten auch nicht wiederherstellen, wenn sie verloren gehen. Legen Sie
-deshalb Sicherungen an (Einstellungen → Sicherung).
+deshalb Sicherungen an (Einstellungen → Datensicherung).
 
 ## Wann die Anwendung ins Internet geht
 

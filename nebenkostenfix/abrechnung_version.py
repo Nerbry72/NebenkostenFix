@@ -33,7 +33,7 @@ from nebenkostenfix import betrkv
 # Die einzige Stelle der Versionsnummer (x.y.z). Docker-Abbild, Windows-
 # Installer und GitHub-Release lesen sie von hier; jeder Merge nach main
 # braucht eine neue Nummer, sonst lehnt die CI den Pull Request ab.
-SOFTWARE_VERSION = '0.17.1'
+SOFTWARE_VERSION = '0.18.0'
 
 # Der Stand der rechtlichen Grundlage (BetrKV, HeizkostenV, CO2KostAufG),
 # gegen den die Rechenregeln geprüft sind. Wer eine Regel nach neuer

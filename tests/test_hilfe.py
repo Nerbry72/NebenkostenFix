@@ -76,3 +76,16 @@ def test_vorschau_und_detail_erklaeren_das_ergebnis():
 
 def test_kein_fachjargon_im_abrechnungskopf():
     assert 'Smarte Vorschläge' not in SEITE
+
+
+def test_texte_nennen_den_bereich_datensicherung():
+    """Review 0.18: der Bereich heißt in der App „Datensicherung“ (index.html);
+    Hilfe, Anmeldeseite und Doku schickten Nutzer zu „Einstellungen → Sicherung“."""
+    wurzel = WURZEL
+    assert '</i> Datensicherung</button>' in (wurzel / 'static' / 'index.html').read_text(encoding='utf-8')
+    dateien = [*wurzel.glob('nebenkostenfix/*.py'), *wurzel.glob('static/*.js'),
+               *wurzel.glob('static/*.html'), *wurzel.glob('*.md'), *wurzel.glob('docs/**/*.md'),
+               *wurzel.glob('packaging/**/*.md')]
+    falsch = [str(d.relative_to(wurzel)) for d in dateien
+              if 'Einstellungen → Sicherung' in d.read_text(encoding='utf-8')]
+    assert falsch == []

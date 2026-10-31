@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from urllib.parse import parse_qs, urlsplit
 
+import pytest
+
 from nebenkostenfix import aktualisierung
 import desktop
 from nebenkostenfix import haftung
@@ -44,6 +46,21 @@ def test_api_ueber_zeigt_auf_die_konstanten(auth_client, monkeypatch):
 def test_api_ueber_kennt_den_store(auth_client, monkeypatch):
     monkeypatch.setattr(aktualisierung, 'paketmodus', lambda: True)
     assert auth_client.get('/api/ueber').get_json()['weg'] == 'Microsoft Store'
+
+
+@pytest.mark.parametrize('system, weg', [
+    ('win32', 'Windows-App'),
+    ('darwin', 'aus dem Quellcode'),   # #44: nicht mehr „Windows-App“
+    ('linux', 'aus dem Quellcode'),
+])
+def test_api_ueber_nennt_den_weg_der_desktop_app(auth_client, monkeypatch, system, weg):
+    from app import app
+    monkeypatch.setitem(app.config, 'DESKTOP', True)
+    monkeypatch.setattr(aktualisierung, 'paketmodus', lambda: False)
+    monkeypatch.setattr(aktualisierung, 'betriebssystem', lambda: system)
+    ueber = auth_client.get('/api/ueber').get_json()
+    assert ueber['weg'] == weg
+    assert parse_qs(urlsplit(ueber['fehler_melden']).query)['weg'] == [weg]
 
 
 def test_haftungstext_ohne_verkaufsreste():

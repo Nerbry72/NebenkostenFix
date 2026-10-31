@@ -187,3 +187,15 @@ def test_readme_bilder_kommen_aus_dem_rundgang():
         assert re.search(rf'function {name}\(', SKRIPT), name
     workflow = (WURZEL / '.github' / 'workflows' / 'rundgang.yml').read_text(encoding='utf-8')
     assert '--readme rundgang-bilder/readme' in workflow
+
+
+def test_rundgang_bestaetigt_den_haftungshinweis_mit_verstanden():
+    """#45: Ein versteckter Knopf vor „Verstanden“ ließ den Klick auf den
+    ersten Knopf bis zum Timeout warten. Der Rundgang zielt deshalb auf
+    den Hauptknopf; im Dialog bleibt „Verstanden“ der einzige."""
+    quelle = (WURZEL / 'scripts' / 'rundgang.py').read_text(encoding='utf-8')
+    assert "seite.click('#haftung-modal [data-autofokus]')" in quelle
+    assert "seite.click('#haftung-modal button')" not in quelle
+    dialog = SEITE[SEITE.index('id="haftung-modal"'):SEITE.index('id="frage-modal"')]
+    knoepfe = re.findall(r'<button[^>]*data-autofokus[^>]*>([^<]*)<', dialog)
+    assert knoepfe == ['Verstanden']

@@ -356,6 +356,7 @@ function initApp() {
     fetchVermieterdaten();
     ladeKonten();
     ladeSicherungsStatus();
+    serverAnzeige();
     ladeUmzug();
     ladeGesperrteMieter();
     ladeUpdateEinstellung();
@@ -396,6 +397,12 @@ let payments = [];
 const huelle = {
     aktiv() {
         return !!(window.pywebview && window.pywebview.api);
+    },
+
+    // Nicht jede Brücke kann alles (#45): im Servermodus fehlen Ordnerwahl,
+    // Umzug und Umschalten, ältere Apps kennen neuere Methoden nicht.
+    kann(name) {
+        return this.aktiv() && typeof window.pywebview.api[name] === 'function';
     },
 
     async _base64(blob) {
@@ -489,11 +496,26 @@ const huelle = {
 
     // Ordnerwahl fuer Sicherungen (nur in der App, F-76 unter Windows).
     async ordnerWaehlen() {
-        if (!this.aktiv()) return null;
+        if (!this.kann('ordner_waehlen')) return null;
         return await window.pywebview.api.ordner_waehlen();
+    },
+
+    // #45: prüfen, eintragen, neu starten -- alles in der App, nichts im Browser.
+    async serverVerbinden(adresse) {
+        if (!this.kann('server_verbinden')) return null;
+        return await window.pywebview.api.server_verbinden(adresse);
+    },
+
+    // #45: Rückweg im Servermodus. Bestätigt wird nur im Dialog von Windows, nie in der Seite.
+    async lokalArbeiten() {
+        if (!this.kann('lokal_arbeiten')) return false;
+        return await window.pywebview.api.lokal_arbeiten();
     },
 };
 window.huelle = huelle;
+
+// pywebview hängt die Brücke womöglich erst nach dem ersten Zeichnen an (#45).
+window.addEventListener('pywebviewready', serverAnzeige);
 
 // Links mit target="_blank" oder download landen in der App bei der Huelle.
 // Im Browser bleibt der Klick unberuehrt.
@@ -577,6 +599,7 @@ function initTabs() {
                 targetTab.dataset.richtung = seitenRichtung(vorher, item);
                 targetTab.classList.add('active');
                 targetTab.style.display = 'block';
+                startwahlVerlassen(item.dataset.tab);
                 
                 if (item.dataset.tab === 'billing') {
                     fetchBillingSuggestions();
@@ -1327,12 +1350,14 @@ function tourAutostart() {
     try {
         if (localStorage.getItem('nk-tour-gesehen')) return;
     } catch (e) { return; }
-    // Beim ersten Anmelden liegt der Haftungshinweis davor: warten, bis kein
-    // Dialog mehr offen ist, und nur starten, wenn noch kein Haus angelegt wurde.
+    // Vorher kommen Startwahl (#45) und Haftungshinweis: warten, bis beide durch
+    // sind, und nur starten, wenn noch kein Haus angelegt wurde.
     const versuch = () => {
         if (tourOffen() || echterBestand().properties.length > 0) return;
         if (document.getElementById('tab-hilfe').classList.contains('active')) return;
-        if (document.querySelector('.modal-overlay.active')) return setTimeout(versuch, 1000);
+        if (!startHinweiseFertig || document.querySelector('.modal-overlay.active')) return setTimeout(versuch, 1000);
+        // Wer schon in den Einstellungen ist (etwa über „Mit einem Server verbinden“), bleibt dort.
+        if (document.getElementById('tab-settings').classList.contains('active')) return;
         tourStarten();
     };
     setTimeout(versuch, 600);
@@ -1514,7 +1539,8 @@ function ersterFokus(overlay) {
     const modal = overlay.querySelector('.modal') || overlay;
     const felder = fokussierbar(modal.querySelector('.modal-body') || modal)
         .filter(el => ['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName));
-    const ziel = felder[0] || fokussierbar(modal)[0];
+    // data-autofokus: Ein Dialog ohne Eingabe nennt seinen Hauptknopf (Haftungshinweis, #45).
+    const ziel = modal.querySelector('[data-autofokus]') || felder[0] || fokussierbar(modal)[0];
     if (ziel && !modal.contains(document.activeElement)) ziel.focus();
 }
 
@@ -1943,15 +1969,20 @@ async function deleteProperty(id) {
 // K4 (NK-102): der einzige Erzeuger des Leerzustands. Alle Bereiche
 // hängen hier ab — acht handgeschriebene Kopien sind verschwunden (B4),
 // der Knopf heißt stets „nächster sinnvoller Schritt“ und ist primär.
-function leerzustand({ icon, titel, text, aktion = null }) {
+function leerzustand({ icon, titel, text, aktion = null, aktion2 = null }) {
     // Knopftexte stehen in ${}-Ausdrücken, damit der Beschriftungs-Prüfer
     // den Knopf als dynamischen Text erkennt (Glossar Par. 6).
-    const iconImKnopf = aktion && aktion.icon
-        ? `<i class="ph ${aktion.icon}" aria-hidden="true"></i> `
-        : '';
-    const knopf = aktion
-        ? `<button type="button" class="btn-primary" onclick="${aktion.fn}">${iconImKnopf}${aktion.label}</button>`
-        : '';
+    const knopfHtml = (aktion, klasse) => {
+        if (!aktion) return '';
+        const iconImKnopf = aktion.icon
+            ? `<i class="ph ${aktion.icon}" aria-hidden="true"></i> `
+            : '';
+        return `<button type="button" class="${klasse}" onclick="${aktion.fn}">${iconImKnopf}${aktion.label}</button>`;
+    };
+    // Die zweite Aktion (#45) ist ein Nebenweg und bleibt sekundär.
+    const knopf = aktion2
+        ? `<div class="knopf-zeile">${knopfHtml(aktion, 'btn-primary')}${knopfHtml(aktion2, 'btn-secondary')}</div>`
+        : knopfHtml(aktion, 'btn-primary');
     return `<div class="empty-state glass-panel">` +
         `<div class="empty-state-inhalt">` +
         `<i class="ph ${icon} leer-icon" aria-hidden="true"></i>` +
@@ -2014,6 +2045,9 @@ function updateDashboard() {
             titel: 'Noch keine Immobilie angelegt',
             text: 'Legen Sie das Haus an, dessen Kosten Sie umlegen wollen — zum Beispiel Ihr Mehrfamilienhaus.',
             aktion: { label: 'Immobilie anlegen', fn: 'openAddPropertyModal()', icon: 'ph-plus' },
+            aktion2: huelle.kann('server_verbinden')
+                ? { label: 'Mit einem Server verbinden', fn: 'zeigeServerKarte()', icon: 'ph-plugs-connected' }
+                : null,
         });
         return;
     }
@@ -2714,15 +2748,20 @@ function gemerkteEinstellungsgruppe() {
 
 // NK-174, NK-175: erst der Haftungshinweis (einmal je Fassung), danach die
 // Suche beim Start. Die Suche ist still: kein Netz, kein Fenster.
+// #45: In der leeren Windows-App steht davor die Startwahl (lokal oder Server).
+let startHinweiseFertig = false;
 async function startHinweise() {
     try {
         const res = await fetch('/api/haftung');
         if (res.ok) {
             const stand = await res.json();
+            if (stand.startwahl) await startwahlZeigen();
             if (!stand.bestaetigt) await haftungZeigen(stand);
         }
     } catch (e) {
         console.error('Haftungshinweis nicht ladbar', e);
+    } finally {
+        startHinweiseFertig = true;
     }
     try {
         const res = await fetch('/api/aktualisierung/automatisch');
@@ -2751,6 +2790,48 @@ function haftungZeigen(stand) {
     });
 }
 
+// #45: Die Startwahl bleibt offen, bis „Auf diesem Rechner arbeiten“ gewählt ist.
+// Der Serverweg führt zur Verbindungskarte; gelingt die Verbindung, startet die
+// App neu, sonst führt „Zurück zur Startwahl“ hierher. Den Haftungshinweis zeigt
+// danach die Seite, auf der man arbeitet: lokal hier, sonst der Server.
+let startwahlFertig = null;
+function startwahlZeigen() {
+    document.getElementById('startwahl-modal').classList.add('active');
+    return new Promise(erledigt => { startwahlFertig = erledigt; });
+}
+
+function startwahlLokal() {
+    document.getElementById('startwahl-modal').classList.remove('active');
+    document.getElementById('btn-startwahl-zurueck').hidden = true;
+    // Zurück aus der Verbindungskarte: Die Tour beginnt auf der Startseite.
+    if (document.getElementById('tab-settings').classList.contains('active')) wechsleZuTab('dashboard');
+    if (startwahlFertig) startwahlFertig();
+    startwahlFertig = null;
+}
+window.startwahlLokal = startwahlLokal;
+
+function startwahlServer() {
+    document.getElementById('startwahl-modal').classList.remove('active');
+    document.getElementById('btn-startwahl-zurueck').hidden = false;
+    zeigeServerKarte();
+}
+window.startwahlServer = startwahlServer;
+
+// Wer nach dem Serverweg ohne Verbindung woanders hingeht, arbeitet lokal: Dann kommen
+// Haftungshinweis, Tour und Update-Suche wie nach „Auf diesem Rechner arbeiten“.
+// Der Zustand steht im DOM (Rückweg sichtbar, Wahl zu): initTabs läuft vor dem let oben.
+function startwahlVerlassen(tab) {
+    const zurueck = document.getElementById('btn-startwahl-zurueck');
+    if (tab === 'settings' || !zurueck || zurueck.hidden
+        || document.getElementById('startwahl-modal').classList.contains('active')) return;
+    startwahlLokal();
+}
+
+function startwahlZurueck() {
+    document.getElementById('startwahl-modal').classList.add('active');
+}
+window.startwahlZurueck = startwahlZurueck;
+
 async function haftungBestaetigen() {
     const overlay = document.getElementById('haftung-modal');
     try {
@@ -2761,8 +2842,10 @@ async function haftungBestaetigen() {
         });
         if (!res.ok) throw await serverFehler(res);
         overlay.classList.remove('active');
+        return true;
     } catch (e) {
         showError(meldungZu(e, 'Der Hinweis konnte nicht gespeichert werden.'));
+        return false;
     }
 }
 window.haftungBestaetigen = haftungBestaetigen;
@@ -2979,7 +3062,7 @@ function openAddTenantModal(tenant = null) {
         }
         
         document.getElementById('tenant-contract-file').value = '';
-        document.getElementById('tenant-contract-name').textContent = 'Datei auswählen...';
+        document.getElementById('tenant-contract-name').textContent = 'Datei auswählen …';
         const info = document.getElementById('tenant-contract-info');
         if (tenant.contract_path) {
             info.textContent = 'Es ist bereits ein Mietvertrag hinterlegt. Ein neuer Upload überschreibt diesen.';
@@ -3000,7 +3083,7 @@ function openAddTenantModal(tenant = null) {
         document.getElementById('tenant-last-billed').value = '';
         document.getElementById('tenant-apartment').value = '';
         document.getElementById('tenant-contract-file').value = '';
-        document.getElementById('tenant-contract-name').textContent = 'Datei auswählen...';
+        document.getElementById('tenant-contract-name').textContent = 'Datei auswählen …';
         document.getElementById('tenant-contract-info').style.display = 'none';
         
         tenantModal.querySelector('h2').textContent = 'Neuer Mieter';
@@ -5029,7 +5112,7 @@ function openAddReadingModal(meterId = null, editReadingId = null) {
             if (r.provider_id) document.getElementById('reading-provider').value = r.provider_id;
             document.getElementById('plausibility-alert').style.display = 'none';
             document.getElementById('reading-file').value = '';
-            document.getElementById('reading-file-name').textContent = r.document_path ? 'Neues Bild hochladen (überschreibt altes)' : 'Datei auswählen...';
+            document.getElementById('reading-file-name').textContent = r.document_path ? 'Neues Bild hochladen (überschreibt altes)' : 'Datei auswählen …';
             document.querySelector('#reading-modal .modal-header h2').textContent = 'Zählerstand bearbeiten';
         }
     } else {
@@ -5044,7 +5127,7 @@ function openAddReadingModal(meterId = null, editReadingId = null) {
         document.getElementById('reading-provider').value = '';
         document.getElementById('plausibility-alert').style.display = 'none';
         document.getElementById('reading-file').value = '';
-        document.getElementById('reading-file-name').textContent = 'Datei auswählen...';
+        document.getElementById('reading-file-name').textContent = 'Datei auswählen …';
         document.querySelector('#reading-modal .modal-header h2').textContent = 'Zählerstand erfassen';
     }
     
@@ -5155,9 +5238,9 @@ function ablesenZeilen(propertyId) {
             <div class="form-group"><label>Foto (optional)</label>
                 <div class="file-upload-wrapper">
                     <input type="file" id="ablesen-foto-${m.id}" accept="image/*" capture="environment"
-                        onchange="this.nextElementSibling.lastElementChild.textContent = this.files[0] ? this.files[0].name : 'Foto auswählen...'">
+                        onchange="this.nextElementSibling.lastElementChild.textContent = this.files[0] ? this.files[0].name : 'Foto auswählen …'">
                     <label for="ablesen-foto-${m.id}" class="file-upload-label">
-                        <i class="ph ph-camera" aria-hidden="true"></i><span>Foto auswählen...</span></label>
+                        <i class="ph ph-camera" aria-hidden="true"></i><span>Foto auswählen …</span></label>
                 </div></div>
             <small class="ablesen-meldung" id="ablesen-meldung-${m.id}" role="status"></small>
         </div>`;
@@ -5433,7 +5516,7 @@ async function openAddInvoiceModal(editInvoiceId = null, spalte = null) {
         document.getElementById('invoice-apartment').value = '';
         document.querySelector('#invoice-modal h2').textContent = 'Rechnung erfassen';
         fileInput.required = false;
-        fileNameSpan.textContent = 'Datei auswählen...';
+        fileNameSpan.textContent = 'Datei auswählen …';
     }
     
     toggleInvoiceDescription();
@@ -5952,13 +6035,13 @@ function openAddDocumentModal(editDocId = null) {
             propSelect.value = d.property_id;
             document.getElementById('doc-description').value = d.description || '';
             document.querySelector('#document-modal h2').textContent = 'Sammelrechnung bearbeiten';
-            fileNameSpan.textContent = 'Neues PDF auswählen (optional)';
+            fileNameSpan.textContent = 'Neue Datei auswählen (optional)';
             fileInput.required = false;
         }
     } else {
         document.getElementById('doc-description').value = '';
         fileInput.value = '';
-        fileNameSpan.textContent = 'PDF auswählen...';
+        fileNameSpan.textContent = 'Datei auswählen …';
         document.querySelector('#document-modal h2').textContent = 'Beleg hochladen (Sammelrechnung)';
         fileInput.required = true;
     }
@@ -6493,7 +6576,7 @@ async function ladeSicherungsStatus() {
             : '';
         // NK-152: in der App gibt es den Ordner-Dialog.
         const ordnerKnopf = document.getElementById('btn-sicherung-ordner');
-        if (ordnerKnopf) ordnerKnopf.style.display = huelle.aktiv() ? '' : 'none';
+        if (ordnerKnopf) ordnerKnopf.style.display = huelle.kann('ordner_waehlen') ? '' : 'none';
         // NK-130: Hinweis zur Festplattenverschluesselung, mit Pruefergebnis.
         const platte = document.getElementById('sicherung-festplatte');
         if (platte && status.festplatte) {
@@ -6640,10 +6723,99 @@ function umzugHinweis(text) {
     return fehler;
 }
 
+// #45: Im Servermodus zeigen Kopf und Einstellungen, wessen Daten das sind.
+// Die Adresse kommt aus location: Die Brücke antwortet nur, solange sie gleich der geprüften ist.
+function serverAnzeige() {
+    // Die Verbindungskarte nur in der App mit lokalen Daten. Nur hier gesetzt, nicht beim
+    // Laden der Sicherungen: Das liefe sonst nach dem Serverweg der Startwahl und versteckte
+    // die Karte samt Rückweg, solange die Brücke noch fehlt.
+    const serverKarte = document.getElementById('server-karte');
+    if (serverKarte) serverKarte.style.display = huelle.kann('server_verbinden') ? '' : 'none';
+    const verbunden = huelle.kann('lokal_arbeiten');
+    const chip = document.getElementById('kopf-server');
+    const karte = document.getElementById('server-verbunden-karte');
+    if (!chip || !karte) return;
+    chip.hidden = !verbunden;
+    karte.style.display = verbunden ? '' : 'none';
+    if (!verbunden) return;
+    const offen = location.protocol === 'http:';
+    chip.classList.toggle('unverschluesselt', offen);
+    const text = `Verbunden mit ${location.host}` + (offen ? ' (unverschlüsselt)' : '');
+    document.getElementById('kopf-server-text').textContent = text;
+    // Der Chip kürzt lange Adressen ab; der Tooltip zeigt den Warnzusatz trotzdem.
+    chip.title = `${text}. Klicken Sie für Verbindung und Rückweg.`;
+    document.getElementById('server-verbunden-adresse').textContent = location.origin;
+    document.getElementById('server-verbunden-unverschluesselt').hidden = !offen;
+}
+
+// #45: zur Verbindungskarte, im Servermodus zur Karte „Mit einem Server verbunden“.
+function zeigeServerKarte() {
+    wechsleZuTab('settings');
+    zeigeEinstellungsgruppe('sicherung');
+    const verbunden = huelle.kann('lokal_arbeiten');
+    const karte = document.getElementById(verbunden ? 'server-verbunden-karte' : 'server-karte');
+    if (!karte) return;
+    karte.style.display = '';
+    karte.scrollIntoView({ block: 'start' });
+    document.getElementById(verbunden ? 'btn-lokal-arbeiten' : 'server-adresse').focus();
+}
+window.zeigeServerKarte = zeigeServerKarte;
+
+async function lokalArbeiten(knopf) {
+    const meldung = document.getElementById('server-verbunden-meldung');
+    meldung.textContent = '';
+    knopf.disabled = true;
+    try {
+        if (await huelle.lokalArbeiten()) {
+            meldung.textContent = 'NebenkostenFix startet jetzt neu.';
+            return;  // das Fenster schließt sich, die Antwort kommt womöglich nicht mehr an
+        }
+    } catch (e) {
+        meldung.textContent = meldungZu(e, 'Die Verbindung konnte nicht getrennt werden.');
+    }
+    knopf.disabled = false;
+}
+window.lokalArbeiten = lokalArbeiten;
+
+async function serverVerbinden(knopf) {
+    const meldung = document.getElementById('server-meldung');
+    const feld = document.getElementById('server-adresse');
+    let adresse = feld.value.trim();
+    // #45: Fehler rot mit Symbol, sonst übersieht man die Zeile.
+    const zeige = (text, fehler) => {
+        meldung.textContent = text;
+        meldung.classList.toggle('fehler', fehler);
+        document.getElementById('server-meldung-symbol').hidden = !fehler;
+    };
+    zeige('', false);
+    if (!document.getElementById('server-verstanden').checked) return;
+    if (/^http:\/\//i.test(adresse) && !await frage(
+        'Diese Verbindung ist nicht verschlüsselt. Nutzen Sie sie nur im eigenen Heimnetz. Trotzdem verbinden?',
+        'Weiter')) return;
+    knopf.disabled = true;
+    try {
+        let ergebnis = await huelle.serverVerbinden(adresse);
+        const mitHttp = 'http://' + adresse;
+        if (ergebnis && ergebnis.http_anbieten && await frage(
+            `Eine verschlüsselte Verbindung ist nicht möglich. Mit ${mitHttp} unverschlüsselt ` +
+            'verbinden? Nutzen Sie das nur im eigenen Heimnetz.', 'Mit http:// verbinden')) {
+            adresse = feld.value = mitHttp;
+            ergebnis = await huelle.serverVerbinden(adresse);
+        }
+        if (ergebnis && ergebnis.ok) {
+            zeige('Verbindung klappt. NebenkostenFix startet jetzt neu.', false);
+            return;  // der Knopf bleibt aus, die App startet neu
+        }
+        zeige((ergebnis && ergebnis.meldung) || 'Die Verbindung konnte nicht geprüft werden.', true);
+    } catch (e) {
+        zeige(meldungZu(e, 'Die Verbindung konnte nicht geprüft werden.'), true);
+    }
+    knopf.disabled = false;
+}
+window.serverVerbinden = serverVerbinden;
+
 async function ladeUmzug() {
     const desktop = window.umzugPaket && window.umzugPaket.desktop();
-    document.getElementById('umzug-datei-einstellungen').hidden = !!desktop;
-    document.getElementById('btn-umzug-auswahl').hidden = !desktop;
     const gruppe = document.getElementById('umzug-importordner-gruppe');
     if (desktop) {
         gruppe.hidden = true;
@@ -6714,15 +6886,31 @@ async function umzugExportieren() {
 }
 window.umzugExportieren = umzugExportieren;
 
+// Der Knopf entscheidet beim Klick: ohne Brücke (Browser, Server) das
+// versteckte Dateifeld, in der Desktop-App den Dialog der Hülle. Es gilt
+// immer genau eine Quelle.
 async function umzugPaketWaehlen() {
+    const datei = document.getElementById('umzug-datei-einstellungen');
+    if (!window.umzugPaket.desktop()) {
+        datei.click();
+        return;
+    }
     try {
         umzugPfad = await window.umzugPaket.desktopWaehlen();
-        document.getElementById('umzug-auswahl-einstellungen').textContent = umzugPfad || '';
+        datei.value = '';
+        document.getElementById('umzug-auswahl-einstellungen').textContent = umzugPfad || 'Keine Datei ausgewählt';
     } catch (e) {
         showError('Der Datei-Dialog ließ sich nicht öffnen.');
     }
 }
 window.umzugPaketWaehlen = umzugPaketWaehlen;
+
+function umzugDateiGewaehlt(feld) {
+    umzugPfad = null;
+    document.getElementById('umzug-auswahl-einstellungen').textContent =
+        feld.files[0] ? feld.files[0].name : 'Keine Datei ausgewählt';
+}
+window.umzugDateiGewaehlt = umzugDateiGewaehlt;
 
 async function umzugUebernehmen() {
     const meldung = document.getElementById('umzug-meldung');
@@ -6738,8 +6926,7 @@ async function umzugUebernehmen() {
         let quelle;
         const datei = document.getElementById('umzug-datei-einstellungen').files[0];
         const ausOrdner = document.getElementById('umzug-importordner').value;
-        if (window.umzugPaket.desktop()) {
-            if (!umzugPfad) throw umzugHinweis('Bitte wählen Sie zuerst das Paket aus.');
+        if (umzugPfad) {
             quelle = { pfad: umzugPfad };
         } else if (datei) {
             balken.hidden = false;
@@ -6821,6 +7008,7 @@ async function oeffneImport(art) {
     }
     document.getElementById('import-art').value = art || 'rechnungen';
     document.getElementById('import-datei').value = '';
+    document.getElementById('import-datei-name').textContent = 'Tabelle auswählen …';
     importSchritt('datei');
     importArtGewaehlt();
     document.getElementById('import-modal').classList.add('active');
@@ -8622,7 +8810,7 @@ function openBillingSelectionModal(suggestion) {
         html += `
             <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 8px; background: var(--bg-hover);">
                 <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; flex: 1;">
-                    <input type="checkbox" class="category-select-cb" value="${cat.category_id}" checked style="width: 18px; height: 18px;">
+                    <input type="checkbox" class="category-select-cb" value="${cat.category_id}" checked>
                     <div>
                         <div style="font-weight: 600;">${escapeHtml(cat.category_name)}</div>
                         <div style="font-size: 13px; color: var(--text-muted);">${startFmt} - ${endFmt} (${cat.invoice_count} ${cat.invoice_count === 1 ? 'Rechnung' : 'Rechnungen'})</div>
