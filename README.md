@@ -151,7 +151,7 @@ kommt ohne diese Warnung aus.
 #### Mit einem Server verbinden
 
 Die Windows-App kann statt der lokalen Daten eine NebenkostenFix-Instanz auf einem Server
-öffnen, zum Beispiel eine Docker-Instanz im Heimnetz: Einstellungen → Sicherung → Karte
+öffnen, zum Beispiel eine Docker-Instanz im Heimnetz: Einstellungen → Datensicherung → Karte
 „Mit einem Server verbinden“. Die App prüft die Adresse, trägt sie in
 `%LOCALAPPDATA%\NebenkostenFix\einstellungen.ini` ein und startet neu. Im Servermodus läuft
 kein lokaler Server, die lokalen Daten bleiben unberührt. Zurück geht es über Datei →

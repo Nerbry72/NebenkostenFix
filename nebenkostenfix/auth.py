@@ -384,7 +384,7 @@ UMZUG_KARTE = """<details class="anmelde-karte umzug-karte">
  <summary>Daten aus einer anderen Installation übernehmen</summary>
  <form id="umzug-form">
  <p class="hinweis">Sie haben NebenkostenFix schon auf einem anderen Rechner genutzt?
- Exportieren Sie dort unter <b>Einstellungen → Sicherung → Alles exportieren</b> und
+ Exportieren Sie dort unter <b>Einstellungen → Datensicherung → Alles exportieren</b> und
  wählen Sie die <code>.nkfix</code>-Datei hier aus. Danach melden Sie sich mit Ihrem
  bisherigen Konto an.</p>
  <label for="umzug-datei" id="umzug-datei-label">Umzugspaket (.nkfix)</label>

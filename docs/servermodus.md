@@ -47,7 +47,7 @@ Server im eigenen Fenster, wie ein Browser, nur ohne Adressleiste.
    einem NebenkostenFix-Server verbinden** (öffnet die Verbindungskarte, dort führt **Zurück
    zur Startwahl** zurück). Eine alte Bestätigung des Hinweises im Datenordner spielt dafür
    keine Rolle. Die Wahl kommt bei jedem Start wieder, bis ein Objekt da ist; im Browser und
-   auf dem Server nie. Später: Einstellungen → Sicherung → Karte **Mit einem Server
+   auf dem Server nie. Später: Einstellungen → Datensicherung → Karte **Mit einem Server
    verbinden**, die zweite Aktion im leeren Reiter **Immobilien** oder im Menü
    **Datei → Mit einem Server verbinden …** (auch wenn schon Objekte da sind).
 2. Adresse eintragen, zum Beispiel `https://nebenkosten.example.de` oder
@@ -96,7 +96,7 @@ Die App speichert keine Passwörter; Cookies liegen im WebView2-Profil unter
 - **Kopfzeile:** ein Hinweis „Verbunden mit nas.example:8080“ (Host und Port des Servers).
   Bei `http://` steht „(unverschlüsselt)“ dahinter, im Warnton. Ein Klick darauf führt zur
   Karte in den Einstellungen.
-- **Einstellungen → Sicherung:** die Karte **Mit einem Server verbunden** mit der Adresse
+- **Einstellungen → Datensicherung:** die Karte **Mit einem Server verbunden** mit der Adresse
   und dem Rückweg.
 - **Fenstertitel:** nennt den Server, wie oben beschrieben. Ihn setzt die App selbst, nicht
   die Seite des Servers.
@@ -109,7 +109,7 @@ neue Stand, bleiben nur Fenstertitel und Menü.
 
 Zwei Wege, beide mit derselben Rückfrage von Windows:
 
-- Einstellungen → Sicherung → **Zurück zu den Daten auf diesem Rechner** (auch über den
+- Einstellungen → Datensicherung → **Zurück zu den Daten auf diesem Rechner** (auch über den
   Hinweis in der Kopfzeile erreichbar).
 - Datei → **Auf diesem Rechner arbeiten …**
 
@@ -215,7 +215,7 @@ Ein Rechner mit Windows 10 oder 11 reicht, dazu ein NebenkostenFix-Server im Net
       leerem und einmal mit altem Datenordner, in dem der Hinweis schon bestätigt ist: Zuerst
       kommt nur „Wo sollen Ihre Daten liegen?“, der Fokus liegt auf „Auf diesem Rechner
       arbeiten“, Escape schließt nicht. Weder Hinweis noch Einführung springen dazwischen.
-   2. „Mit einem NebenkostenFix-Server verbinden“: Einstellungen → Sicherung, Fokus im
+   2. „Mit einem NebenkostenFix-Server verbinden“: Einstellungen → Datensicherung, Fokus im
       Adressfeld. **Zurück zur Startwahl** öffnet die Wahl wieder.
    3. „Auf diesem Rechner arbeiten“: Hinweis „Bevor es losgeht“ (beim alten Datenordner
       nicht), danach die Einführung wie bisher.
