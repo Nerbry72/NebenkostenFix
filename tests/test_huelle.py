@@ -415,6 +415,33 @@ def test_startwahl_vor_allem_anderen_und_nur_wenn_der_server_sie_meldet():
     assert bestaetigt == [[False, [], True], [], True]
 
 
+def test_menuepunkt_server_schliesst_die_offene_startwahl():
+    """#55: Der Menüpunkt legte die Karte hinter die offene Startwahl, der
+    Fokus lag unsichtbar im Adressfeld. Jetzt derselbe Weg wie ihr Server-Knopf."""
+    probe = (_DOM + _huelle_block() + 'let startwahlFertig = null;\n'
+             + _funktion('startwahlZeigen') + _funktion('startwahlServer') + _funktion('zeigeServerKarte') + f'''
+        const tabs = [];
+        const wechsleZuTab = t => tabs.push(t);
+        const zeigeEinstellungsgruppe = g => tabs.push(g);
+        window.pywebview = {{api: {_LOKALE_API}}};
+        const stand = () => [element('startwahl-modal').classList.contains('active'),
+                             !element('btn-startwahl-zurueck').hidden,
+                             element('server-karte').style.display, fokus.splice(0), tabs.splice(0)];
+        startwahlZeigen();
+        zeigeServerKarte();
+        const offen = stand();
+        element('btn-startwahl-zurueck').hidden = true;
+        element('server-karte').style.display = 'none';
+        zeigeServerKarte();
+        console.log(JSON.stringify([offen, stand()]));
+    ''')
+    offen, zu = _node(probe)
+    # Startwahl offen: sie geht zu, der Rückweg erscheint, die Karte kommt genau einmal.
+    assert offen == [False, True, '', ['server-adresse'], ['settings', 'sicherung']]
+    # Startwahl zu: wie bisher, ohne Rückweg.
+    assert zu == [False, False, '', ['server-adresse'], ['settings', 'sicherung']]
+
+
 def test_tour_wartet_auf_die_startwahl():
     probe = 'let startHinweiseFertig = false;\nlet tourAutoVersucht = false;\n' + _funktion('tourAutostart') + '''
         const geplant = [];

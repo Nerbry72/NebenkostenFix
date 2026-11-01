@@ -6749,7 +6749,13 @@ function serverAnzeige() {
 }
 
 // #45: zur Verbindungskarte, im Servermodus zur Karte „Mit einem Server verbunden“.
+// #55: Bei offener Startwahl derselbe Weg wie ihr Server-Knopf; der schließt sie
+// zuerst und ruft dann wieder hierher.
 function zeigeServerKarte() {
+    if (document.getElementById('startwahl-modal').classList.contains('active')) {
+        startwahlServer();
+        return;
+    }
     wechsleZuTab('settings');
     zeigeEinstellungsgruppe('sicherung');
     const verbunden = huelle.kann('lokal_arbeiten');
