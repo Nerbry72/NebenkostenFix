@@ -209,6 +209,24 @@ Die **Einstellungen** sind in Gruppen geteilt:
   [Umzug auf einen anderen Rechner](../../README.md#umzug-auf-einen-anderen-rechner).
 - **Konto**: Darstellung (Schrift und Knöpfe in 100, 115 oder 130 %, gilt für diesen
   Browser), **Passwort ändern** und **Zweites Konto anlegen**, etwa für den Partner.
+  Unter **Zugriffsschlüssel** (englisch API-Key) legen Sie Schlüssel für Programme ohne Browser
+  an, etwa einen MCP-Server für einen KI-Assistenten. „Nur lesen“ erlaubt Abfragen und Prüfungen,
+  „Lesen und erfassen“ zusätzlich neue Rechnungen mit Beleg, Zählerstände und Zahlungen;
+  Vorhandenes ändert ein Schlüssel nicht, auch kein vereinbartes Soll; eine Serie legt ein Soll
+  nur an, wenn für den Mieter noch keins vereinbart ist. Der Schlüssel wird nur einmal angezeigt.
+  Ein Programm mit Schlüssel sieht alle Daten; bei einem KI-Assistenten gehen sie an dessen Anbieter. Jedes Konto sieht alle Schlüssel und kann jeden widerrufen. Ein neues
+  Passwort lässt die Schlüssel bestehen: Wechseln Sie das Passwort wegen eines Verdachts, sehen
+  Sie auch die Liste durch und löschen Sie Schlüssel, die Sie nicht kennen. Spielen Sie eine
+  ältere Sicherung ein, kommen auch Schlüssel zurück, die Sie danach gelöscht haben: Sehen Sie
+  die Liste danach ebenfalls durch.
+  Unter **Angemeldete Geräte** stehen die Rechner, auf denen die Desktop-App mit einem Server
+  angemeldet bleibt. Das wählen Sie bei der Anmeldung in der App mit dem Häkchen „Angemeldet
+  bleiben“, im Browser gibt es das Häkchen nicht. Kreuzen Sie es nur an, wenn sonst niemand den
+  Rechner benutzt. Mit **Abmelden** fragt die App dort beim nächsten Start wieder nach dem
+  Passwort. Jedes Konto sieht alle Rechner und kann jeden abmelden. Ein Rechner, der 30 Tage
+  lang nicht benutzt wird, ist von selbst abgemeldet und verschwindet aus der Liste. Ändern
+  Sie Ihr Passwort, sind alle Rechner Ihres Kontos abgemeldet. Nach dem Einspielen einer
+  Sicherung melden Sie sich auf jedem Rechner einmal neu an.
 - **Updates**: **Automatisch nach Updates suchen**, siehe
   [Updates](../../README.md#updates).
 - **Datenschutz**: **Gesperrte Mietverhältnisse** sind gelöschte Mieter, deren

@@ -50,7 +50,10 @@ BASISREVISION = "63738d5329b4"
 # bisher abgeleitete Einheit je Zaehler fest (Nullwechsel fuer den Bestand).
 # Phase 58: ``f2a6c8b4d013`` fuegt ``tenants.anschrift``,
 # ``tenants.zustellanschrift`` und ``vermieterdaten.anschrift`` hinzu (Issue #35).
-KOPFREVISION = "f2a6c8b4d013"
+# ``db48fb4e8716`` legt die Tabelle ``api_schluessel`` an (Zugriffsschluessel).
+# #52: ``fc8938938dce`` legt ``geraete``, ``geraete_ersetzt`` und
+# ``geraete_codes`` an (angemeldet bleiben in der Desktop-App).
+KOPFREVISION = "fc8938938dce"
 
 
 def _umgebung(dbdatei: Path, tmp_path: Path) -> dict:

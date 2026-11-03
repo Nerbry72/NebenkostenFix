@@ -352,7 +352,8 @@ docker compose up -d
 
 Vor dem Ersetzen prüft die Anwendung jede Prüfsumme und sichert den aktuellen Stand als
 `sicherung-vor-einspielen-*.nkfix`. Ein älteres Archiv hebt sie auf den aktuellen
-Schemastand. Ein Archiv aus einer neueren Version lehnt sie ab.
+Schemastand. Ein Archiv aus einer neueren Version lehnt sie ab. Angemeldete Geräte gelten
+danach nicht mehr, in der Desktop-App melden Sie sich einmal neu an.
 
 Eine Sicherung auf derselben Platte schützt nicht vor einem Plattenschaden. Kopieren Sie sie
 deshalb auf einen anderen Rechner oder eine externe Platte, oder tragen Sie ein zweites Ziel
@@ -372,7 +373,7 @@ Richtungen.
 
 Große Pakete lädt der Browser in Stücken hoch. Nach einem Abbruch geht es an derselben
 Stelle weiter. Unter Docker können Sie das Paket auch nach `daten/import/` legen. Nicht im
-Paket sind Sitzungsschlüssel, Sicherungsziele und Anmeldesperren.
+Paket sind Sitzungsschlüssel, Sicherungsziele, Anmeldesperren und angemeldete Geräte.
 
 ### Daten aus Excel übernehmen
 
@@ -388,6 +389,10 @@ Probelauf mit Fehlern je Zeile. Übernommen wird nur, wenn keine Zeile einen Feh
   Einrichtungsseite erreichbar.
 - Nach 5 Fehlversuchen für ein Konto (oder 20 von einer Adresse) ist die Anmeldung
   15 Minuten gesperrt.
+- Mit „Angemeldet bleiben“ bekommt die Desktop-App ein Gerätetoken statt eines Passworts. Es
+  wechselt bei jedem Start, die Datenbank kennt nur seinen Hash. Taucht ein altes Token wieder
+  auf, ist der Rechner abgemeldet. Die Liste steht unter Einstellungen → Konto → Angemeldete
+  Geräte, nach 30 Tagen ohne Nutzung fällt ein Rechner heraus.
 - Schreibende Anfragen von fremden Seiten lehnt die Anwendung ab. Jede Antwort trägt eine
   Content-Security-Policy ohne fremde Quellen.
 - Der Container läuft nicht als root.

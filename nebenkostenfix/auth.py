@@ -55,8 +55,10 @@ from flask import abort, jsonify, make_response, redirect, request, session, url
 
 from nebenkostenfix import anmeldeschutz
 from nebenkostenfix import einstellungen
+from nebenkostenfix import geraete
 from nebenkostenfix import marke
 from nebenkostenfix import umzug
+from nebenkostenfix import zugriffsschluessel
 from nebenkostenfix.dateisperre import datei_einmalig_anlegen, dateisperre
 from nebenkostenfix.models import User, db
 
@@ -197,12 +199,18 @@ def _loese_secret_key():
 
 def current_user():
     """Der angemeldete Benutzer oder None."""
+    schluessel = zugriffsschluessel.aktueller()
+    if schluessel is not None:
+        # Mit Zugriffsschluessel zaehlt die Sitzung nicht, auch wenn der
+        # Client eine mitschickt (zugriffsschluessel.anfrage_pruefen).
+        return schluessel.user
     user_id = session.get(SESSION_USER_KEY)
     if user_id is None:
         return None
     user = db.session.get(User, user_id)
-    if user is None or not user.is_active:
-        # Konto geloescht oder stillgelegt, waehrend die Sitzung lief.
+    if user is None or not user.is_active or not geraete.sitzung_gilt(user.id):
+        # Konto geloescht oder stillgelegt, waehrend die Sitzung lief, oder
+        # das Geraet, mit dem sie begann, ist abgemeldet (#52).
         session.clear()
         return None
     return user
@@ -282,11 +290,21 @@ def _sicheres_ziel(roh):
     Zugelassen ist nur ein Pfad auf dieser Anwendung: er beginnt mit genau
     einem Schraegstrich. // waere protokollrelativ (//boese.example) und /\
     lesen manche Browser genauso.
+
+    Steuerzeichen und Leerraum fallen ebenso heraus: Browser und ``urlsplit``
+    werfen Tab und Zeilenumbruch stillschweigend weg, aus ``/<Tab>/boese.example``
+    wird dann ``//boese.example`` (Review zu #52; dort haengt sonst der
+    Abholcode eines Geraets an der fremden Adresse).
     """
     ziel = (roh or '').strip()
     if not ziel.startswith('/'):
         return '/'
     if ziel.startswith('//') or ziel.startswith('/\\'):
+        return '/'
+    if any(ord(zeichen) <= 0x20 or ord(zeichen) == 0x7f for zeichen in ziel):
+        return '/'
+    teile = urlsplit(ziel)
+    if teile.scheme or teile.netloc:
         return '/'
     if ziel.startswith('/login'):
         # Sonst landet man nach dem Anmelden wieder auf dem Anmeldefeld.
@@ -344,14 +362,22 @@ LOGIN_PAGE = _seitenkopf('Anmeldung') + """<form method="post" class="anmelde-ka
  <label for="password">Passwort</label>
  <input id="password" name="password" type="password"
         autocomplete="current-password" required>
+ __BLEIBEN__
  <button type="submit">Anmelden</button>
  __FEHLER__
 </form></body></html>"""
 
+# #52: nur in der Desktop-App, und nur, wenn sie einen Schluesselbund hat
+# (sonst schickt sie die Kennung nicht). Vorgabe aus: manche teilen sich
+# einen Rechner.
+BLEIBEN_FELD = """<label class="haken"><input type="checkbox" name="angemeldet_bleiben" value="1"> Angemeldet bleiben</label>
+ <p class="hinweis">Nur ankreuzen, wenn sonst niemand diesen Rechner benutzt. Die App meldet sich dann beim Start selbst an.</p>"""
+
 
 def _login_page(fehler=None):
     block = f'<p class="fehler">{html.escape(fehler)}</p>' if fehler else ''
-    return LOGIN_PAGE.replace('__FEHLER__', block)
+    bleiben = BLEIBEN_FELD if geraete.aus_der_app() else ''
+    return LOGIN_PAGE.replace('__BLEIBEN__', bleiben).replace('__FEHLER__', block)
 
 
 # Ersteinrichtung (NK-127, E-1): dieselbe ruige Karte wie die Anmeldung,
@@ -861,6 +887,10 @@ def init_auth(app):
             if session.get(SESSION_USER_KEY) is not None:
                 session.clear()
             return None
+        if zugriffsschluessel.im_kopf() is not None:
+            # Ein Programm mit Zugriffsschluessel: keine Sitzung, kein
+            # Leerlauf, nur die Listen in zugriffsschluessel.py.
+            return zugriffsschluessel.anfrage_pruefen(app, _anmeldeschutz_ordner())
         if (request.endpoint in umzug.VOR_DER_EINRICHTUNG and current_user() is None
                 and (app.config.get('DESKTOP') or request.headers.get('X-Einmal-Code')
                      or (request.get_json(silent=True) or {}).get('code'))
@@ -868,6 +898,11 @@ def init_auth(app):
             # NK-164: eine frische Installation übernimmt den alten Bestand.
             # Ohne Code bleibt es bei der Sperre; ob der Code stimmt, prüft
             # die Route selbst (umzug._zugang), in der App gilt E-1.
+            return None
+        if request.endpoint in geraete.AUSWEIS and geraete.ausweis():
+            # #52: die Desktop-App mit Abholcode, Token oder Einmalcode. Ohne
+            # bleibt es bei der Sperre; ob er stimmt, prueft die Route selbst
+            # (geraete.py, mit Anmeldeschutz), wie beim Umzug oben.
             return None
         if request.endpoint == 'static' and oeffentliche_datei(
                 (request.view_args or {}).get('filename')):
@@ -947,7 +982,12 @@ def init_auth(app):
 
         if _wants_json():
             return jsonify({'username': user.username}), 200
-        return redirect(_sicheres_ziel(request.args.get('next')))
+        ziel = _sicheres_ziel(request.args.get('next'))
+        if data.get('angemeldet_bleiben') and geraete.aus_der_app():
+            # #52: nur der Abholcode kommt in die Adresse, das Token holt
+            # die App selbst ab.
+            ziel = geraete.ziel_mit_abholcode(ziel, geraete.anmelden_mit_haekchen(user))
+        return redirect(ziel)
 
     @app.route('/einrichtung', methods=['GET', 'POST'])
     def einrichtung():
@@ -1048,10 +1088,16 @@ def init_auth(app):
             if current_user() is None:
                 return redirect(url_for('login'))
             return redirect('/')
+        geraet_id = session.get(geraete.SITZUNG_KEY)
         session.clear()
+        if geraet_id is not None:
+            # #52: wer in der App abmeldet, meint auch das Geraet.
+            geraete.loeschen([geraet_id])
+            db.session.commit()
         if _wants_json():
             return jsonify({'status': 'abgemeldet'}), 200
-        return redirect(url_for('login'))
+        # Daran erkennt die Desktop-App das Abmelden und loescht ihr Token.
+        return redirect(url_for('login', abgemeldet=1))
 
     @app.route('/api/auth/me', methods=['GET'])
     def auth_me():
@@ -1081,6 +1127,12 @@ def init_auth(app):
             'desktop': bool(app.config.get('DESKTOP')),
             # NK-162: die Oberfläche warnt fünf Minuten vor der Abmeldung.
             'leerlauf_s': _leerlauf_s(),
+            # #52: eine Geraete-Sitzung meldet die App nach dem Leerlauf still
+            # wieder an; die Oberflaeche warnt dann nicht.
+            'geraet': session.get(geraete.SITZUNG_KEY) is not None,
+            # Mit welchem Zugriffsschluessel ein Programm hier ist, sonst None.
+            'schluessel': {'name': schluessel.name, 'umfang': schluessel.umfang}
+                          if (schluessel := zugriffsschluessel.aktueller()) else None,
         }), 200
 
     @app.route('/api/konto/passwort', methods=['PUT'])
@@ -1106,6 +1158,10 @@ def init_auth(app):
             return jsonify(
                 {'error': 'Das neue Passwort muss mindestens 10 Zeichen haben.'}), 400
         user.set_password(neu)
+        # #52: alle Geraete des Kontos abmelden. Diese Sitzung bleibt, auch
+        # wenn sie mit einem Geraet begann.
+        geraete.fuer_konto_loeschen(user.id)
+        session.pop(geraete.SITZUNG_KEY, None)
         db.session.commit()
         return jsonify({'status': 'Passwort geändert'}), 200
 
@@ -1136,6 +1192,10 @@ def init_auth(app):
         # NK-204: erst den Schalter, dann die Konten — schlägt das Schreiben
         # fehl, bleiben die Konten bestehen und es bleibt angemeldet.
         einstellungen.schreiben(ohne_anmeldung=True)
+        # Ohne Konto kein Schluessel. Die Zeilen blieben sonst als Waisen
+        # stehen und gehoerten dem naechsten Konto mit derselben Id.
+        zugriffsschluessel.alle_loeschen()
+        geraete.alle_loeschen()
         geloescht = User.query.delete()
         db.session.commit()
         # Wer das Passwort kannte, war drin; Zaehler und Sperren sind wertlos.
@@ -1194,6 +1254,10 @@ def init_auth(app):
         db.session.commit()
         return jsonify({'username': username}), 201
 
+    zugriffsschluessel.init_zugriffsschluessel(
+        app, current_user, ohne_anmeldung_aktiv, FEHLTEXT_KONTO)
+    geraete.init_geraete(app, _sitzung_beginnen, _sicheres_ziel, ohne_anmeldung_aktiv,
+                         _anmeldeschutz_ordner)
     _huelle_routen(app)
     _register_cli(app)
     return app
@@ -1249,6 +1313,7 @@ def _huelle_routen(app):
             else:
                 user.set_password(neu)
                 user.is_active = True
+                geraete.fuer_konto_loeschen(user.id)
                 db.session.commit()
                 anmeldeschutz.zuruecksetzen(_anmeldeschutz_ordner())
                 app.logger.info("Passwort in der App zurückgesetzt.")
@@ -1294,6 +1359,7 @@ def _register_cli(app):
         if len(password) < 10:
             raise click.ClickException("Passwort muss mindestens 10 Zeichen haben.")
         user.set_password(password)
+        geraete.fuer_konto_loeschen(user.id)
         db.session.commit()
         # Wer lokal das Passwort setzt, soll nicht an einer Sperre haengen.
         anmeldeschutz.zuruecksetzen(_anmeldeschutz_ordner())
@@ -1318,7 +1384,9 @@ def _register_cli(app):
         if user is None:
             raise click.ClickException(f"Konto '{username}' gibt es nicht.")
         user.is_active = False
+        geraete.fuer_konto_loeschen(user.id)
         db.session.commit()
-        click.echo(f"Konto '{username}' stillgelegt. Laufende Sitzungen enden sofort.")
+        click.echo(f"Konto '{username}' stillgelegt. Laufende Sitzungen enden sofort, "
+                   "angemeldete Geräte sind abgemeldet.")
 
     app.cli.add_command(users_cli)

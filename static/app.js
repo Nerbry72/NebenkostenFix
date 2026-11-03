@@ -200,7 +200,8 @@ async function abmelden() {
         // Netz weg. Die Sitzung liegt beim Server, also trotzdem hingehen:
         // dort faellt der naechste Aufruf sowieso in die Sperre.
     }
-    window.location.assign('/login');
+    // #52: daran erkennt die Desktop-App das Abmelden und loescht ihr Token.
+    window.location.assign('/login?abgemeldet=1');
 }
 window.abmelden = abmelden;
 
@@ -236,7 +237,7 @@ async function zeigeAngemeldetenBenutzer() {
         // ueber die Einrichtung offen.
         const offen = !!daten.ohne_anmeldung;
         ['angemeldeterBenutzer', 'kopf-abmelden', 'konto-liste',
-            'konto-passwort-bereich'].forEach(kennung => {
+            'konto-passwort-bereich', 'zugriffsschluessel-karte', 'geraete-karte'].forEach(kennung => {
             const teil = document.getElementById(kennung);
             if (teil) teil.hidden = offen;
         });
@@ -355,6 +356,8 @@ function initApp() {
     fetchProviders();
     fetchVermieterdaten();
     ladeKonten();
+    ladeZugriffsschluessel();
+    ladeGeraete();
     ladeSicherungsStatus();
     serverAnzeige();
     ladeUmzug();
@@ -609,6 +612,8 @@ function initTabs() {
                     zeigeEinstellungsgruppe(gemerkteEinstellungsgruppe());
                     fetchVermieterdaten();
                     ladeKonten();
+                    ladeZugriffsschluessel();
+                    ladeGeraete();
                     ladeSicherungsStatus();
                     ladeUmzug();
                     ladeGesperrteMieter();
@@ -1765,6 +1770,11 @@ function initBarrierearm() {
 const LEERLAUF_WARNUNG_MS = 5 * 60 * 1000;
 let leerlaufMs = 60 * 60 * 1000;
 let letzteBedienung = Date.now();
+// #52: Mit „Angemeldet bleiben“ meldet die Desktop-App sich nach der Grenze
+// beim nächsten Klick still wieder an. „Sie werden abgemeldet“ stimmte dann
+// nicht, und ginge die Seite selbst zur Anmeldung, lüde sie nach jeder Grenze
+// neu: Das Fenster blitzte im Leerlauf ständig.
+let leerlaufStill = false;
 
 async function initLeerlauf() {
     try {
@@ -1777,6 +1787,7 @@ async function initLeerlauf() {
                 return;
             }
             if (ich.leerlauf_s) leerlaufMs = ich.leerlauf_s * 1000;
+            leerlaufStill = ich.geraet === true;
         }
     } catch (e) {
         // Standard 60 Minuten
@@ -1796,7 +1807,7 @@ async function initLeerlauf() {
 
 function leerlaufPruefen() {
     const hinweis = document.getElementById('leerlauf-hinweis');
-    if (!hinweis) return;
+    if (!hinweis || leerlaufStill) return;
     const still = Date.now() - Math.max(window.nkLetzteAnfrage, letzteBedienung);
     const rest = leerlaufMs - still;
     if (rest <= 0) {
@@ -2735,6 +2746,8 @@ function zeigeEinstellungsgruppe(gruppe) {
     }
     // Phase 54: die Kostenarten-Liste lädt, wenn ihre Gruppe gezeigt wird.
     if (gruppe === 'kostenarten') ladeKostenarten();
+    if (gruppe === 'konto') ladeZugriffsschluessel();
+    if (gruppe === 'konto') ladeGeraete();
 }
 window.zeigeEinstellungsgruppe = zeigeEinstellungsgruppe;
 
@@ -6538,6 +6551,155 @@ async function zweitesKontoAnlegen() {
         ladeKonten();
     } catch (e) {
         showError(meldungZu(e, 'Das Konto konnte nicht angelegt werden.'));
+    }
+}
+
+// --- Zugriffsschlüssel (Programme ohne Browser, z. B. ein MCP-Server) ---
+// Der Server nennt den Schlüssel genau einmal, in der Antwort auf das
+// Anlegen. Er steht dann nur im Feld der Box; „Schließen“ leert es wieder.
+
+const UMFANG_TEXT = { lesen: 'Nur lesen', erfassen: 'Lesen und erfassen' };
+
+async function ladeZugriffsschluessel() {
+    try {
+        const res = await fetch('/api/zugriffsschluessel');
+        if (!res.ok) throw await serverFehler(res);
+        const liste = await res.json();
+        document.getElementById('zugriffsschluessel-zeilen').innerHTML = liste.length === 0
+            ? '<tr><td colspan="5" class="text-muted" style="padding: 8px;">Noch kein Zugriffsschlüssel angelegt.</td></tr>'
+            : liste.map(s => `<tr>
+            <td style="padding: 8px;">${escapeHtml(s.name)}</td>
+            <td style="padding: 8px;">${escapeHtml(UMFANG_TEXT[s.umfang] || s.umfang)}</td>
+            <td style="padding: 8px;">${escapeHtml(s.konto || '')}</td>
+            <td style="padding: 8px;">${escapeHtml(s.zuletzt_benutzt || 'nie')}</td>
+            <td class="spalte-knopf"><button class="btn-secondary"
+                onclick="zugriffsschluesselWiderrufen(${Number(s.id)})">Löschen</button></td>
+        </tr>`).join('');
+    } catch (e) {
+        console.error('Fehler beim Laden der Zugriffsschlüssel', e);
+    }
+}
+
+// Den Schlüssel probiert man im Terminal oder im Assistenten aus und kommt
+// zurück: dann soll „zuletzt benutzt“ stimmen, ohne die Seite neu zu laden.
+// Nur wenn die Karte zu sehen ist, sonst wäre jeder Fensterwechsel ein Abruf.
+function zugriffsschluesselAuffrischen() {
+    if (document.getElementById('zugriffsschluessel-karte').offsetParent !== null) {
+        ladeZugriffsschluessel();
+    }
+}
+window.addEventListener('focus', zugriffsschluesselAuffrischen);
+
+async function zugriffsschluesselAnlegen() {
+    const feld = document.getElementById('zugriffsschluessel-name');
+    const name = feld.value.trim();
+    if (!name) {
+        showError('Bitte geben Sie dem Schlüssel einen Namen, damit Sie ihn später wiedererkennen.');
+        return;
+    }
+    const umfang = document.getElementById('zugriffsschluessel-umfang').value;
+    try {
+        const res = await fetch('/api/zugriffsschluessel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, umfang })
+        });
+        if (!res.ok) throw await serverFehler(res);
+        const neu = await res.json();
+        const wert = document.getElementById('zugriffsschluessel-wert');
+        wert.value = neu.schluessel;
+        document.getElementById('zugriffsschluessel-neu').hidden = false;
+        feld.value = '';
+        // Ansage und Fokus: Ein Screenreader liest den Schlüssel vor, und
+        // Strg+C bzw. Cmd+C kopiert ihn sofort.
+        showSuccess('Zugriffsschlüssel angelegt. Er wird nur dieses eine Mal angezeigt.');
+        wert.focus();
+        wert.select();
+        ladeZugriffsschluessel();
+    } catch (e) {
+        showError(meldungZu(e, 'Der Zugriffsschlüssel konnte nicht angelegt werden.'));
+    }
+}
+
+async function zugriffsschluesselKopieren() {
+    const feld = document.getElementById('zugriffsschluessel-wert');
+    try {
+        await navigator.clipboard.writeText(feld.value);
+        showSuccess('Schlüssel kopiert.');
+    } catch (e) {
+        // Ohne HTTPS gibt der Browser die Zwischenablage nicht her: dann
+        // ist der Text markiert, und Strg+C bzw. Cmd+C erledigt den Rest.
+        feld.focus();
+        feld.select();
+        showError('Kopieren ging nicht automatisch. Der Schlüssel ist markiert, kopieren Sie ihn mit Strg+C.');
+    }
+}
+
+function zugriffsschluesselAusblenden() {
+    document.getElementById('zugriffsschluessel-wert').value = '';
+    document.getElementById('zugriffsschluessel-neu').hidden = true;
+}
+
+async function zugriffsschluesselWiderrufen(id) {
+    const ja = await frage('Programme, die diesen Schlüssel benutzen, kommen danach nicht mehr an Ihre Daten.',
+        'Löschen', true, 'Zugriffsschlüssel löschen?');
+    if (!ja) return;
+    try {
+        const res = await fetch(`/api/zugriffsschluessel/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw await serverFehler(res);
+        showSuccess('Zugriffsschlüssel gelöscht.');
+        ladeZugriffsschluessel();
+    } catch (e) {
+        showError(meldungZu(e, 'Der Zugriffsschlüssel konnte nicht gelöscht werden.'));
+    }
+}
+
+// --- Angemeldete Geräte (#52) ---
+// Rechner, auf denen die Desktop-App mit „Angemeldet bleiben“ angemeldet
+// ist. Meldet man das eigene ab, endet auch die Sitzung hier; der Weg über
+// /login?abgemeldet=1 sagt der App, dass sie ihr Token löschen soll.
+
+async function ladeGeraete() {
+    try {
+        const res = await fetch('/api/geraete');
+        if (!res.ok) throw await serverFehler(res);
+        const liste = await res.json();
+        document.getElementById('geraete-zeilen').innerHTML = liste.length === 0
+            ? '<tr><td colspan="5" class="text-muted" style="padding: 8px;">Kein Rechner angemeldet. '
+                + 'Meldet sich die Desktop-App mit „Angemeldet bleiben“ an, steht der Rechner hier.</td></tr>'
+            : liste.map(g => `<tr>
+            <td style="padding: 8px;">${escapeHtml(g.name)}${g.dieses_geraet
+                ? ' <span class="text-muted">(dieses Gerät)</span>' : ''}</td>
+            <td style="padding: 8px;">${escapeHtml(g.konto || '')}</td>
+            <td style="padding: 8px;">${escapeHtml(g.angelegt_am || '')}</td>
+            <td style="padding: 8px;">${escapeHtml(g.zuletzt_benutzt || '')}</td>
+            <td class="spalte-knopf"><button class="btn-secondary" data-name="${escapeHtml(g.name)}"
+                onclick="geraetAbmelden(${Number(g.id)}, ${g.dieses_geraet ? 'true' : 'false'}, this.dataset.name)">Abmelden</button></td>
+        </tr>`).join('');
+    } catch (e) {
+        console.error('Fehler beim Laden der angemeldeten Geräte', e);
+    }
+}
+
+// Der Name kommt über data-name, nicht in den onclick-Text: so braucht er
+// kein Escaping für JavaScript. frage() setzt ihn als Text.
+async function geraetAbmelden(id, dieses, name) {
+    const ja = await frage(dieses
+        ? 'Sie werden auch hier abgemeldet. Beim nächsten Start fragt die App wieder nach dem Passwort.'
+        : `„${name}“ ist sofort abgemeldet. Die App fragt dort beim nächsten Start wieder nach dem Passwort.`,
+    'Abmelden', true, 'Gerät abmelden?');
+    if (!ja) return;
+    try {
+        const res = await fetch(`/api/geraete/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw await serverFehler(res);
+        if (dieses) {
+            window.location.assign('/login?abgemeldet=1');
+            return;
+        }
+        showSuccess('Gerät abgemeldet.');
+        ladeGeraete();
+    } catch (e) {
+        showError(meldungZu(e, 'Das Gerät konnte nicht abgemeldet werden.'));
     }
 }
 

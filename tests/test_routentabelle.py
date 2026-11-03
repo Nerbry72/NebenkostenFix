@@ -75,6 +75,19 @@ ROUTEN_INVENTAR = frozenset({
     'konto_passwort_aendern',
     'anmeldung_ausschalten',
     'konten_auflisten',
+    # Zugriffsschluessel: verwalten nur mit Sitzung, nie per Schluessel.
+    'zugriffsschluessel_auflisten',
+    'zugriffsschluessel_anlegen',
+    'zugriffsschluessel_widerrufen',
+    # #52: angemeldete Geraete. Abholen, Erneuern, Widerrufen und Anmelden
+    # kommen nur mit Code oder Token an der Sperre vorbei (geraete.AUSWEIS),
+    # die Liste nur mit Sitzung.
+    'geraete_auflisten',
+    'geraet_abmelden',
+    'geraet_abholen',
+    'geraet_erneuern',
+    'geraet_widerrufen',
+    'geraet_anmelden',
     'billing_preflight',
     'billing_suggestions',
     'bulk_delete_payments',

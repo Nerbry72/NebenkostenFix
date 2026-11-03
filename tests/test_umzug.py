@@ -393,6 +393,43 @@ def test_rundlauf_ueber_die_api_ersetzt_alles(bestand, tmp_path, monkeypatch):
     assert _anmelden(client).status_code == 200
 
 
+def _angemeldetes_geraet():
+    """Ein Gerät mit ersetztem Token und offenem Code, wie nach #52."""
+    from datetime import timedelta
+
+    from nebenkostenfix import zeit
+    from nebenkostenfix.models import Geraet, GeraetCode, GeraetErsetzt, User, db
+    konto = User.query.filter_by(username=ALT_USER).one()
+    geraet = Geraet(user_id=konto.id, name='Laptop', hash='a' * 64)
+    db.session.add(geraet)
+    db.session.flush()
+    db.session.add(GeraetErsetzt(hash='b' * 64, geraet_id=geraet.id))
+    db.session.add(GeraetCode(hash='c' * 64, zweck='anmelden', geraet_id=geraet.id,
+                              gueltig_bis=zeit.jetzt_utc() + timedelta(minutes=1)))
+    db.session.commit()
+
+
+GERAETE_TABELLEN = ('geraete', 'geraete_codes', 'geraete_ersetzt')
+
+
+def test_eine_eingespielte_sicherung_meldet_alle_geraete_ab(bestand, tmp_path):
+    """#52: Gerätetokens überleben das Einspielen nicht. Sonst bliebe ein
+    Rechner nach dem Umzug auf einen neuen Server weiter angemeldet."""
+    _angemeldetes_geraet()
+    sicherung = backup.sicherung_erstellen(bestand.app, tmp_path)
+    backup.sicherung_einspielen(bestand.app, sicherung)
+    zeilen = backup.zaehlwerte(backup.datenbankpfad(bestand.app))
+    assert {t: zeilen[t] for t in GERAETE_TABELLEN} == dict.fromkeys(GERAETE_TABELLEN, 0)
+
+
+def test_der_umzug_nennt_die_geraete_nicht_als_abweichung(bestand, tmp_path):
+    _angemeldetes_geraet()
+    bericht = umzug.uebernehmen(bestand.app, _paket(bestand, tmp_path))
+    assert bericht['tabellen']['geraete'] == 0
+    assert not set(bericht['abweichend']) & set(GERAETE_TABELLEN)
+    assert any('Angemeldete Geräte' in zeile for zeile in bericht['nicht_im_paket'])
+
+
 def test_vorhandene_vermieterwerte_bleiben(bestand, tmp_path, monkeypatch):
     from nebenkostenfix.models import Vermieterdaten, db
     db.session.add(Vermieterdaten(name='Schon eingetragen'))

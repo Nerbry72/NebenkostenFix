@@ -186,6 +186,46 @@ body.anmeldung {
 .umzug-karte summary:focus-visible,
 .umzug-karte .knopf-link:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
+/* #52: „Angemeldet bleiben“ in der Desktop-App, Kästchen im Hausstil
+   (style.css) statt des Textfelds oben. */
+.anmelde-karte .haken {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-weight: 500;
+    cursor: pointer;
+}
+.anmelde-karte .haken + .hinweis { font-size: 13px; margin: var(--space-1) 0 0 28px; }
+.anmelde-karte input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 20px;
+    min-height: 0;
+    height: 20px;
+    margin: 0;
+    padding: 0;
+    flex-shrink: 0;
+    display: inline-grid;
+    place-content: center;
+    border: 1.5px solid var(--field-border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    cursor: pointer;
+}
+.anmelde-karte input[type="checkbox"]::before {
+    content: "";
+    width: 12px;
+    height: 12px;
+    background: var(--on-primary);
+    clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+    transform: scale(0);
+}
+.anmelde-karte input[type="checkbox"]:checked { background: var(--primary); border-color: var(--primary); }
+.anmelde-karte input[type="checkbox"]:checked::before { transform: scale(1); }
+.anmelde-karte input[type="checkbox"]:focus { padding: 0; border: 1.5px solid var(--field-border); }
+.anmelde-karte input[type="checkbox"]:checked:focus { border-color: var(--primary); }
+.anmelde-karte input[type="checkbox"]:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
 .anmelde-karte .hilfe { font-size: 13px; margin: var(--space-2) 0 0; }
 .anmelde-karte code {
     background: var(--primary-tint);

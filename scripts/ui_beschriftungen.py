@@ -90,6 +90,8 @@ VERBEN: set[str] = {
     "verbinden",
     # #45: Startwahl beim ersten Start („Auf diesem Rechner arbeiten“).
     "arbeiten",
+    # Zugriffsschlüssel: den einmal gezeigten Schlüssel in die Zwischenablage.
+    "kopieren",
 }
 
 # Knopftexte, die zwar mit einem Verb aus der Liste beginnen, aber das

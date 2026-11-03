@@ -763,3 +763,66 @@ class User(db.Model):
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+
+class ApiSchluessel(db.Model):
+    """Zugriffsschluessel fuer Programme ohne Browser (siehe
+    ``nebenkostenfix/zugriffsschluessel.py``).
+
+    Der Schluessel selbst steht nirgends, nur sein SHA-256. Ein langsamer
+    Passwort-Hash waere hier verschenkt: der Schluessel ist ein Zufallswert
+    mit 256 Bit, kein Wort, das jemand mit einem Woerterbuch erraten kann.
+    Auch keine ersten Zeichen: der Schluessel erscheint genau einmal, danach
+    erkennt man ihn am Namen.
+    """
+    __tablename__ = 'api_schluessel'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    name = db.Column(db.String(60), nullable=False)
+    hash = db.Column(db.String(64), unique=True, nullable=False)
+    umfang = db.Column(db.String(10), nullable=False)
+    angelegt_am = db.Column(db.DateTime, nullable=False, default=zeit.jetzt_utc)
+    zuletzt_benutzt_am = db.Column(db.DateTime, nullable=True)
+
+    user = db.relationship('User')
+
+
+class Geraet(db.Model):
+    """Ein Rechner, auf dem die Desktop-App angemeldet bleibt (#52, siehe
+    ``nebenkostenfix/geraete.py``).
+
+    Wie beim Zugriffsschluessel nur der SHA-256 des aktuellen Tokens. Jede
+    Erneuerung ersetzt ihn; der alte wandert nach ``geraete_ersetzt``.
+    """
+    __tablename__ = 'geraete'
+    # Nummern nie wiederverwenden: die Sitzung merkt sich die Nummer, und ein
+    # neues Geraet darf keine abgemeldete Sitzung wiederbeleben.
+    __table_args__ = {'sqlite_autoincrement': True}
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    name = db.Column(db.String(60), nullable=False)
+    hash = db.Column(db.String(64), unique=True, nullable=False)
+    angelegt_am = db.Column(db.DateTime, nullable=False, default=zeit.jetzt_utc)
+    zuletzt_benutzt_am = db.Column(db.DateTime, nullable=False, default=zeit.jetzt_utc)
+
+    user = db.relationship('User')
+
+
+class GeraetErsetzt(db.Model):
+    """Ersetzte Tokens eines Geraets, nur fuer die Erkennung von Kopien:
+    taucht eines wieder auf, ist das Geraet abgemeldet (RFC 9700, 4.14.2)."""
+    __tablename__ = 'geraete_ersetzt'
+    hash = db.Column(db.String(64), primary_key=True)
+    geraet_id = db.Column(db.Integer, db.ForeignKey('geraete.id'), nullable=False, index=True)
+    ersetzt_am = db.Column(db.DateTime, nullable=False, default=zeit.jetzt_utc)
+
+
+class GeraetCode(db.Model):
+    """Kurzlebige Codes eines Geraets, ebenfalls nur als Hash. ``abholen``:
+    nach der Anmeldung mit Haekchen, die App tauscht ihn gegen das Token.
+    ``anmelden``: nach einer Erneuerung, die App laedt damit die Sitzung."""
+    __tablename__ = 'geraete_codes'
+    hash = db.Column(db.String(64), primary_key=True)
+    zweck = db.Column(db.String(10), nullable=False)
+    geraet_id = db.Column(db.Integer, db.ForeignKey('geraete.id'), nullable=False, index=True)
+    gueltig_bis = db.Column(db.DateTime, nullable=False)
