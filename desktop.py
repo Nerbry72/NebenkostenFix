@@ -19,6 +19,11 @@ Zweiter Einstieg neben gunicorn (Docker). Ablauf:
      Öffnen und Ordnerwahl (NK-152).
   6. Fenster zu → Server anhalten, WAL-Checkpoint, Sperre frei.
 
+Unter macOS (#44) dieselbe Hülle mit WKWebView: Daten in Application
+Support, Meldungen über ``osascript``, ``open`` statt ``os.startfile``,
+Cmd-Q hält den Server über das Ereignis ``closing`` an, und die CSP erlaubt
+``'unsafe-eval'`` für die Brücke von pywebview.
+
 ``--selbsttest`` fährt dieselben Schritte ohne Fenster gegen einen frischen
 Datenordner und prüft Einrichtung, eine Abrechnung und das PDF -- für die CI
 und für das gebaute Paket (NK-150, NK-135).
@@ -37,6 +42,8 @@ import os
 import re
 import secrets
 import ssl
+# Bandit-Ausnahme: nur osascript und open unter macOS, fester Pfad, keine Shell
+import subprocess  # nosec B404
 import sys
 import tempfile
 import threading
@@ -60,6 +67,15 @@ TITEL = marke.PRODUKT
 # Was Bruecke.oeffnen dem Standardprogramm übergibt. Alles andere geht in den
 # Speichern-Dialog: der Name stammt aus dem Upload, eine .exe startet nie.
 OEFFNEN_ERLAUBT = {'.pdf', '.jpg', '.jpeg', '.png', '.webp', '.heic'}
+
+# pywebview baut window.pywebview.api mit new Function und evaluate_js mit
+# eval. WKWebView (macOS) sperrt beides ohne 'unsafe-eval'; ohne Brücke
+# scheitern Speichern, Öffnen, Ordnerwahl und Umzug (#44).
+# 'unsafe-inline' ist ohnehin erlaubt, und das Fenster lädt nur 127.0.0.1.
+# Ein Server erlaubt kein 'unsafe-eval': Das Menü ruft die Seite deshalb mit
+# run_js, das ohne eval auskommt (#45).
+SKRIPT_REGEL = "script-src 'self' 'unsafe-inline';"
+SKRIPT_REGEL_WEBKIT = "script-src 'self' 'unsafe-inline' 'unsafe-eval';"
 
 
 # --- Start-Token (Zugriff nur aus dem Fenster) -------------------------------
@@ -106,6 +122,8 @@ class HuellenSchutz:
             cookies[name] = wert
         if not self._passt(cookies.get(COOKIE)):
             return self._verboten(antworten)
+        if aktualisierung.betriebssystem() == 'darwin':
+            return self.anwendung(umgebung, _csp_fuer_webkit(antworten))
         return self.anwendung(umgebung, antworten)
 
     @staticmethod
@@ -113,6 +131,17 @@ class HuellenSchutz:
         text = f'Nur aus dem Programmfenster von {TITEL} erreichbar.'
         antworten('403 Forbidden', [('Content-Type', 'text/plain; charset=utf-8')])
         return [text.encode('utf-8')]
+
+
+def _csp_fuer_webkit(antworten):
+    """Ergänzt die CSP der Anwendung um 'unsafe-eval'; strengere Regeln
+    (Dateiauslieferung, NK-129) bleiben, wie sie sind."""
+    def weiter(status, koepfe, *rest):
+        koepfe = [(name, wert.replace(SKRIPT_REGEL, SKRIPT_REGEL_WEBKIT)
+                   if name.lower() == 'content-security-policy' else wert)
+                  for name, wert in koepfe]
+        return antworten(status, koepfe, *rest)
+    return weiter
 
 
 # --- Eine Instanz -------------------------------------------------------------
@@ -172,6 +201,8 @@ class EineInstanz:
 
 def _meldung(text: str, frage: bool = False, hinweis: bool = False) -> bool:
     """Meldung im Stil des Systems; unter Windows eine MessageBox."""
+    if aktualisierung.betriebssystem() == 'darwin':
+        return _meldung_macos(text, frage, hinweis)
     if sys.platform == 'win32':  # pragma: no cover - Windows
         import ctypes
         # JA/NEIN + Frage, Hinweis (i) bzw. Fehler
@@ -179,6 +210,42 @@ def _meldung(text: str, frage: bool = False, hinweis: bool = False) -> bool:
         return ctypes.windll.user32.MessageBoxW(None, text, TITEL, stil) == 6
     protokoll.warning('%s', text)
     return False
+
+
+def _meldung_macos(text: str, frage: bool, hinweis: bool = False) -> bool:
+    """Titel und Text gehen als Argumente an ``on run argv``, nie ins
+    Skript: Ein Anführungszeichen im Pfad führt nichts aus."""
+    if frage:
+        zeilen = ['on run argv',
+                  'display dialog (item 2 of argv) with title (item 1 of argv) '
+                  'buttons {"Nein", "Ja"} default button "Ja" with icon caution',
+                  'end run']
+    else:
+        zeilen = ['on run argv',
+                  'display alert (item 1 of argv) message (item 2 of argv) as '
+                  + ('informational' if hinweis else 'critical'),
+                  'end run']
+    befehl = ['/usr/bin/osascript']
+    for zeile in zeilen:
+        befehl += ['-e', zeile]
+    # Bandit-Ausnahme (B603): fester Pfad, der Text ist nur ein Argument
+    lauf = subprocess.run(befehl + [TITEL, text], capture_output=True, text=True,  # nosec B603
+                          check=False)
+    if lauf.returncode != 0:
+        protokoll.warning('%s', text)
+        return False
+    return frage and lauf.stdout.strip() == 'button returned:Ja'
+
+
+def standardprogramm_oeffnen(pfad) -> None:
+    """Datei oder Ordner im Programm, das das System dafür vorsieht."""
+    system = aktualisierung.betriebssystem()
+    if system == 'win32':  # pragma: no cover - Windows
+        # Bandit-Ausnahme (B606): Standardprogramm des Nutzers, kein Befehl
+        os.startfile(pfad)  # nosec B606
+    elif system == 'darwin':
+        # Bandit-Ausnahme (B603): fester Pfad; „--“, damit kein Pfad als Option gilt
+        subprocess.run(['/usr/bin/open', '--', str(pfad)], check=False)  # nosec B603
 
 
 def datenordner_bestimmen(fragen: bool = True, vorgabe: str | None = None) -> Path:
@@ -269,9 +336,7 @@ class Bruecke:
             pfad = pfad.with_suffix('.html')
             pfad.write_text(f'<meta http-equiv="refresh" content="0; url={html.escape(ziel)}">',
                             encoding='utf-8')
-        if sys.platform == 'win32':  # pragma: no cover - Windows
-            # Bandit-Ausnahme (B606): Standardprogramm des Nutzers, kein Befehl
-            os.startfile(pfad)  # nosec B606
+        standardprogramm_oeffnen(pfad)
         return str(pfad)
 
     def extern_oeffnen(self, adresse: str):
@@ -290,9 +355,11 @@ class Bruecke:
         import webview
 
         from nebenkostenfix import umzug
+        # Der Dialog von macOS vergleicht nur die letzte Endung (#44).
+        archiv = '*.gz' if aktualisierung.betriebssystem() == 'darwin' else '*.tar.gz'
         auswahl = self._fenster.create_file_dialog(
             webview.OPEN_DIALOG,
-            file_types=('NebenkostenFix Paket (*.nkfix;*.nkbak;*.tar.gz)', 'Alle Dateien (*.*)'))
+            file_types=(f'NebenkostenFix Paket (*.nkfix;*.nkbak;{archiv})', 'Alle Dateien (*.*)'))
         if not auswahl:
             return None
         return umzug.freigeben(auswahl if isinstance(auswahl, str) else auswahl[0])
@@ -513,7 +580,8 @@ class ServerBruecke:
     Mit Absicht keine Unterklasse von ``Bruecke`` -- pywebview gäbe sonst
     Ordnerwahl, Umzug und Umschalten an eine Seite, die vom Server kommt.
     Jede Methode prüft zuerst, ob das Fenster noch dort ist. ``lokal_arbeiten``
-    öffnet nur die Rückfrage von Windows, wie Datei → Auf diesem Rechner arbeiten.
+    öffnet nur die Rückfrage des Systems, wie Datei → Auf diesem Rechner arbeiten
+    (unter macOS Ablage → …).
     """
 
     def __init__(self, basis: str):
@@ -543,7 +611,7 @@ class ServerBruecke:
 
     def lokal_arbeiten(self) -> bool:
         """#45: Rückweg aus den Einstellungen. Ohne Parameter; ob es geschieht,
-        entscheidet der Nutzer im Dialog von Windows."""
+        entscheidet der Nutzer im Dialog des Systems."""
         if self._zurueck is None or not _fenster_bei(self._fenster, self._basis):
             return False
         # Ruft die Seite nach jedem „Nein“ sofort wieder, käme man nie ans Menü.
@@ -572,16 +640,50 @@ def server_starten(wsgi):
     from waitress import create_server
     server = create_server(wsgi, host='127.0.0.1', port=0, threads=8,
                            ident=TITEL, clear_untrusted_proxy_headers=True)
-    faden = threading.Thread(target=server.run, name='waitress', daemon=True)
-    faden.start()
-    return server, faden
+    thread = threading.Thread(target=server.run, name='waitress', daemon=True)
+    thread.start()
+    return server, thread
+
+
+def _im_thread_von_waitress(server, aufgabe, warten: float) -> bool:
+    """Führt ``aufgabe`` über den Trigger im Thread von waitress aus, also
+    zwischen zwei select(). False, wenn sie nicht innerhalb von ``warten``
+    drankommt."""
+    erledigt = threading.Event()
+
+    def ausfuehren():
+        try:
+            aufgabe()
+        finally:
+            erledigt.set()
+    server.trigger.pull_trigger(ausfuehren)
+    return erledigt.wait(warten)
+
+
+def _server_schliessen(server, warten: float = 5.0) -> None:
+    """Fährt waitress der Reihe nach herunter (#44). Aus einem anderen Thread
+    geschlossen, wartete waitress noch in select() auf den Sockets und endete
+    mit „Bad file descriptor“. Und ein Worker, der danach fertig wurde, zog
+    den schon geschlossenen Trigger: unter macOS und Linux womöglich die fd,
+    die der Checkpoint gerade geöffnet hat."""
+    if not server.accepting:   # schon zu (zweiter Aufruf)
+        return
+    from waitress import wasyncore
+    # 1. Keine neuen Verbindungen; Trigger und offene Verbindungen bleiben.
+    if not _im_thread_von_waitress(server, lambda: wasyncore.dispatcher.close(server), warten):
+        # Neben einer vielleicht doch laufenden Schleife nichts direkt schließen.
+        protokoll.warning('waitress kam beim Beenden nicht dran; das Prozessende räumt auf')
+        return
+    # 2. Laufende Anfragen zu Ende; die Schleife schreibt ihre Antworten noch.
+    server.task_dispatcher.shutdown(timeout=warten)
+    # 3. Trigger und Verbindungen zu, danach endet die Schleife.
+    if not _im_thread_von_waitress(server, lambda: wasyncore.close_all(server._map), warten):
+        protokoll.warning('waitress kam beim Beenden nicht dran; das Prozessende räumt auf')
 
 
 def anhalten(server, app_modul) -> None:
     """Server zu, WAL in die Datenbank zurueckschreiben, Griffe schliessen."""
-    # Schon zu (zweiter Aufruf) ist dasselbe Ergebnis.
-    with contextlib.suppress(OSError):
-        server.close()
+    _server_schliessen(server)
     with app_modul.app.app_context():
         from sqlalchemy import text
         with app_modul.db.engine.connect() as verbindung:
@@ -729,6 +831,157 @@ def fehlerseite(text: str) -> str:
         'Ihre Daten sind nicht verändert.</p></body></html>')
 
 
+# --- macOS: Fenster und Menü wie bei Mac-Apps (#44) ---------------------------
+
+# Die Standardmenüs von pywebview sind englisch. Den App-Namen hängt es hinten
+# an („Quit NebenkostenFix“); _menueleiste_ordnen stellt ihn bei ausblenden
+# und beenden nach vorn.
+MENUE_TEXTE_MACOS = {
+    'cocoa.menu.about': 'Über',
+    'cocoa.menu.services': 'Dienste',
+    'cocoa.menu.hide': 'ausblenden',
+    'cocoa.menu.hideOthers': 'Andere ausblenden',
+    'cocoa.menu.showAll': 'Alle einblenden',
+    'cocoa.menu.quit': 'beenden',
+    'cocoa.menu.edit': 'Bearbeiten',
+    'cocoa.menu.view': 'Darstellung',
+    'cocoa.menu.fullscreen': 'Vollbildmodus',
+    'cocoa.menu.cut': 'Ausschneiden',
+    'cocoa.menu.copy': 'Kopieren',
+    'cocoa.menu.paste': 'Einsetzen',
+    'cocoa.menu.selectAll': 'Alles auswählen',
+    # Sichern-Dialog (Datenauszug, Umzugspaket) und Rückfragen von pywebview
+    'global.saveFile': 'Sichern',
+    'global.cancel': 'Abbrechen',
+    'global.quit': 'Beenden',
+    'global.quitConfirmation': f'Möchten Sie {TITEL} wirklich beenden?',
+}
+ABLAGE = 'Ablage'   # Apples deutscher Name für das Menü „File“
+_MACOS_ANGEPASST = False
+
+
+class MacFenster:
+    """Fenster zu heißt unter macOS nicht Programm zu: Der rote Knopf
+    versteckt das Fenster, die App bleibt mit Punkt im Dock aktiv, ein Klick
+    aufs Dock-Symbol holt es zurück. Erst Beenden (Cmd-Q, Dock, Abmelden)
+    räumt über ``beim_beenden`` auf: lokal hält es den Server an, im
+    Servermodus gibt es die Sperre frei. pywebview ruft in beiden Fällen ``closing`` auf; was
+    gemeint ist, erfährt diese Klasse vom App-Delegate (_macos_anpassen)."""
+
+    def __init__(self, fenster, beim_beenden):
+        self.fenster = fenster
+        self.beim_beenden = beim_beenden
+        self.beendet = False
+
+    def beenden_angefordert(self) -> None:
+        self.beendet = True
+
+    def schliessen(self) -> bool | None:
+        """Hook für ``closing``: False bricht das Schließen ab."""
+        if self.beendet:
+            self.beim_beenden()
+            return None
+        self.fenster.hide()
+        return False
+
+    def wieder_oeffnen(self, sichtbar: bool) -> None:
+        if not sichtbar:
+            self.fenster.show()
+
+
+def _menueleiste_ordnen(hauptmenue) -> None:
+    """pywebview setzt Bearbeiten und Darstellung direkt hinter das App-Menü
+    und hängt eigene Menüs hinten an; macOS erwartet die Ablage an zweiter
+    Stelle. Braucht nur Methoden von NSMenu."""
+    index = hauptmenue.indexOfItemWithTitle_(ABLAGE)
+    if index > 1:
+        eintrag = hauptmenue.itemAtIndex_(index)
+        hauptmenue.removeItemAtIndex_(index)
+        hauptmenue.insertItem_atIndex_(eintrag, 1)
+    namen = {'hide:': f'{TITEL} ausblenden', 'terminate:': f'{TITEL} beenden'}
+    for eintrag in hauptmenue.itemAtIndex_(0).submenu().itemArray():
+        aktion = eintrag.action()
+        if isinstance(aktion, bytes):   # ältere PyObjC; 12.x liefert str
+            aktion = aktion.decode('ascii')
+        if aktion in namen:
+            eintrag.setTitle_(namen[aktion])
+
+
+def _macos_anpassen(mac_fenster: MacFenster) -> None:  # pragma: no cover - braucht AppKit
+    """Greift an zwei Stellen in pywebview (cocoa) ein, für die es keine
+    öffentliche Schnittstelle gibt; tests/test_macos.py prüft, dass es sie
+    gibt. Vor ``webview.start`` aufrufen, einmal je Prozess: Ein zweiter
+    Aufruf legte die ObjC-Klasse neu an (objc.error)."""
+    global _MACOS_ANGEPASST
+    if _MACOS_ANGEPASST:
+        return
+    _MACOS_ANGEPASST = True
+    import objc
+    from webview.platforms import cocoa
+
+    menue_bauen = cocoa.BrowserView._recreate_menus
+
+    def menue_neu_bauen(self, user_menu):
+        hauptmenue = menue_bauen(self, user_menu)
+        _menueleiste_ordnen(hauptmenue)
+        return hauptmenue
+    cocoa.BrowserView._recreate_menus = menue_neu_bauen
+
+    class NebenkostenFixAppDelegate(cocoa.BrowserView.AppDelegate):
+        def applicationShouldTerminate_(self, app):
+            mac_fenster.beenden_angefordert()
+            return objc.super(NebenkostenFixAppDelegate, self).applicationShouldTerminate_(app)
+
+        def applicationShouldHandleReopen_hasVisibleWindows_(self, app, sichtbar):
+            mac_fenster.wieder_oeffnen(bool(sichtbar))
+            return True
+
+    # pywebview nimmt einen schon gesetzten Delegate, statt einen eigenen zu bauen.
+    cocoa.BrowserView._shared_app_delegate = NebenkostenFixAppDelegate.alloc().init()
+
+
+def _nach_systemart(fenster, nach_vorne, beim_beenden):
+    """Was beide Fenster, lokal und im Servermodus, unter macOS anders
+    machen (#44): Der rote Knopf versteckt nur, Cmd-Q räumt über
+    ``beim_beenden`` auf, und was im Fenster wirkt, holt es erst nach vorn.
+
+    Liefert ``im_fenster``, ``erstes_menue(eintraege)`` und die Optionen für
+    ``webview.start``. Einmal je Prozess und vor ``webview.start`` aufrufen:
+    Ein zweiter Aufruf hängte sein Fenster nicht mehr an den App-Delegate
+    (siehe ``_macos_anpassen``), Cmd-Q versteckte es dann nur."""
+    from webview.menu import Menu, MenuAction, MenuSeparator
+
+    macos = aktualisierung.betriebssystem() == 'darwin'
+    if macos:
+        mac_fenster = MacFenster(fenster, beim_beenden)
+        fenster.events.closing += mac_fenster.schliessen
+        _macos_anpassen(mac_fenster)
+
+    def im_fenster(aktion):
+        """Unter macOS kann das Fenster versteckt sein (roter Knopf), die
+        Menüleiste bleibt: Was im Fenster wirkt, holt es erst nach vorn."""
+        if not macos:
+            return aktion
+
+        def vorn_dann_aktion():
+            nach_vorne()
+            return aktion()
+        return vorn_dann_aktion
+
+    def erstes_menue(eintraege):
+        if macos:   # Cmd-Tab zur App holt das Fenster nicht von selbst zurück
+            return Menu(ABLAGE, [MenuAction('Fenster zeigen', nach_vorne), MenuSeparator()]
+                        + eintraege)
+        # Windows braucht „Beenden“; macOS hat es mit Cmd-Q im App-Menü.
+        return Menu('Datei', eintraege + [MenuSeparator(), MenuAction('Beenden', fenster.destroy)])
+
+    # Unter macOS deutsche Standardmenüs. WKWebView ignoriert storage_path und
+    # legt die Daten nach der Bundle-ID ab (pywebview#1714); der Ordner bliebe leer.
+    optionen = {'localization': MENUE_TEXTE_MACOS} if macos else {
+        'storage_path': str(windows_ordner.lokaler_ordner() / 'WebView2')}
+    return im_fenster, erstes_menue, optionen
+
+
 def fenster_starten(datenordner: Path) -> int:  # pragma: no cover - braucht GUI
     import webview
     webbrowser_absichern()
@@ -784,30 +1037,34 @@ def fenster_starten(datenordner: Path) -> int:  # pragma: no cover - braucht GUI
         if 'basis' in zustand:
             fenster.load_url(f"{zustand['basis']}/huelle/passwort")
 
+    # Cmd-Q beendet unter macOS den Prozess, ohne dass webview.start
+    # zurückkehrt; vorher kommt nur noch closing (#44).
+    def beim_beenden():
+        if 'server' in zustand:
+            anhalten(zustand.pop('server'), zustand['app_modul'])
+        instanz.freigeben()
+
+    im_fenster, erstes_menue, optionen = _nach_systemart(fenster, nach_vorne, beim_beenden)
     menue = [
-        Menu('Datei', [
-            MenuAction('Drucken', lambda: fenster.evaluate_js('window.print()')),
+        erstes_menue([
+            MenuAction('Drucken', im_fenster(lambda: fenster.run_js('window.print()'))),
             MenuSeparator(),
             # #45: der Weg zum Server, auch wenn die Übersicht schon Objekte zeigt.
             MenuAction('Mit einem Server verbinden …',
-                       lambda: fenster.evaluate_js('zeigeServerKarte()')),
-            MenuSeparator(),
-            MenuAction('Beenden', fenster.destroy),
+                       im_fenster(lambda: fenster.run_js('zeigeServerKarte()'))),
         ]),
         Menu('Hilfe', [
-            MenuAction('Passwort vergessen …', passwort_seite),
-            # Bandit-Ausnahme (B606): oeffnet den Datenordner im Explorer
+            MenuAction('Passwort vergessen …', im_fenster(passwort_seite)),
             MenuAction('Datenordner anzeigen',
-                       lambda: os.startfile(datenordner)),  # nosec B606
+                       lambda: standardprogramm_oeffnen(datenordner)),
             MenuSeparator(),
             # NK-179: springt in der Oberfläche zu „Über NebenkostenFix“.
             MenuAction(f'Über {marke.PRODUKT}',
-                       lambda: fenster.evaluate_js("zeigeHilfe('hilfe-ueber')")),
+                       im_fenster(lambda: fenster.run_js("zeigeHilfe('hilfe-ueber')"))),
         ]),
     ]
-    speicher = windows_ordner.lokaler_ordner() / 'WebView2'
     try:
-        webview.start(hochfahren, menu=menue, private_mode=False, storage_path=str(speicher))
+        webview.start(hochfahren, menu=menue, private_mode=False, **optionen)
     finally:
         if 'server' in zustand:
             anhalten(zustand['server'], zustand['app_modul'])
@@ -819,6 +1076,7 @@ def fenster_starten(datenordner: Path) -> int:  # pragma: no cover - braucht GUI
 
 def offline_seite(meldung: str, adresse: str) -> str:
     """Servermodus ohne Verbindung. Keine Knöpfe: der Weg führt über das Menü."""
+    datei = ABLAGE if aktualisierung.betriebssystem() == 'darwin' else 'Datei'
     schleife = ''
     if adresse.startswith('http://'):
         schleife = ('<p>Sie werden immer wieder zur Anmeldung geschickt? Dann erwartet der '
@@ -828,8 +1086,8 @@ def offline_seite(meldung: str, adresse: str) -> str:
         'body{font-family:"Segoe UI",system-ui,sans-serif;background:#F3F4F6;color:#111827;'
         'padding:48px;line-height:1.6}h1{font-size:22px}</style></head><body>'
         '<h1>Keine Verbindung zum Server</h1>'
-        f'<p>{html.escape(meldung)} Versuchen Sie es über <em>Datei → Neu laden</em> erneut. '
-        'Mit <em>Datei → Auf diesem Rechner arbeiten …</em> kommen Sie zurück zu Ihren '
+        f'<p>{html.escape(meldung)} Versuchen Sie es über <em>{datei} → Neu laden</em> erneut. '
+        f'Mit <em>{datei} → Auf diesem Rechner arbeiten …</em> kommen Sie zurück zu Ihren '
         f'lokalen Daten.</p>{schleife}'
         f'<p><code>{html.escape(adresse)}</code></p></body></html>')
 
@@ -938,16 +1196,21 @@ def server_fenster_starten(adresse: str) -> int:
         _meldung(f'{TITEL} {SOFTWARE_VERSION}. Verbunden mit {zustand["basis"] or adresse}.',
                  hinweis=True)
 
-    # Kein evaluate_js in die Seite (fremder Code, womöglich andere Version),
+    def nach_vorne():
+        fenster.restore()
+        fenster.show()
+
+    # Kein lokaler Server: Beim Beenden ist nur die Sperre freizugeben.
+    im_fenster, erstes_menue, optionen = _nach_systemart(fenster, nach_vorne, instanz.freigeben)
+    # Keine Funktionen der Seite aufrufen (fremder Code, womöglich andere Version),
     # kein „Passwort vergessen“ (lokale Route).
     menue = [
-        Menu('Datei', [
-            MenuAction('Drucken', lambda: fenster.evaluate_js('window.print()')),
-            MenuAction('Neu laden', lambda: threading.Thread(target=laden, daemon=True).start()),
+        erstes_menue([
+            MenuAction('Drucken', im_fenster(lambda: fenster.run_js('window.print()'))),
+            MenuAction('Neu laden', im_fenster(
+                lambda: threading.Thread(target=laden, daemon=True).start())),
             MenuSeparator(),
-            MenuAction('Auf diesem Rechner arbeiten …', zurueck),
-            MenuSeparator(),
-            MenuAction('Beenden', fenster.destroy),
+            MenuAction('Auf diesem Rechner arbeiten …', im_fenster(zurueck)),
         ]),
         Menu('Hilfe', [MenuAction(f'Über {marke.PRODUKT}', ueber)]),
     ]
@@ -957,9 +1220,8 @@ def server_fenster_starten(adresse: str) -> int:
         # Das Update kommt von der Projektseite, nicht vom Server: auch offline.
         threading.Thread(target=update_anbieten, args=(fenster,), daemon=True).start()
 
-    speicher = windows_ordner.lokaler_ordner() / 'WebView2'
     try:
-        webview.start(hochfahren, menu=menue, private_mode=False, storage_path=str(speicher))
+        webview.start(hochfahren, menu=menue, private_mode=False, **optionen)
     finally:
         instanz.freigeben()
     if zustand.get('neustart'):
