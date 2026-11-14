@@ -50,6 +50,7 @@ import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from http.cookiejar import CookieJar
 from pathlib import Path
@@ -501,6 +502,74 @@ class Lauf:
         return ('lesen, pruefen, Rechnung mit Beleg, Sammelbeleg, Zaehlerstand, '
                 'Zahlung, Soll bleibt; Sperren 403, nach dem Widerruf 401')
 
+    def angemeldet_bleiben(self) -> str:
+        """#52: die Aufrufe der Desktop-App, die angemeldet bleibt. Anmeldung
+        mit Haekchen, Abholen, Erneuern, mit dem Einmalcode in die Sitzung;
+        ein ersetztes Token meldet das Geraet ab. Gegen waitress im gebauten
+        Abbild, wie die App: Fenster mit Keksglas, Abholen ohne."""
+        class OhneUmleitung(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, *args, **kwargs):
+                return None
+
+        def fenster():
+            return urllib.request.build_opener(
+                urllib.request.HTTPCookieProcessor(CookieJar()), OhneUmleitung())
+
+        def umleitung(oeffner, anfrage) -> str:
+            try:
+                oeffner.open(anfrage, timeout=60)
+            except urllib.error.HTTPError as fehler:
+                if fehler.code in (302, 303):
+                    return fehler.headers['Location']
+                raise
+            raise Abbruch(f'{anfrage.full_url} leitet nicht weiter.')
+
+        def app(pfad, nutzlast):
+            anfrage = urllib.request.Request(
+                self._url(pfad), data=json.dumps(nutzlast).encode(),
+                headers={'Content-Type': 'application/json'}, method='POST')
+            try:
+                with self.ohne_sitzung.open(anfrage, timeout=60) as antwort:
+                    return antwort.status, json.loads(antwort.read())
+            except urllib.error.HTTPError as fehler:
+                return fehler.code, {}
+
+        kennung = 'Mozilla/5.0 NebenkostenFix-Desktop/e2e'
+        formular_daten = urllib.parse.urlencode({
+            'username': KONTO, 'password': PASSWORT, 'angemeldet_bleiben': '1'}).encode()
+        ort = umleitung(fenster(), urllib.request.Request(
+            self._url('/login?next=/'), data=formular_daten, method='POST',
+            headers={'User-Agent': kennung,
+                     'Content-Type': 'application/x-www-form-urlencoded'}))
+        code = urllib.parse.parse_qs(urllib.parse.urlsplit(ort).query).get('geraet', [''])[0]
+        if not code:
+            raise Abbruch(f'Die Anmeldung mit Haekchen haengt keinen Abholcode an: {ort}')
+        status, abgeholt = app('/api/geraete/abholen', {'code': code, 'name': 'e2e'})
+        if status != 201 or not abgeholt.get('token', '').startswith('nkg_'):
+            raise Abbruch(f'Abholen antwortet {status}.')
+        status, erneuert = app('/api/geraete/erneuern', {'token': abgeholt['token']})
+        if status != 200:
+            raise Abbruch(f'Erneuern antwortet {status}.')
+
+        neu = fenster()
+        # Den Einmalcode loest der Server nur fuer die App ein (Login-CSRF).
+        umleitung(neu, urllib.request.Request(self._url(
+            '/geraete/anmelden?' + urllib.parse.urlencode({'code': erneuert['code']})),
+            headers={'User-Agent': kennung}))
+        with neu.open(self._url('/api/auth/me'), timeout=60) as antwort:
+            wer = json.loads(antwort.read())
+        if wer.get('username') != KONTO:
+            raise Abbruch(f'Der Einmalcode meldet {wer!r} an statt {KONTO}.')
+
+        if app('/api/geraete/erneuern', {'token': abgeholt['token']})[0] != 401:
+            raise Abbruch('Ein ersetztes Geraetetoken ging durch.')
+        if app('/api/geraete/erneuern', {'token': erneuert['token']})[0] != 401:
+            raise Abbruch('Nach einer Kopie blieb das Geraet angemeldet.')
+        if self._ruf('GET', '/api/geraete'):
+            raise Abbruch('Das Geraet steht nach der Kopie noch in der Liste.')
+        return ('Haekchen, Abholen, Erneuern, Einmalcode; das ersetzte Token '
+                'meldet das Geraet ab')
+
     def _bindziele(self) -> list[str]:
         """Wohin docker-compose.yml die Bind-Mounts im Container legt.
 
@@ -578,10 +647,11 @@ class Lauf:
             self._schritt('6 anmelden', self.anmelden)
             self._schritt('7 Abrechnung erzeugen', self.abrechnung_erzeugen)
             self._schritt('8 Zugriffsschluessel', self.zugriffsschluessel)
+            self._schritt('9 Angemeldet bleiben', self.angemeldet_bleiben)
         finally:
             gesamt = time.monotonic() - beginn
             if self.arbeit is not None:
-                self._schritt('9 herunterfahren', self.stapel_runter)
+                self._schritt('10 herunterfahren', self.stapel_runter)
 
         print(tabelle(self.schritte, gesamt))
         return 0 if marke_gehalten(gesamt) else 1

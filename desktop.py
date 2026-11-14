@@ -34,6 +34,7 @@ import html
 import json
 import logging
 import os
+import platform
 import re
 import secrets
 import ssl
@@ -576,6 +577,219 @@ class ServerBruecke:
         return False
 
 
+# --- Angemeldet bleiben (#52): Gerätetoken im Schlüsselbund ---------------------
+
+DIENST = 'NebenkostenFix'  # Eintrag im Schlüsselbund, Konto = Serveradresse
+APP_KENNUNG = 'NebenkostenFix-Desktop/'  # wie nebenkostenfix.geraete.APP_KENNUNG
+# pywebview ersetzt den User-Agent ganz. Der Server sucht nur die Kennung;
+# davor steht, was jeder Browser schickt.
+GRUND_AGENT = {'win32': 'Windows NT 10.0; Win64; x64', 'darwin': 'Macintosh; Intel Mac OS X 10_15_7'}
+STILL_HOECHSTENS = 3  # stille Anmeldungen je Minute, danach die Anmeldeseite
+NICHT_ANGEMELDET = ('Auf diesem Rechner ist keine Anmeldung gespeichert. Abmelden können Sie '
+                    'auch oben rechts auf der Seite.')
+LOKAL_ABGEMELDET = ('Auf diesem Rechner abgemeldet. Der Server war nicht erreichbar; dort '
+                    'verfällt die Anmeldung nach 30 Tagen.')
+
+
+def _systembackend():
+    """Der Schlüsselbund des Systems, fest gewählt statt über
+    ``keyring.get_keyring()``: so entscheiden weder ``PYTHON_KEYRING_BACKEND``
+    noch ein fremdes Paket mit eigenem Backend, wohin das Token geht."""
+    try:
+        if sys.platform == 'win32':
+            from keyring.backends.Windows import WinVaultKeyring as Backend
+        elif sys.platform == 'darwin':
+            from keyring.backends.macOS import Keyring as Backend
+        else:
+            return None
+        Backend.priority  # noqa: B018 -- wirft, wenn dem System die Schnittstelle fehlt
+        return Backend()
+    except Exception:  # noqa: BLE001 -- ohne Schlüsselbund geht es wie bisher
+        protokoll.info('Kein Schlüsselbund, die App bleibt nicht angemeldet', exc_info=True)
+        return None
+
+
+class Schluesselbund:
+    """Das Gerätetoken je Server im Schlüsselbund des Systems.
+
+    Jeder Fehler (kein Backend, gesperrt, unter macOS die Rückfrage mit
+    „Ablehnen“ beantwortet) heißt „kein Token“: die App fragt dann nach dem
+    Passwort wie bisher. Aufrufe nie im Hauptthread, die Rückfrage kann warten.
+    """
+
+    def __init__(self, backend=None):
+        self._backend = backend if backend is not None else _systembackend()
+
+    @property
+    def name(self) -> str:
+        return type(self._backend).__name__ if self._backend is not None else 'keiner'
+
+    def nutzbar(self) -> bool:
+        return self._backend is not None
+
+    def lesen(self, basis: str) -> str | None:
+        if self._backend is None:
+            return None
+        try:
+            wert = self._backend.get_password(DIENST, basis)
+        except Exception:  # noqa: BLE001 -- s. Klassenkommentar
+            protokoll.warning('Schlüsselbund nicht lesbar', exc_info=True)
+            return None
+        return wert if isinstance(wert, str) and wert.startswith('nkg_') else None
+
+    def schreiben(self, basis: str, token: str) -> bool:
+        if self._backend is None:
+            return False
+        # Erst löschen: keyring legt unter Windows den alten Wert sonst als
+        # zweiten Eintrag <Server>@NebenkostenFix ab, samt ersetztem Token.
+        self.loeschen(basis)
+        try:
+            self._backend.set_password(DIENST, basis, token)
+        except Exception:  # noqa: BLE001 -- s. Klassenkommentar
+            protokoll.warning('Schlüsselbund nicht beschreibbar', exc_info=True)
+            return False
+        return True
+
+    def loeschen(self, basis: str) -> None:
+        if self._backend is None:
+            return
+        try:
+            self._backend.delete_password(DIENST, basis)
+        except Exception:  # noqa: BLE001 -- schon weg, oder gesperrt: nichts zu tun
+            protokoll.debug('Kein Eintrag zum Löschen', exc_info=True)
+
+
+def rechnername() -> str:
+    """Wie der Rechner in der Liste „Angemeldete Geräte“ heißt."""
+    return platform.node().split('.')[0]
+
+
+def user_agent() -> str:
+    system = GRUND_AGENT.get(sys.platform, 'X11; Linux x86_64')
+    return (f'Mozilla/5.0 ({system}) AppleWebKit/537.36 (KHTML, like Gecko) '
+            f'{APP_KENNUNG}{SOFTWARE_VERSION}')
+
+
+def _geraete_post(basis: str, pfad: str, daten: dict, zeit: float = 10) -> tuple[int, dict]:
+    """``(Status, Antwort)`` einer Geräteroute, 0 ohne Antwort. Keiner
+    Weiterleitung folgen: das Token geht nur an den Server selbst."""
+    anfrage = urllib.request.Request(
+        basis + pfad, method='POST', data=json.dumps(daten).encode(),
+        headers={'Content-Type': 'application/json', 'Accept': 'application/json'})
+    oeffner = urllib.request.build_opener(_KeineWeiterleitung)
+    try:
+        # Bandit-Ausnahme (B310): basis hat server_pruefen geprüft, nur http und https
+        with oeffner.open(anfrage, timeout=zeit) as antwort:  # nosec B310
+            status, inhalt = antwort.status, antwort.read(65536)
+    except urllib.error.HTTPError as fehler:  # vor URLError: Unterklasse davon
+        return fehler.code, {}
+    except (urllib.error.URLError, OSError, http.client.HTTPException):
+        return 0, {}
+    try:
+        antwort = json.loads(inhalt)
+    except ValueError:
+        return status, {}
+    return status, antwort if isinstance(antwort, dict) else {}
+
+
+class StilleAnmeldung:
+    """Abholen, Erneuern und Abmelden mit dem Gerätetoken (#52).
+
+    Nur Python spricht mit dem Server; das Token sieht die Seite nie. Eine
+    Sitzung entsteht immer aus einer Antwort des Servers auf eine
+    Navigation: pywebview kann keine Cookies setzen.
+    """
+
+    def __init__(self, bund: Schluesselbund):
+        self.bund = bund
+        # Zwei Erneuerungen mit demselben Token laufen auf dem Server
+        # ineinander. Die zweite wartet nicht, sie lässt es.
+        self._sperre = threading.Lock()
+        self._versuche = []
+        # Die Oberfläche lässt ?geraet= in der Adresse stehen: Neu laden
+        # holt nicht noch einmal ab.
+        self._abgeholt = set()
+
+    def abholen(self, basis: str, code: str) -> None:
+        if code in self._abgeholt:
+            return
+        self._abgeholt.add(code)
+        alt = self.bund.lesen(basis)
+        status, antwort = _geraete_post(basis, '/api/geraete/abholen',
+                                        {'code': code, 'name': rechnername()})
+        token = antwort.get('token') if status == 201 else None
+        # Lässt es sich nicht ablegen, bleibt es ungenutzt. Kein Widerruf: die
+        # Sitzung hängt schon an diesem Gerät und endete sonst beim nächsten Klick.
+        if token and self.bund.schreiben(basis, token) and alt and alt != token:
+            # Scheiterte vorher die stille Anmeldung, stünde der Rechner sonst
+            # doppelt in der Liste.
+            _geraete_post(basis, '/api/geraete/widerrufen', {'token': alt})
+
+    def ziel(self, basis: str, weiter: str) -> str | None:
+        """Die Adresse, die still anmeldet, oder None: kein gültiges Token,
+        Server nicht erreichbar, oder gerade schon dabei."""
+        if not self._sperre.acquire(blocking=False):
+            return None
+        try:
+            jetzt = time.monotonic()
+            self._versuche = [t for t in self._versuche if jetzt - t < 60]
+            if len(self._versuche) >= STILL_HOECHSTENS:
+                # Kommt das Cookie nicht an, landet die App nach jeder stillen
+                # Anmeldung wieder auf /login. Dann bleibt die Anmeldeseite.
+                return None
+            token = self.bund.lesen(basis)
+            if token is None:
+                return None
+            self._versuche.append(jetzt)
+            status, antwort = _geraete_post(basis, '/api/geraete/erneuern', {'token': token})
+            if status == 401:
+                self.bund.loeschen(basis)  # widerrufen, abgelaufen oder ersetzt
+                return None
+            neu, code = antwort.get('token'), antwort.get('code')
+            if status != 200 or not neu or not code:
+                return None  # Netz, Sperre: Token behalten, Anmeldeseite zeigen
+            if not self.bund.schreiben(basis, neu):
+                # Sonst stünde nur das ersetzte Token im Schlüsselbund, und der
+                # nächste Start sähe für den Server aus wie eine Kopie.
+                self.bund.loeschen(basis)
+                _geraete_post(basis, '/api/geraete/widerrufen', {'token': neu})
+                return None
+            return basis + '/geraete/anmelden?' + urllib.parse.urlencode(
+                {'code': code, 'next': weiter})
+        finally:
+            self._sperre.release()
+
+    def abmelden(self, basis: str) -> bool:
+        """Lokal zuerst: ist der Server nicht erreichbar, ist das Gerät hier
+        trotzdem abgemeldet. Auf dem Server verfällt es nach 30 Tagen."""
+        token = self.bund.lesen(basis)
+        self.bund.loeschen(basis)
+        if token:
+            _geraete_post(basis, '/api/geraete/widerrufen', {'token': token}, zeit=5)
+        return token is not None
+
+
+def schluesselbund_probe(bund: Schluesselbund | None = None) -> dict:
+    """Für den Selbsttest: das Backend, unter Windows dazu ein Durchlauf
+    Schreiben, Lesen, Löschen. Unter macOS nur der Name, die CI fragte sonst
+    nach dem Schlüsselbund."""
+    bund = bund if bund is not None else Schluesselbund()
+    durchlauf = None
+    if bund.nutzbar() and sys.platform == 'win32':
+        ort = 'selbsttest:' + secrets.token_hex(8)
+        probe = 'nkg_' + secrets.token_urlsafe(16)
+        durchlauf = bund.schreiben(ort, probe) and bund.lesen(ort) == probe
+        bund.loeschen(ort)
+        durchlauf = durchlauf and bund.lesen(ort) is None
+    return {'schluesselbund': bund.name, 'schluesselbund_durchlauf': durchlauf}
+
+
+def schluesselbund_bestanden(bericht: dict) -> bool:
+    # Auf main bringt nur das Windows-Paket keyring mit (requirements-desktop.txt).
+    return sys.platform != 'win32' or (bericht.get('schluesselbund') == 'WinVaultKeyring'
+                                       and bericht.get('schluesselbund_durchlauf') is True)
+
+
 # --- Server -------------------------------------------------------------------
 
 def anwendung_laden(datenordner: Path):
@@ -688,12 +902,14 @@ def selbsttest(datenordner: Path, bericht_datei: str | None = None) -> int:
         bericht['pdf_ok'] = pdf.startswith(b'%PDF')
     finally:
         anhalten(server, app_modul)
+    bericht.update(schluesselbund_probe())
     bericht['wal_nach_checkpoint'] = (datenordner / 'nebenkosten.db-wal').exists() and \
         (datenordner / 'nebenkosten.db-wal').stat().st_size
     bericht['sekunden'] = round(time.monotonic() - beginn, 2)
     ok = (bericht['ohne_schluessel'] == 403 and bericht['health'] == 'ok'
           and bericht['startseite']
-          and abs(float(bericht['summe'] or 0) - 600.0) < 0.01 and bericht['pdf_ok'])
+          and abs(float(bericht['summe'] or 0) - 600.0) < 0.01 and bericht['pdf_ok']
+          and schluesselbund_bestanden(bericht))
     bericht['ergebnis'] = 'bestanden' if ok else 'fehlgeschlagen'
     bericht['eingefroren'] = bool(getattr(sys, 'frozen', False))
     bericht['paketmodus'] = aktualisierung.paketmodus()
@@ -896,6 +1112,7 @@ def server_fenster_starten(adresse: str) -> int:
 
     bruecke = ServerBruecke(adresse)
     zustand = {'basis': None, 'spruenge': []}
+    still = StilleAnmeldung(Schluesselbund())
     fenster = webview.create_window(
         server_titel(adresse), html=startseite(), js_api=bruecke,
         width=1440, height=900, min_size=(1024, 700), text_select=True)
@@ -904,10 +1121,11 @@ def server_fenster_starten(adresse: str) -> int:
     def laden():
         ok, meldung, endadresse = server_pruefen(adresse)
         zustand['spruenge'] = []
+        zustand['vorher'] = None
         if ok:
             zustand['basis'] = bruecke._basis = endadresse
             fenster.set_title(server_titel(endadresse))  # http → https übernommen
-            fenster.load_url(endadresse + '/')
+            fenster.load_url(still.ziel(endadresse, '/') or endadresse + '/')
         else:
             zustand['basis'] = None
             fenster.load_html(offline_seite(meldung, adresse))
@@ -922,7 +1140,12 @@ def server_fenster_starten(adresse: str) -> int:
         except Exception:  # noqa: BLE001 -- Fenster schon zu
             protokoll.debug('Adresse des Fensters nicht lesbar', exc_info=True)
             return
-        if jetzt and not _gleicher_ursprung(jetzt, zustand['basis']):
+        # Die zuletzt geladene Seite des Servers; eine fremde dazwischen zählt
+        # als keine. Ein Abholcode gilt nur direkt nach der Anmeldeseite.
+        vorher = zustand.get('vorher')
+        eigene = bool(jetzt) and _gleicher_ursprung(jetzt, zustand['basis'])
+        zustand['vorher'] = urllib.parse.urlsplit(jetzt).path if eigene else None
+        if jetzt and not eigene:
             protokoll.warning('Fremde Seite %s, zurück zu %s', jetzt, zustand['basis'])
             # Leitet „/“ selbst weiter (Anmelde-Proxy), käme sie immer wieder.
             zeit = time.monotonic()
@@ -933,8 +1156,48 @@ def server_fenster_starten(adresse: str) -> int:
                                                 adresse))
                 return
             fenster.load_url(zustand['basis'] + '/')
+            return
+        if jetzt:
+            anmeldung_beachten(jetzt, zustand['basis'], vorher)
+
+    def anmeldung_beachten(jetzt, basis, vorher):
+        # #52: nur Seiten des Servers, die Ursprungsprüfung steht davor.
+        teile = urllib.parse.urlsplit(jetzt)
+        abfrage = urllib.parse.parse_qs(teile.query)
+        if abfrage.get('geraet'):
+            # Review zu #57: Ein präparierter Link mitten in der Arbeit hängte
+            # die App sonst an das Gerät eines anderen Kontos.
+            if vorher == '/login':
+                still.abholen(basis, abfrage['geraet'][-1])
+            else:
+                protokoll.warning('Gerätecode nicht direkt nach der Anmeldung, nicht abgeholt.')
+        elif teile.path == '/login' and 'abgemeldet' in abfrage:
+            still.abmelden(basis)
+        elif teile.path == '/login' and abfrage.get('next'):
+            # Leerlauf-Grenze: still neu anmelden, mit demselben Ziel.
+            ziel = still.ziel(basis, abfrage['next'][0])
+            if ziel:
+                fenster.load_url(ziel)
 
     fenster.events.loaded += beim_laden
+
+    def abmelden():
+        # Im eigenen Thread: Schlüsselbund und Server können warten.
+        if zustand['basis']:
+            if still.abmelden(zustand['basis']):
+                fenster.load_url(zustand['basis'] + '/login?abgemeldet=1')
+            else:
+                _meldung(NICHT_ANGEMELDET, hinweis=True)
+            return
+        # Offline: die eingetragene Adresse, auch in der https-Form, die die
+        # Prüfung beim letzten Mal übernommen haben kann.
+        eingetragen = adresse_normieren(adresse)
+        kandidaten = [eingetragen, eingetragen and _nach_https(
+            eingetragen, 'https://' + urllib.parse.urlsplit(eingetragen).netloc)]
+        if any([still.abmelden(k) for k in kandidaten if k]):
+            _meldung(LOKAL_ABGEMELDET, hinweis=True)
+        else:
+            _meldung(NICHT_ANGEMELDET, hinweis=True)
 
     frage_offen = threading.Lock()
 
@@ -965,6 +1228,7 @@ def server_fenster_starten(adresse: str) -> int:
         Menu('Datei', [
             MenuAction('Drucken', lambda: fenster.evaluate_js('window.print()')),
             MenuAction('Neu laden', lambda: threading.Thread(target=laden, daemon=True).start()),
+            MenuAction('Abmelden', lambda: threading.Thread(target=abmelden, daemon=True).start()),
             MenuSeparator(),
             MenuAction('Auf diesem Rechner arbeiten …', zurueck),
             MenuSeparator(),
@@ -980,7 +1244,10 @@ def server_fenster_starten(adresse: str) -> int:
 
     speicher = windows_ordner.lokaler_ordner() / 'WebView2'
     try:
-        webview.start(hochfahren, menu=menue, private_mode=False, storage_path=str(speicher))
+        # Nur mit Schlüsselbund nennt sich die App: erst dann zeigt der
+        # Server „Angemeldet bleiben“.
+        webview.start(hochfahren, menu=menue, private_mode=False, storage_path=str(speicher),
+                      user_agent=user_agent() if still.bund.nutzbar() else None)
     finally:
         instanz.freigeben()
     if zustand.get('neustart'):

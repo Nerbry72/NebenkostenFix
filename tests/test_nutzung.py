@@ -633,7 +633,8 @@ def test_die_ausfuhr_nimmt_jede_tabelle_mit_ausser_den_konten(auth_client, app_c
 
     antwort = auth_client.get('/api/export')
     ausfuhr = _json(antwort)
-    assert set(ausfuhr) == {t.name for t in db.metadata.sorted_tables} - {'users', 'api_schluessel'}
+    assert set(ausfuhr) == {t.name for t in db.metadata.sorted_tables} - {
+        'users', 'api_schluessel', 'geraete', 'geraete_ersetzt', 'geraete_codes'}
     assert [z['payment_date'] for z in ausfuhr['payments']] == ['2024-02-01']
     assert [z['gueltig_ab'] for z in ausfuhr['vorauszahlung_soll']] == ['2024-01-01']
     assert 'password_hash' not in antwort.get_data(as_text=True)

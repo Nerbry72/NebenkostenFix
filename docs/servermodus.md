@@ -26,8 +26,8 @@ Server im eigenen Fenster, wie ein Browser, nur ohne Adressleiste.
 - **Umschalten nur aus der eigenen Oberfläche:** `server_verbinden` der lokalen App prüft,
   ob das Fenster die Seite des lokalen Servers zeigt. Eine fremde Seite kann die App nicht
   umstellen.
-- **Menü im Servermodus:** Datei → Drucken, Neu laden, Auf diesem Rechner arbeiten …,
-  Beenden; Hilfe → Über. Der Fenstertitel nennt den Server, bei `http://` mit dem Zusatz
+- **Menü im Servermodus:** Datei → Drucken, Neu laden, Abmelden, Auf diesem Rechner
+  arbeiten …, Beenden; Hilfe → Über. Der Fenstertitel nennt den Server, bei `http://` mit dem Zusatz
   „(unverschlüsselt)“. Nach der Prüfung folgt er der geprüften Adresse, also ohne den
   Zusatz, wenn der Server von `http://` auf `https://` weiterleitet. Dazu zeigen Kopfzeile
   und Einstellungen die Verbindung (siehe „Woran man den Servermodus erkennt“).
@@ -92,9 +92,50 @@ mit `http://`, schickt der Server nach jeder Anmeldung wieder zur Anmeldung. Die
 erkennt das nicht. Abhilfe: die Adresse mit `https://` eintragen. Die Seite „Keine
 Verbindung zum Server“ nennt diesen Hinweis bei `http://` ebenfalls.
 
-Die Anmeldung gilt für eine Sitzung. Nach jedem Start der App meldet man sich neu an.
-Die App speichert keine Passwörter; Cookies liegen im WebView2-Profil unter
+## Angemeldet bleiben (#52)
+
+Ohne Häkchen gilt die Anmeldung für eine Sitzung: Nach jedem Start der App und nach der
+Leerlauf-Grenze (`SITZUNG_LEERLAUF_MIN`) fragt sie wieder nach dem Passwort. Die App
+speichert keine Passwörter; Cookies liegen im WebView2-Profil unter
 `%LOCALAPPDATA%\NebenkostenFix\WebView2`.
+
+Mit dem Häkchen **Angemeldet bleiben** auf der Anmeldeseite meldet sich die App beim Start
+und nach der Leerlauf-Grenze selbst an:
+
+- Das Häkchen gibt es nur in der App, nicht im Browser. Die App nennt sich dafür im
+  User-Agent (`NebenkostenFix-Desktop/<Version>`), aber nur, wenn sie die
+  Anmeldeinformationsverwaltung von Windows benutzen kann.
+- Statt des Passworts bekommt die App ein Gerätetoken. Es liegt in der
+  Anmeldeinformationsverwaltung (Windows-Anmeldeinformationen → Generische
+  Anmeldeinformationen, Eintrag `NebenkostenFix`), nie in einer Datei, nie in einer Adresse
+  und nie in der Seite. Bei jedem Start tauscht die App es gegen ein neues. Taucht ein schon
+  ersetztes Token wieder auf, ist es kopiert worden: Der Server meldet den Rechner ab.
+  Geht die Antwort auf diesen Tausch unterwegs verloren, hat der Server schon getauscht, die
+  App aber noch das alte Token. Beim nächsten Versuch sieht das aus wie eine Kopie: Der
+  Rechner ist abgemeldet, und die App fragt einmal nach dem Passwort. Das ist gewollt, im
+  Zweifel lieber abmelden.
+- **Abmelden** oben rechts auf der Seite oder **Datei → Abmelden** löscht das Token.
+  Datei → Abmelden tut das auch, wenn der Server gerade nicht erreichbar ist. Auf dem Server
+  verfällt das Gerät dann nach 30 Tagen, oder man meldet es in der Liste ab.
+- Die Liste steht in den Einstellungen unter Konto → **Angemeldete Geräte**. Nach 30 Tagen
+  ohne Nutzung, nach einem Passwortwechsel und nach dem Einspielen einer Sicherung fragt
+  die App wieder nach dem Passwort.
+- Ein Gerät gilt nur für das Konto, mit dem es angemeldet wurde. Wird ein Konto direkt in
+  der Datenbank gelöscht und danach ein neues angelegt, meldet der Server die Geräte des
+  alten Kontos ab, wie bei den Zugriffsschlüsseln.
+- Die stille Anmeldung nimmt der Server nur aus dem Fenster der App an. Ein Link aus einer
+  Mail oder von einer anderen Seite meldet niemanden an, und wer im Browser schon mit einem
+  anderen Konto angemeldet ist, bleibt es.
+- Mit Häkchen schützt die Leerlauf-Grenze einen unbeaufsichtigten Rechner nicht mehr: Die
+  App meldet sich beim nächsten Klick selbst wieder an, und die Seite warnt nicht mehr, dass
+  sie abmeldet.
+  Wer den Rechner unbeaufsichtigt lässt, sperrt ihn oder meldet sich ab. Deshalb gehört das
+  Häkchen nur auf einen Rechner, den sonst niemand benutzt.
+- Über `http://` geht das Gerätetoken bei jedem Start unverschlüsselt durchs Netz, wie sonst
+  das Passwort, nur länger gültig. Außerhalb des eigenen Netzes nur mit `https://`. Die
+  Anmeldeseite der App sagt das unter dem Häkchen, außer mit `BEHIND_HTTPS=1`.
+- Bei der Anmeldeschleife über `http://` (siehe oben) versucht die App die stille Anmeldung
+  höchstens dreimal in der Minute, dann bleibt die Anmeldeseite stehen.
 
 ## Woran man den Servermodus erkennt
 
@@ -130,7 +171,8 @@ auch, wenn der Server nicht erreichbar ist.
 - **Die Verbindung:** `[Server] Adresse` in `%LOCALAPPDATA%\NebenkostenFix\einstellungen.ini`,
   neben dem Pfad zum Datenordner (`[Daten] Ordner`) und den übrigen Geräteeinstellungen.
 - **Die Anmeldung am Server:** Cookies im WebView2-Profil
-  `%LOCALAPPDATA%\NebenkostenFix\WebView2`.
+  `%LOCALAPPDATA%\NebenkostenFix\WebView2`. Mit „Angemeldet bleiben“ dazu das Gerätetoken
+  in der Anmeldeinformationsverwaltung von Windows, Eintrag `NebenkostenFix`.
 - **Die Daten:** getrennt davon im Datenordner (Standard `Dokumente\NebenkostenFix`).
   Dort steht auch, ob der Hinweis „Bevor es losgeht“ bestätigt ist.
 
@@ -176,6 +218,8 @@ die Anmeldung zusätzlich den Ordner `WebView2`).
 ## Noch offen
 
 - Unter Windows nicht von Hand geprüft (siehe Prüfliste unten).
+- „Angemeldet bleiben“ im Store-Paket (MSIX) ist nicht geprüft. Das Deinstallieren lässt den
+  Eintrag in der Anmeldeinformationsverwaltung stehen; Datei → Abmelden vorher entfernt ihn.
 - Der Schalter „Updates automatisch“ aus den lokalen Einstellungen gilt im Servermodus
   nicht, weil der Datenordner zu bleibt. Die App sucht dort höchstens einmal in
   24 Stunden und fragt vor jeder Installation.
@@ -204,6 +248,10 @@ Ein Rechner mit Windows 10 oder 11 reicht, dazu ein NebenkostenFix-Server im Net
 3. **Anmeldung und Cookies:** Am Server anmelden, App schließen, neu starten: Die App
    fragt wieder nach der Anmeldung. Zurück zu lokal: Die lokale App läuft ohne Anmeldung
    wie vorher.
+   Dann mit **Angemeldet bleiben** anmelden: In der Anmeldeinformationsverwaltung steht der
+   Eintrag `NebenkostenFix`, der Neustart fragt nicht nach dem Passwort. Mit
+   `SITZUNG_LEERLAUF_MIN=1` am Server nach zwei Minuten etwas anklicken: Die App bleibt
+   angemeldet. Datei → Abmelden: Der Eintrag ist weg, der nächste Start fragt wieder.
 4. **Zertifikat:** Einen Server mit selbstsigniertem Zertifikat eintragen. Die Karte meldet
    „Das Zertifikat des Servers ist nicht vertrauenswürdig“. Nach dem Import des Zertifikats
    (siehe oben) klappt die Verbindung, und das Fenster zeigt die Seite ohne Warnung.

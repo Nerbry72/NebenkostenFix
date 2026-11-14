@@ -714,6 +714,35 @@
                         </div>
                     </div>
 
+                    <!-- #52: Rechner, auf denen die Desktop-App mit „Angemeldet
+                         bleiben“ angemeldet ist. Abmelden loescht das Geraetetoken;
+                         dort fragt die App beim naechsten Start nach dem Passwort. -->
+                    <div data-gruppe="konto" class="dashboard-card glass-panel" id="geraete-karte">
+                        <div class="karten-kopf">
+                            <h3>Angemeldete Geräte</h3>
+                        </div>
+                        <p class="karten-text">
+                            Hier stehen die Rechner, auf denen die Desktop-App angemeldet bleibt. Das wählen
+                            Sie bei der Anmeldung mit dem Häkchen „Angemeldet bleiben“. Ein Rechner, der
+                            30 Tage lang nicht benutzt wird, ist von selbst abgemeldet. Ist ein Rechner
+                            verloren oder verkauft, melden Sie ihn hier ab.
+                        </p>
+                        <div class="table-container">
+                            <table class="tabelle">
+                                <thead>
+                                    <tr class="tabellen-kopfzeile">
+                                        <th class="zelle">Rechner</th>
+                                        <th class="zelle">Konto</th>
+                                        <th class="zelle">Angemeldet am</th>
+                                        <th class="zelle">Zuletzt benutzt</th>
+                                        <th class="spalte-knopf"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="geraete-zeilen"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
                     <!-- NK-175: Updates kommen von der Projektseite auf GitHub,
                          signiert. Im Store-Paket installiert der Store selbst. -->
                     <div data-gruppe="updates" class="dashboard-card glass-panel">
@@ -3181,7 +3210,7 @@
     <div id="leerlauf-hinweis" class="hinweis-leiste" role="alert" hidden>
         <i class="ph ph-clock" aria-hidden="true"></i>
         <span id="leerlauf-text"></span>
-        <button type="button" class="btn-primary" onclick="angemeldetBleiben()">Angemeldet bleiben</button>
+        <button type="button" class="btn-primary" onclick="angemeldetBleiben()">Weiterarbeiten</button>
     </div>
     <div id="entwurf-hinweis" class="hinweis-leiste" role="status" hidden>
         <i class="ph ph-floppy-disk" aria-hidden="true"></i>

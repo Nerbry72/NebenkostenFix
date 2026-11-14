@@ -34,6 +34,12 @@ Anmeldung, Ersteinrichtung und Konto -- alles in auth.py, nicht hier
   GET         /api/zugriffsschluessel                      -> zugriffsschluessel_auflisten
   POST        /api/zugriffsschluessel                      -> zugriffsschluessel_anlegen
   DELETE      /api/zugriffsschluessel/<int:id>             -> zugriffsschluessel_widerrufen
+  GET         /api/geraete                                 -> geraete_auflisten
+  DELETE      /api/geraete/<int:id>                        -> geraet_abmelden
+  POST        /api/geraete/abholen                         -> geraet_abholen
+  POST        /api/geraete/erneuern                        -> geraet_erneuern
+  POST        /api/geraete/widerrufen                      -> geraet_widerrufen
+  GET         /geraete/anmelden                            -> geraet_anmelden
   GET,POST    /huelle/passwort                             -> huelle_passwort
 
 Oberflaeche und Betrieb
@@ -3720,6 +3726,10 @@ def vermieter_logo_loeschen():
     return jsonify({'logo': False, 'geloescht': geloescht})
 
 
+OHNE_EXPORT = frozenset({'users', 'api_schluessel', 'geraete', 'geraete_ersetzt',
+                         'geraete_codes'})
+
+
 @app.route('/api/export', methods=['GET', 'POST'])
 def export_data():
     """Alle Daten als JSON. Per POST mit ``passphrase`` verschluesselt
@@ -3731,12 +3741,13 @@ def export_data():
 
     # NK-269: jede Tabelle, damit eine neue nicht wieder fehlt (Zahlungen,
     # Soll und Versionen fehlten); die Konten bleiben draussen (Passwort-Hash),
-    # die Zugriffsschluessel auch (ihr Hash oeffnet die API).
+    # die Zugriffsschluessel und angemeldeten Geraete auch (Hashes, die
+    # Zugang geben).
     data = {
         tabelle.name: [to_dict(z) for z in db.session.execute(
             tabelle.select().order_by(*tabelle.primary_key.columns)).mappings()]
         for tabelle in db.metadata.sorted_tables
-        if tabelle.name not in ('users', 'api_schluessel')
+        if tabelle.name not in OHNE_EXPORT
     }
     if request.method == 'GET':
         return jsonify(data)

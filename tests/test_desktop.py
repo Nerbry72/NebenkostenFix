@@ -1012,6 +1012,8 @@ def servermodus(lokal, monkeypatch):
 
     monkeypatch.setitem(sys.modules, 'webview', types.SimpleNamespace(
         create_window=create_window, start=start, SAVE_DIALOG=30))
+    # #52: unter Windows (CI) nie den echten Schlüsselbund des Runners.
+    monkeypatch.setattr(desktop, '_systembackend', lambda: None)
     monkeypatch.setitem(sys.modules, 'webview.menu', types.SimpleNamespace(
         Menu=lambda *a: a, MenuAction=lambda *a: a, MenuSeparator=lambda: None))
 

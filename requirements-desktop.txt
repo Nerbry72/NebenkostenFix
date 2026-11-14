@@ -3,3 +3,6 @@
 waitress==3.0.2
 pywebview==6.2.1; sys_platform == "win32"
 pyinstaller==6.22.3; sys_platform == "win32"
+# #52: das Gerätetoken für „Angemeldet bleiben“ liegt in der
+# Anmeldeinformationsverwaltung von Windows.
+keyring==25.7.0; sys_platform == "win32"
