@@ -59,10 +59,10 @@ def test_die_notizen_sagen_was_neu_oder_behoben_ist():
 
 
 def test_die_notizen_bringen_den_installationsteil_nicht_doppelt():
-    """Windows, Docker und Pruefsumme setzt der Workflow selbst davor."""
+    """Windows, macOS, Docker und Pruefsummen setzt der Workflow selbst davor."""
     text = notizen_datei().read_text(encoding='utf-8')
 
-    for doppelt in ('**Windows:**', 'docker pull', 'Prüfsumme (SHA256)'):
+    for doppelt in ('**Windows:**', '**macOS:**', 'docker pull', 'Prüfsummen (SHA256)'):
         assert doppelt not in text, (
             f'„{doppelt}" steht schon im Installationsteil, den der '
             'Release-Workflow erzeugt (.github/workflows/release.yml).')

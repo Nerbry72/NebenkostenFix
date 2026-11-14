@@ -70,6 +70,7 @@ AUTOMATISCH_ABSTAND = timedelta(hours=24)
 # die Namen sind die Optionen in .github/ISSUE_TEMPLATE/fehler.yml.
 WEGE = {'store': 'Microsoft Store', 'docker': 'Docker', 'windows': 'Windows-App',
         'macos': 'aus dem Quellcode', 'linux': 'aus dem Quellcode'}
+MACOS_APP = 'macOS-App'   # das gebaute Paket unter macOS (#44, Schritt 2)
 OHNE_INSTALLER = ('Unter macOS und Linux installiert die App Updates nicht selbst. '
                   'Die neue Version gibt es auf der Projektseite.')
 
@@ -163,6 +164,15 @@ def zielsystem(desktop: bool) -> str:
     if system == 'win32':
         return 'windows'
     return 'macos' if system == 'darwin' else 'linux'
+
+
+def weg(desktop: bool) -> str:
+    """„Installiert als“ für „Über“ und „Fehler melden“. Unter macOS ist das
+    gebaute Paket (PyInstaller setzt ``sys.frozen``) die macOS-App."""
+    ziel = zielsystem(desktop)
+    if ziel == 'macos' and getattr(sys, 'frozen', False):
+        return MACOS_APP
+    return WEGE[ziel]
 
 
 def quelle() -> str:

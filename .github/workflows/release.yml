@@ -1,7 +1,8 @@
 # Jeder Merge nach main wird ein Release: der Windows-Installer (Bau samt
-# Installations- und Update-Probe), das Docker-Abbild (Rauchtest, dann amd64
-# + arm64 nach GHCR), zuletzt das GitHub-Release vX.Y.Z mit der Setup-Exe und
-# ihrer Pruefsumme. Die Nummer steht nur in nebenkostenfix/abrechnung_version.py.
+# Installations- und Update-Probe), das DMG fuer den Mac (Bau samt Selbsttest,
+# Umzug und Fensterprobe), das Docker-Abbild (Rauchtest, dann amd64 + arm64
+# nach GHCR), zuletzt das GitHub-Release vX.Y.Z mit Setup-Exe, DMG und ihren
+# Pruefsummen. Die Nummer steht nur in nebenkostenfix/abrechnung_version.py.
 # Am Release haengt ausserdem das signierte update.json; daraus liest die App,
 # ob es etwas Neues gibt (NK-175). Ohne Secret UPDATE_SCHLUESSEL kein Release.
 # Danach geht die MSIX als Einreichung in den Microsoft Store (Job store).
@@ -77,9 +78,17 @@ jobs:
     with:
       nur_paket: true
 
+  macos:
+    needs: version
+    uses: ./.github/workflows/macos.yml
+    with:
+      nur_paket: true
+
+  # Erst wenn beide Pakete gebaut und geprueft sind: Scheitert eines, steht
+  # kein Abbild in GHCR, zu dem es kein Release gibt.
   docker:
     name: Docker-Abbild
-    needs: [version, windows]
+    needs: [version, windows, macos]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -152,11 +161,23 @@ jobs:
         with:
           name: nebenkostenfix-windows
           path: windows
-      - name: Installer und Pruefsumme
+      # Das DMG kommt ohne ZIP hoch, der Name des Artefakts ist der Dateiname.
+      - uses: actions/download-artifact@v8
+        with:
+          name: NebenkostenFix-${{ needs.version.outputs.wert }}-macOS-arm64.dmg
+          path: macos
+      - name: Installer, DMG und Pruefsummen
         run: |
           exe="NebenkostenFix-${VERSION}-Setup.exe"
+          dmg="NebenkostenFix-${VERSION}-macOS-arm64.dmg"
           cp "$(find windows -name "$exe" | head -n1)" "$exe"
-          sha256sum "$exe" > SHA256SUMS.txt
+          quelle="$(find macos -name "$dmg" | head -n1)"
+          if [ -z "$quelle" ]; then
+            echo "::error::$dmg fehlt im Mac-Artefakt."
+            exit 1
+          fi
+          cp "$quelle" "$dmg"
+          sha256sum "$exe" "$dmg" > SHA256SUMS.txt
           # NK-148: die Lizenztexte der mitgelieferten Software, erzeugt beim
           # Windows-Bau aus genau dieser Installation (Obermenge des Abbilds).
           lizenzen="$(find windows -name THIRD_PARTY_LICENSES.txt | head -n1)"
@@ -191,7 +212,8 @@ jobs:
       - name: Release anlegen
         run: |
           exe="NebenkostenFix-${VERSION}-Setup.exe"
-          dateien=("$exe" SHA256SUMS.txt THIRD_PARTY_LICENSES.txt)
+          dmg="NebenkostenFix-${VERSION}-macOS-arm64.dmg"
+          dateien=("$exe" "$dmg" SHA256SUMS.txt THIRD_PARTY_LICENSES.txt)
           if [ -f update.json ]; then dateien+=(update.json); fi
           cat > notizen.md <<NOTIZ
           ## NebenkostenFix ${VERSION}
@@ -199,13 +221,19 @@ jobs:
           **Windows:** \`${exe}\` herunterladen und ausführen (Windows 10 ab 1809, Windows 11).
           Ein bestehendes NebenkostenFix wird aktualisiert, die Daten bleiben.
 
+          **macOS:** \`${dmg}\` herunterladen, öffnen und NebenkostenFix auf „Programme“ ziehen (Mac mit Apple-Chip, ab macOS 15).
+          Die App ist nicht notarisiert, beim ersten Start fragt macOS nach. Alle Schritte mit Bildern: [Anleitung für den Mac](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/v${VERSION}/docs/handbuch/mac-installation.md).
+
           **Docker:**
           \`\`\`
           docker pull ${ABBILD}:${VERSION}
           \`\`\`
           oder in der Compose-Datei \`NK_VERSION=${VERSION}\` setzen und \`docker compose pull && docker compose up -d\`.
 
-          **Prüfsumme (SHA256):** \`$(cut -d' ' -f1 SHA256SUMS.txt)\`
+          **Prüfsummen (SHA256):**
+          \`\`\`
+          $(cat SHA256SUMS.txt)
+          \`\`\`
 
           ---
 

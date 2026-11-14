@@ -39,5 +39,5 @@ ein leerer Release-Text ist keine.
 
 ## Was der Workflow selbst beisteuert
 
-Installationsanweisung für Windows und Docker, die Prüfsumme und die
-Vergleichszeile zur Vorversion. Das steht nicht in dieser Datei.
+Installationsanweisung für Windows, macOS und Docker, die Prüfsummen und
+die Vergleichszeile zur Vorversion. Das steht nicht in dieser Datei.

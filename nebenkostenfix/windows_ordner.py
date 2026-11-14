@@ -22,6 +22,11 @@ Die Einstellungen (gewählter Datenordner, freigegebene Sicherungsziele)
 stehen in ``%LOCALAPPDATA%\\NebenkostenFix\\einstellungen.ini`` --
 der Installer schreibt den Ordner dorthin, die App liest ihn.
 
+Unter macOS (#44) liegen Einstellungen und Daten in
+``~/Library/Application Support/NebenkostenFix``, die Daten im Unterordner
+``Daten``. „Dokumente“ synchronisiert iCloud mit „Schreibtisch & Dokumente“,
+dieselbe Falle wie OneDrive.
+
 Alles hier ist ohne Windows prüfbar: die Windows-Aufrufe stehen in kleinen
 Funktionen, die Tests ersetzen.
 """
@@ -79,9 +84,18 @@ def dokumente_ordner() -> Path:
     return Path.home() / 'Documents'
 
 
+def _betriebssystem() -> str:
+    from nebenkostenfix import aktualisierung
+    return aktualisierung.betriebssystem()
+
+
 def _lokale_basis() -> Path:
     basis = os.environ.get('LOCALAPPDATA')
-    return Path(basis) if basis else Path.home() / '.local' / 'share'
+    if basis:
+        return Path(basis)
+    if _betriebssystem() == 'darwin':
+        return Path.home() / 'Library' / 'Application Support'
+    return Path.home() / '.local' / 'share'
 
 
 def lokaler_ordner() -> Path:
@@ -96,7 +110,10 @@ def alter_lokaler_ordner() -> Path:
 
 def vorgabe_datenordner() -> Path:
     """Dokumente\\NebenkostenFix -- außer eine ältere Installation hat ihre
-    Daten schon in Dokumente\\Nebenkostenabrechnung (D-95: sie bleiben dort)."""
+    Daten schon in Dokumente\\Nebenkostenabrechnung (D-95: sie bleiben dort).
+    Unter macOS nicht in „Dokumente“ (iCloud, #44)."""
+    if _betriebssystem() == 'darwin':
+        return lokaler_ordner() / 'Daten'
     alt = dokumente_ordner() / ALTER_NAME
     if (alt / 'nebenkosten.db').is_file():
         return alt
@@ -150,6 +167,14 @@ def schreibprobe(ordner: Path) -> str | None:
         probe.unlink()
         return None
     except OSError as fehler:
+        if _betriebssystem() == 'darwin':
+            return (
+                f'{APP_NAME} kann nicht in „{ordner}“ schreiben '
+                f'({fehler.strerror or fehler}).\n\n'
+                'Liegt der Ordner unter „Dokumente“, „Schreibtisch“ oder auf einem '
+                'Wechseldatenträger, erlauben Sie den Zugriff unter '
+                'Systemeinstellungen → Datenschutz & Sicherheit → Dateien und Ordner, '
+                'oder wählen Sie in den Einstellungen einen anderen Datenordner.')
         return (
             f'{APP_NAME} kann nicht in „{ordner}“ schreiben '
             f'({fehler.strerror or fehler}).\n\n'

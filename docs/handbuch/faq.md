@@ -17,6 +17,17 @@ herunter und vergleichen Sie die Prüfsumme mit `SHA256SUMS.txt` (siehe
 Informationen** und dann auf **Trotzdem ausführen**. Updates aus der App heraus prüft
 NebenkostenFix selbst über eine digitale Signatur, dort erscheint keine Warnung.
 
+### macOS sagt, NebenkostenFix kann nicht geöffnet werden. Wie starte ich die Mac-App?
+
+Die Mac-App ist wie die Setup-Exe nicht bei Apple registriert und nicht notarisiert. macOS
+fragt deshalb beim ersten Start mehrmals nach. Das geht über die Systemeinstellungen, und am
+Ende bestätigt ein Administrator. Die App läuft nur auf Macs mit Apple-Chip (M1 und neuer) ab
+macOS 15. Alle Schritte mit Bildern stehen in der [Anleitung für den Mac](mac-installation.md).
+
+Ihre Daten liegen in `~/Library/Application Support/NebenkostenFix/Daten`, nicht in
+„Dokumente“: Den Ordner gleicht iCloud oft mit „Schreibtisch & Dokumente“ ab, und eine
+Datenbank in einem solchen Ordner kann Schaden nehmen.
+
 ### Windows-App oder Docker, was passt zu mir?
 
 Die Windows-App ist für einen einzelnen PC gedacht und braucht keine Vorkenntnisse. Docker

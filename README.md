@@ -101,14 +101,14 @@ Mehr dazu in [PRIVACY.md](PRIVACY.md).
 
 ## Installation
 
-Es gibt NebenkostenFix in zwei Formen. Beide nutzen denselben Datenbestand, ein Umzug in beide
-Richtungen ist eine Datei (siehe [Umzug](#umzug-auf-einen-anderen-rechner)).
+Es gibt NebenkostenFix in drei Formen. Alle nutzen denselben Datenbestand, ein Umzug in jede
+Richtung ist eine Datei (siehe [Umzug](#umzug-auf-einen-anderen-rechner)).
 
-| | Windows-App | Docker |
-| --- | --- | --- |
-| für | einen einzelnen Windows-PC | NAS (z. B. Synology), Raspberry Pi, Heimserver |
-| Zugriff | eigenes Fenster auf dem PC | Browser, von jedem Gerät im Netz |
-| Installation | [Microsoft Store](https://apps.microsoft.com/detail/9pjqssqgbnz8) oder [`NebenkostenFix-<Version>-Setup.exe`](https://github.com/Nerbry72/NebenkostenFix/releases/latest) | `docker compose up -d` |
+| | Windows-App | Mac-App | Docker |
+| --- | --- | --- | --- |
+| für | einen einzelnen Windows-PC | einen einzelnen Mac mit Apple-Chip | NAS (z. B. Synology), Raspberry Pi, Heimserver |
+| Zugriff | eigenes Fenster auf dem PC | eigenes Fenster auf dem Mac | Browser, von jedem Gerät im Netz |
+| Installation | [Microsoft Store](https://apps.microsoft.com/detail/9pjqssqgbnz8) oder [`NebenkostenFix-<Version>-Setup.exe`](https://github.com/Nerbry72/NebenkostenFix/releases/latest) | [`NebenkostenFix-<Version>-macOS-arm64.dmg`](https://github.com/Nerbry72/NebenkostenFix/releases/latest) | `docker compose up -d` |
 
 ### Windows-App
 
@@ -157,6 +157,34 @@ Die Windows-App kann statt der lokalen Daten eine NebenkostenFix-Instanz auf ein
 kein lokaler Server, die lokalen Daten bleiben unberührt. Zurück geht es über Datei →
 „Auf diesem Rechner arbeiten …“. Zertifikate, Anmeldung über http und die Prüfliste stehen
 in `docs/servermodus.md`.
+
+### Mac-App
+
+Für einen einzelnen Mac mit Apple-Chip (M1 oder neuer) ab macOS 15. Wie die Windows-App
+braucht sie weder Python noch Docker noch eine Kommandozeile.
+
+1. Unter [**Releases**](https://github.com/Nerbry72/NebenkostenFix/releases/latest) die neueste `NebenkostenFix-<Version>-macOS-arm64.dmg` herunterladen.
+2. Öffnen und NebenkostenFix auf „Programme“ ziehen.
+3. Beim ersten Start fragt macOS mehrmals nach, denn die App ist nicht bei Apple registriert
+   und nicht notarisiert. Alle Schritte mit Bildern stehen in der
+   [Anleitung für den Mac](docs/handbuch/mac-installation.md). Dieselbe Anleitung liegt als
+   PDF im DMG.
+
+- **Daten:** `~/Library/Application Support/NebenkostenFix/Daten`, bewusst nicht in
+  „Dokumente“, das iCloud oft abgleicht.
+- **Update:** Die App meldet neue Versionen, installiert sie aber nicht selbst. Das neue DMG
+  installieren Sie wie beim ersten Mal, Finder fragt dann, ob er die alte App ersetzen soll.
+  Die Daten bleiben.
+- **Mit einem Server verbinden:** wie unter Windows. Am Server fehlen auf dem Mac noch
+  Speichern und Belege öffnen, siehe `docs/servermodus.md`.
+
+Die Prüfsumme jedes DMG steht im Release (`SHA256SUMS.txt`):
+
+```bash
+shasum -a 256 ~/Downloads/NebenkostenFix-*-macOS-arm64.dmg
+```
+
+Das Ergebnis muss mit der Zeile für das DMG in `SHA256SUMS.txt` übereinstimmen.
 
 ### Docker
 
@@ -304,6 +332,8 @@ Einstellungen → Updates lässt sich die Suche abschalten oder von Hand anstoß
 
 - **Windows-App:** „Update installieren“ lädt die neue Setup-Exe, prüft Signatur und
   Prüfsumme, sichert Ihre Daten und installiert. Die App startet danach neu.
+- **Mac-App:** Die App nennt die neue Version. Das neue DMG installieren Sie wie beim ersten
+  Mal (siehe [Mac-App](#mac-app)), die Daten bleiben.
 - **Docker:** Die App nennt die neue Version. Aktualisiert wird wie gewohnt mit
   `docker compose pull && docker compose up -d`.
 - **Microsoft Store:** Dort aktualisiert der Store, die App sucht nicht selbst.
@@ -317,7 +347,8 @@ Jede Version beschreiben die [Releases](https://github.com/Nerbry72/NebenkostenF
 ### Wo die Daten liegen
 
 Alles liegt in einem Ordner: bei Docker in `daten/` neben der Compose-Datei (im Container
-`/data`), bei Windows in `Dokumente\NebenkostenFix`.
+`/data`), bei Windows in `Dokumente\NebenkostenFix`, auf dem Mac in
+`~/Library/Application Support/NebenkostenFix/Daten`.
 
 | Pfad | Inhalt |
 | --- | --- |
@@ -360,8 +391,8 @@ in `BACKUP_ZIELE` ein.
 
 ### Umzug auf einen anderen Rechner
 
-Dieselbe `.nkfix`-Datei ist auch das Umzugspaket, zwischen Docker und Windows in beide
-Richtungen.
+Dieselbe `.nkfix`-Datei ist auch das Umzugspaket, zwischen Docker, Windows und Mac in jede
+Richtung.
 
 1. **Alter Rechner:** Einstellungen → Datensicherung → „Alles exportieren“
    (oder `docker compose exec web flask umzug export`).
@@ -475,10 +506,12 @@ Die Versionsnummer steht an genau einer Stelle: `SOFTWARE_VERSION` in `nebenkost
 1. Die Tests laufen nicht noch einmal: `main` nimmt nur aktuelle Pull Requests mit grünen
    Checks an. Ein Commit ohne gemergten Pull Request wird nicht veröffentlicht.
 2. Windows-App bauen (PyInstaller und Inno Setup), still installieren, über eine Vorversion
-   aktualisieren und wieder deinstallieren.
+   aktualisieren und wieder deinstallieren. Daneben die Mac-App bauen (PyInstaller, DMG) und
+   mit Selbsttest, Umzug und Fensterprobe prüfen.
 3. Docker-Abbild bauen, Rauchtest, dann für amd64 und arm64 nach
    `ghcr.io/nerbry72/nebenkostenfix:<version>`, `:<major.minor>` (z. B. `:0.17`) und `:latest` schieben.
-4. GitHub-Release `v<version>` mit `NebenkostenFix-<version>-Setup.exe`, `SHA256SUMS.txt`,
+4. GitHub-Release `v<version>` mit `NebenkostenFix-<version>-Setup.exe`,
+   `NebenkostenFix-<version>-macOS-arm64.dmg`, `SHA256SUMS.txt`,
    `THIRD_PARTY_LICENSES.txt` und dem signierten `update.json` anlegen. Aus dem `update.json`
    erfahren die installierten Apps von der neuen Version. Der Release-Text besteht aus der
    Installationsanleitung, dem Inhalt von `docs/release-notizen/<version>.md` und einem

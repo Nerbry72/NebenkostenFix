@@ -1,5 +1,13 @@
-# Windows-App (NK-079, NK-150): Server im Prozess, Fenster, Bau.
-# Nur der Windows-Weg braucht das; das Docker-Abbild nimmt requirements.txt.
+# Desktop-App (NK-079, NK-150): Server im Prozess, Fenster, Bau.
+# Windows und macOS (#44) brauchen das; das Docker-Abbild nimmt requirements.txt.
 waitress==3.0.2
-pywebview==6.2.1; sys_platform == "win32"
-pyinstaller==6.22.3; sys_platform == "win32"
+pywebview==6.2.1; sys_platform == "win32" or sys_platform == "darwin"
+pyinstaller==6.22.3; sys_platform == "win32" or sys_platform == "darwin"
+# pywebview verlangt unter macOS pyobjc nur mit >=9.0. Gepinnt, damit jedes DMG
+# dieselben Pakete enthält und die Lizenztexte in nebenkostenfix/lizenzen/ passen.
+pyobjc-core==13.0; sys_platform == "darwin"
+pyobjc-framework-Cocoa==13.0; sys_platform == "darwin"
+pyobjc-framework-Quartz==13.0; sys_platform == "darwin"
+pyobjc-framework-WebKit==13.0; sys_platform == "darwin"
+pyobjc-framework-Security==13.0; sys_platform == "darwin"
+pyobjc-framework-UniformTypeIdentifiers==13.0; sys_platform == "darwin"

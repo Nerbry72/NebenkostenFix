@@ -126,7 +126,7 @@ def test_jeder_bau_legt_die_lizenzen_bei():
 def test_das_release_traegt_die_lizenzen():
     release = (WURZEL / '.github/workflows/release.yml').read_text(encoding='utf-8')
     assert 'find windows -name THIRD_PARTY_LICENSES.txt' in release
-    assert 'dateien=("$exe" SHA256SUMS.txt THIRD_PARTY_LICENSES.txt)' in release
+    assert 'dateien=("$exe" "$dmg" SHA256SUMS.txt THIRD_PARTY_LICENSES.txt)' in release
 
 
 def test_bau_bricht_ab_ohne_python_lizenz(tmp_path, monkeypatch, capsys):

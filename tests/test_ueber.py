@@ -6,6 +6,7 @@ Auslieferungsweg und Betriebssystem vor -- nichts aus der Datenbank.
 
 from __future__ import annotations
 
+import sys
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -56,6 +57,7 @@ def test_api_ueber_kennt_den_store(auth_client, monkeypatch):
 def test_api_ueber_nennt_den_weg_der_desktop_app(auth_client, monkeypatch, system, weg):
     from app import app
     monkeypatch.setitem(app.config, 'DESKTOP', True)
+    monkeypatch.setattr(sys, 'frozen', False, raising=False)
     monkeypatch.setattr(aktualisierung, 'paketmodus', lambda: False)
     monkeypatch.setattr(aktualisierung, 'betriebssystem', lambda: system)
     ueber = auth_client.get('/api/ueber').get_json()
@@ -86,3 +88,15 @@ def test_hilfe_laesst_den_haftungshinweis_offen():
     rumpf = re.search(r'function zeigeHilfe\(abschnitt\) \{(.*?)\n\}', js, re.S).group(1)
     assert ".modal-overlay.active:not([data-fest])" in rumpf
     assert ".modal-overlay.active')" not in rumpf
+
+
+def test_api_ueber_kennt_die_macos_app(auth_client, monkeypatch):
+    """Im gebauten Paket unter macOS (#44, Schritt 2)."""
+    from app import app
+    monkeypatch.setitem(app.config, 'DESKTOP', True)
+    monkeypatch.setattr(aktualisierung, 'paketmodus', lambda: False)
+    monkeypatch.setattr(aktualisierung, 'betriebssystem', lambda: 'darwin')
+    monkeypatch.setattr(sys, 'frozen', True, raising=False)
+    ueber = auth_client.get('/api/ueber').get_json()
+    assert ueber['weg'] == 'macOS-App'
+    assert parse_qs(urlsplit(ueber['fehler_melden']).query)['weg'] == ['macOS-App']
