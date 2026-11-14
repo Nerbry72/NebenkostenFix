@@ -9,21 +9,35 @@ und zusätzlich das gebaute Paket.
 
 from __future__ import annotations
 
+import contextlib
 import inspect
 import json
+import logging
 import os
 import subprocess
 import sys
 import threading
+import time
 import types
+import urllib.request
 from pathlib import Path
 
 import pytest
 
 import desktop
+from nebenkostenfix import aktualisierung
 from nebenkostenfix import windows_ordner
 
 WURZEL = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture(autouse=True)
+def windows(monkeypatch):
+    """Die Hülle verhält sich wie unter Windows, auch auf einem Mac;
+    macOS prüft tests/test_macos.py (#44)."""
+    monkeypatch.setattr(aktualisierung, 'betriebssystem', lambda: 'win32')
+    # os.startfile gibt es nur unter Windows; hier öffnet es nichts.
+    monkeypatch.setattr(desktop.os, 'startfile', lambda pfad: None, raising=False)
 
 
 # --- Start-Token ------------------------------------------------------------
@@ -298,6 +312,135 @@ def test_ini_schreiben_atomar(lokal, monkeypatch):
     with pytest.raises(OSError):
         windows_ordner.einstellungen_schreiben(server='https://nas')
     assert datei.read_bytes() == vorher
+
+
+# --- Server anhalten -------------------------------------------------------------
+
+def _hallo(umgebung, antworten):
+    antworten('200 OK', [('Content-Type', 'text/plain')])
+    return [b'ok']
+
+
+# Endet ein Thread mit einer Ausnahme, meldet pytest das als Warnung; hier ist es ein Fehler.
+THREAD_OHNE_FEHLER = pytest.mark.filterwarnings('error::pytest.PytestUnhandledThreadExceptionWarning')
+
+
+@THREAD_OHNE_FEHLER
+def test_server_schliessen_ohne_fehler_im_thread_von_waitress():
+    """Aus dem Haupt-Thread geschlossen, wartete waitress noch in select() auf
+    den Sockets und endete mit „Bad file descriptor“ (macOS, 17 von 20
+    Läufen): bei jedem Beenden ein Traceback im Protokoll."""
+    pytest.importorskip('waitress')
+    for _ in range(5):
+        server, thread = desktop.server_starten(_hallo)
+        with urllib.request.urlopen(f'http://127.0.0.1:{server.effective_port}/') as antwort:
+            assert antwort.read() == b'ok'
+        desktop._server_schliessen(server)
+        thread.join(5)
+        assert not thread.is_alive()
+
+
+@THREAD_OHNE_FEHLER
+def test_server_schliessen_zweimal_ist_harmlos():
+    pytest.importorskip('waitress')
+    server, thread = desktop.server_starten(_hallo)
+    desktop._server_schliessen(server)
+    desktop._server_schliessen(server, warten=0.1)
+    thread.join(5)
+    assert not server.accepting
+
+
+@THREAD_OHNE_FEHLER
+def test_server_schliessen_wartet_auf_die_laufende_anfrage(tmp_path, caplog):
+    """Läuft beim Beenden noch eine Anfrage, zieht ihr Worker danach den
+    Trigger. War der schon zu, schrieb er ein „x“ in die fd -- unter macOS
+    und Linux womöglich schon die Datei, die anhalten() für den Checkpoint
+    öffnet (Review A2: „SQLite format 3“ → „xQLite format 3“)."""
+    pytest.importorskip('waitress')
+    angefangen, weiter, fertig = threading.Event(), threading.Event(), threading.Event()
+
+    def langsam(umgebung, antworten):
+        angefangen.set()
+        weiter.wait(5)
+        fertig.set()
+        antworten('200 OK', [('Content-Type', 'text/plain')])
+        return [b'ok']
+
+    def abrufen():
+        with contextlib.suppress(OSError):   # die Antwort darf beim Beenden verloren gehen
+            urllib.request.urlopen(f'http://127.0.0.1:{server.effective_port}/', timeout=10).read()
+
+    server, thread = desktop.server_starten(langsam)
+    anfrage = threading.Thread(target=abrufen)
+    anfrage.start()
+    assert angefangen.wait(5)
+    schliessen = threading.Thread(target=desktop._server_schliessen, args=(server,))
+    schliessen.start()
+    time.sleep(0.3)
+    kopf = b'SQLite format 3\x00'
+    datei = tmp_path / 'nebenkosten.db'
+    with open(datei, 'wb') as offen:   # wie der Checkpoint direkt nach dem Schließen
+        offen.write(kopf)
+        offen.flush()
+        weiter.set()
+        schliessen.join(10)
+        time.sleep(0.3)
+    anfrage.join(10)
+    thread.join(5)
+    assert fertig.is_set()
+    assert datei.read_bytes() == kopf
+    assert [r.getMessage() for r in caplog.records if r.name.startswith('waitress')
+            and r.levelno >= logging.ERROR] == []
+    assert not thread.is_alive()
+
+
+def test_server_schliessen_ohne_laufende_schleife(caplog):
+    """Kommt waitress nicht dran, wird nichts direkt geschlossen: neben einer
+    vielleicht doch laufenden Schleife wäre das wieder das Wettrennen um die
+    fd. Aufräumen übernimmt das Prozessende."""
+    pytest.importorskip('waitress')
+    from waitress import create_server
+    server = create_server(_hallo, host='127.0.0.1', port=0)
+    try:
+        beginn = time.monotonic()
+        desktop._server_schliessen(server, warten=0.2)
+        assert time.monotonic() - beginn < 2
+        assert server.accepting
+        assert any('waitress' in r.getMessage() for r in caplog.records
+                   if r.levelno == logging.WARNING)
+    finally:
+        server.task_dispatcher.shutdown()
+        server.close()
+
+
+def test_anhalten_schliesst_den_server_ueber_den_thread(monkeypatch):
+    geschlossen = []
+    monkeypatch.setattr(desktop, '_server_schliessen', geschlossen.append)
+
+    class Verbindung:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def execute(self, anweisung):
+            pass
+
+    class AppKontext:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+    db = types.SimpleNamespace(
+        engine=types.SimpleNamespace(connect=Verbindung, dispose=lambda: None),
+        session=types.SimpleNamespace(remove=lambda: None))
+    app_modul = types.SimpleNamespace(app=types.SimpleNamespace(app_context=AppKontext), db=db)
+    server = object()
+    desktop.anhalten(server, app_modul)
+    assert geschlossen == [server]
 
 
 @pytest.mark.parametrize('kodierung', ['cp1252', 'utf-8', 'utf-8-sig', 'utf-16'])
@@ -1262,7 +1405,7 @@ def test_lokales_menue_fuehrt_zum_server():
     die leere Übersicht mit ihrem Knopf schon weg ist."""
     quelle = inspect.getsource(desktop.fenster_starten)
     assert "MenuAction('Mit einem Server verbinden …'" in quelle
-    assert "fenster.evaluate_js('zeigeServerKarte()')" in quelle
+    assert "fenster.run_js('zeigeServerKarte()')" in quelle
 
 
 def test_server_verbinden_nur_aus_der_eigenen_oberflaeche(lokal, zeitgeber, monkeypatch):

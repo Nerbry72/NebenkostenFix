@@ -10,6 +10,8 @@ Schreibt:
   packaging/windows/nebenkostenfix.ico  Exe, Fenster, Installer: 16 … 256 px
   packaging/windows/installer-gross*.bmp / installer-klein*.bmp
                                       Bilder des Installationsassistenten (100 % und 200 %)
+  packaging/macos/nebenkostenfix.icns   Bundle der macOS-App: 32 … 1024 px (#44)
+  packaging/macos/dmg-hintergrund*.png  Hintergrund des DMG-Fensters (1× und 2×)
 
 Die Dateien liegen im Repository; neu erzeugt wird nur, wenn sich das
 Zeichen ändert. ``tests/test_marke.py`` prüft, dass die SVGs zum Code passen.
@@ -45,6 +47,15 @@ def _assistentenbild(breite: int, hoehe: int, zeichen: int):
     return bild
 
 
+def _dmg():
+    """packaging/macos/dmg.py: Dort stehen Fenster und Symbolpositionen."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('dmg', WURZEL / 'packaging' / 'macos' / 'dmg.py')
+    modul = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modul)
+    return modul
+
+
 def main() -> int:
     statisch = WURZEL / 'static' / 'marke'
     statisch.mkdir(parents=True, exist_ok=True)
@@ -68,7 +79,12 @@ def main() -> int:
         symbol = marke.zeichen_bild(kante)
         grund.paste(symbol, (0, 0), symbol)
         grund.save(windows / name)
-    print('Marke erzeugt:', statisch, windows)
+    # Pillow schreibt ICNS immer in 32 bis 1024 px, verkleinert aus der Vorlage.
+    macos = WURZEL / 'packaging' / 'macos'
+    macos.mkdir(parents=True, exist_ok=True)
+    marke.zeichen_bild(1024).save(macos / 'nebenkostenfix.icns')
+    _dmg().hintergrund_schreiben(macos)
+    print('Marke erzeugt:', statisch, windows, macos)
     return 0
 
 

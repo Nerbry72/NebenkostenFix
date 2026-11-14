@@ -1,0 +1,170 @@
+# macOS-Weg (#44, Schritt 2): die Testsuite auf macOS und der Bau der App
+# (PyInstaller, Bundle NebenkostenFix.app, DMG) samt Selbsttest, Umzug
+# Linux -> macOS und einer Probe mit echtem Fenster und Cmd-Q. Freiwillig:
+# kein Pflicht-Check und nicht in release.yml eingebunden. Das DMG ist nur
+# ein Artefakt des Laufs, ad hoc signiert, nicht notarisiert. Nur Apple
+# Silicon, ab macOS 15.
+name: macos
+
+on:
+  pull_request:
+    branches: [main, feature/macos]
+    # Nicht bei reinen Texten und beim Windows-Bau. Die Reihenfolge zählt:
+    # Die Anleitung für den Mac und ihre Bilder stehen im DMG.
+    paths:
+      - '**'
+      - '!**.md'
+      - '!docs/**'
+      - '!packaging/windows/**'
+      - 'docs/handbuch/mac-installation.md'
+      - 'docs/bilder/mac-*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Neuer Push auf denselben Pull Request bricht den alten Lauf ab.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests auf macOS
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+            requirements-desktop.txt
+      - name: Abhaengigkeiten
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt -r requirements-desktop.txt
+      - name: pytest
+        run: python -m pytest -q -p no:cacheprovider -o addopts="" --maxfail=50
+
+  # NK-164: ein Umzugspaket aus einem fiktiven Bestand unter Linux, das die
+  # gebaute Mac-App uebernimmt.
+  umzug-linux:
+    name: Umzugspaket unter Linux bauen
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Abhaengigkeiten
+        run: python -m pip install -r requirements.txt
+      - name: Paket bauen
+        run: python scripts/umzug_kreuzprobe.py bauen --arbeit umzug --name linux
+      - uses: actions/upload-artifact@v7
+        with:
+          name: umzug-linux-fuer-macos
+          path: |
+            umzug/linux.nkfix
+            umzug/linux.json
+          retention-days: 7
+
+  paket:
+    name: Mac-App bauen und pruefen
+    # Die aelteste Version, die Apple noch pflegt: was hier laeuft, laeuft ab 15.
+    runs-on: macos-15
+    needs: umzug-linux
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-desktop.txt
+      - name: Abhaengigkeiten
+        run: python -m pip install -r requirements.txt -r requirements-desktop.txt
+      - name: Lizenztexte der mitgelieferten Software (NK-148)
+        run: python -m nebenkostenfix.drittlizenzen --ausgabe THIRD_PARTY_LICENSES.txt requirements.txt requirements-desktop.txt
+      - name: Version
+        id: version
+        run: |
+          v=$(python -c "from nebenkostenfix.abrechnung_version import SOFTWARE_VERSION as v; print(v)")
+          echo "wert=$v" >> "$GITHUB_OUTPUT"
+          echo "## Mac-Paket $v ($(sw_vers -productVersion), $(uname -m))" >> "$GITHUB_STEP_SUMMARY"
+      - name: Selbsttest aus den Quellen
+        timeout-minutes: 10
+        run: python desktop.py --selbsttest --datenordner "$RUNNER_TEMP/nk-quelle" --bericht "$RUNNER_TEMP/bericht-quelle.json"
+      - name: PyInstaller
+        run: pyinstaller packaging/macos/nebenkosten.spec --noconfirm --distpath dist --workpath build
+      - name: Paket pruefen (Signatur, Groesse, Selbsttest)
+        timeout-minutes: 10
+        run: |
+          codesign --verify --deep --strict dist/NebenkostenFix.app
+          find dist/NebenkostenFix.app -name THIRD_PARTY_LICENSES.txt | grep -q . || { echo "THIRD_PARTY_LICENSES.txt fehlt im Paket"; exit 1; }
+          python packaging/windows/paketprobe.py groesse dist/NebenkostenFix.app
+          python packaging/windows/paketprobe.py selbsttest "$GITHUB_WORKSPACE/dist/NebenkostenFix.app/Contents/MacOS/NebenkostenFix" "$RUNNER_TEMP/nk-paket" "$RUNNER_TEMP/bericht-paket.json"
+      - uses: actions/download-artifact@v8
+        with:
+          name: umzug-linux-fuer-macos
+          path: umzug-linux
+      - name: Umzug Linux -> macOS (Quellen und gebaute App)
+        timeout-minutes: 10
+        run: |
+          python scripts/umzug_kreuzprobe.py pruefen --arbeit "$RUNNER_TEMP/umzug-quelle" --paket umzug-linux/linux.nkfix --erwartet umzug-linux/linux.json
+          python packaging/windows/paketprobe.py umzug dist/NebenkostenFix.app/Contents/MacOS/NebenkostenFix umzug-linux/linux.nkfix umzug-linux/linux.json "$RUNNER_TEMP/nk-umzug" "$RUNNER_TEMP/bericht-umzug.json"
+      - name: Fensterprobe (Start wie aus dem Finder, Update-Suche, Cmd-Q)
+        timeout-minutes: 10
+        run: python packaging/macos/fensterprobe.py dist/NebenkostenFix.app "$RUNNER_TEMP/bericht-fenster.json"
+      - name: Anleitung als PDF
+        run: python packaging/macos/anleitung_pdf.py docs/handbuch/mac-installation.md "$RUNNER_TEMP/Installationsanleitung.pdf"
+      - name: DMG
+        id: dmg
+        # dmgbuild schreibt die Fensteransicht selbst, ohne Finder; erst ab
+        # 1.6.7 zeigt Finder unter macOS 26.2 den Hintergrund. Nur fuer den
+        # Bau, nicht in der App. dmg.py versucht es bei „Resource busy“
+        # (runner-images#7522) mehrmals.
+        run: |
+          # Die Proben haben das Bundle gestartet: noch unversehrt signiert?
+          codesign --verify --deep --strict dist/NebenkostenFix.app
+          python -m pip install dmgbuild==1.6.7
+          dmg="dist/NebenkostenFix-${{ steps.version.outputs.wert }}-macOS-arm64.dmg"
+          python packaging/macos/dmg.py --app dist/NebenkostenFix.app --anleitung "$RUNNER_TEMP/Installationsanleitung.pdf" --ziel "$dmg"
+          echo "pfad=$dmg" >> "$GITHUB_OUTPUT"
+      - name: DMG pruefen (schreibgeschuetzt eingehaengt)
+        run: |
+          dmg="${{ steps.dmg.outputs.pfad }}"
+          hdiutil verify "$dmg"
+          volume="$RUNNER_TEMP/dmg-volume"
+          mkdir -p "$volume"
+          hdiutil attach "$dmg" -readonly -nobrowse -noautoopen -mountpoint "$volume"
+          codesign --verify --deep --strict "$volume/NebenkostenFix.app"
+          for datei in "$volume/.DS_Store" "$volume/.background.tiff" "$volume/Installationsanleitung.pdf"; do
+            test -s "$datei" || { echo "Im DMG fehlt $datei"; hdiutil detach "$volume" -force; exit 1; }
+          done
+          test "$(readlink "$volume/Programme")" = /Applications || { echo "Programme zeigt nicht auf /Applications"; hdiutil detach "$volume" -force; exit 1; }
+          hdiutil detach "$volume"
+          echo "- DMG: $(basename "$dmg"), $(du -m "$dmg" | cut -f1) MB, ad hoc signiert, nicht notarisiert" >> "$GITHUB_STEP_SUMMARY"
+      # Ohne ZIP: Der Name des Artefakts ist der Dateiname, ein Klick laedt
+      # direkt das DMG (archive: false, nur eine Datei je Upload).
+      - uses: actions/upload-artifact@v7
+        with:
+          path: dist/NebenkostenFix-${{ steps.version.outputs.wert }}-macOS-arm64.dmg
+          archive: false
+          retention-days: 14
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: nebenkostenfix-macos-berichte
+          path: |
+            THIRD_PARTY_LICENSES.txt
+            ${{ runner.temp }}/bericht-*.json
+            ${{ runner.temp }}/Installationsanleitung.pdf
+          retention-days: 14
+          if-no-files-found: warn

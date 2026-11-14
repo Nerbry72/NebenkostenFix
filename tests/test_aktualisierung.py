@@ -266,8 +266,25 @@ def test_jeder_weg_steht_in_der_fehlervorlage():
     assert set(aktualisierung.WEGE) == {'store', 'docker', 'windows', 'macos', 'linux'}
     vorlage = (WURZEL / '.github/ISSUE_TEMPLATE/fehler.yml').read_text(encoding='utf-8')
     feld = vorlage.split('id: weg', 1)[1].split('validations:', 1)[0]
-    for weg in set(aktualisierung.WEGE.values()):
+    for weg in set(aktualisierung.WEGE.values()) | {aktualisierung.MACOS_APP}:
         assert f'- {weg}\n' in feld, weg
+
+
+@pytest.mark.parametrize('paket, desktop, system, gebaut, weg', [
+    (True, True, 'win32', True, 'Microsoft Store'),
+    (False, False, 'darwin', False, 'Docker'),
+    (False, True, 'win32', True, 'Windows-App'),
+    (False, True, 'win32', False, 'Windows-App'),     # wie bisher (Recap 05)
+    (False, True, 'darwin', False, 'aus dem Quellcode'),
+    (False, True, 'darwin', True, 'macOS-App'),
+    (False, True, 'linux', True, 'aus dem Quellcode'),
+])
+def test_weg(monkeypatch, paket, desktop, system, gebaut, weg):
+    """Das gebaute Paket (PyInstaller setzt ``sys.frozen``) ist die macOS-App."""
+    monkeypatch.setattr(aktualisierung, 'paketmodus', lambda: paket)
+    monkeypatch.setattr(aktualisierung, 'betriebssystem', lambda: system)
+    monkeypatch.setattr(sys, 'frozen', gebaut, raising=False)
+    assert aktualisierung.weg(desktop) == weg
 
 
 # --- Suche beim Start (NK-175) ----------------------------------------------------

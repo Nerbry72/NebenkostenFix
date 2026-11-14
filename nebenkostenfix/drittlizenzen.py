@@ -1,7 +1,7 @@
 """Lizenzen der mitgelieferten Drittsoftware (NK-148).
 
-Docker-Abbild und Windows-App bringen Python, die Pakete aus requirements.txt
-(unter Windows dazu requirements-desktop.txt) samt deren Abhängigkeiten und
+Docker-Abbild, Windows- und Mac-App bringen Python, die Pakete aus requirements.txt
+(in den Desktop-Apps dazu requirements-desktop.txt) samt deren Abhängigkeiten und
 die Bibliotheken in static/vendor/ mit. Die meisten dieser Lizenzen verlangen,
 dass ihr Wortlaut der Weitergabe beiliegt. Der Bau schreibt ihn deshalb nach
 ``pip install`` aus genau dieser Installation::
@@ -9,8 +9,8 @@ dass ihr Wortlaut der Weitergabe beiliegt. Der Bau schreibt ihn deshalb nach
     python -m nebenkostenfix.drittlizenzen --ausgabe THIRD_PARTY_LICENSES.txt \\
         requirements.txt [requirements-desktop.txt]
 
-Die Datei liegt dann im Abbild, im Programmordner der Windows-App und am
-Release. Fehlt dem Bau ein Lizenztext (von Python oder einem Paket), bricht
+Die Datei liegt dann im Abbild, im Programmordner der Windows-App, im Bundle
+der Mac-App und am Release. Fehlt dem Bau ein Lizenztext (von Python oder einem Paket), bricht
 er ab, statt nur auf eine Webseite zu verweisen. Der Über-Dialog zeigt die
 Datei (``/api/drittlizenzen``); ohne gebaute Datei, also in der Entwicklung,
 entsteht der Text aus der laufenden Umgebung, dort mit Verweis statt Abbruch.
@@ -44,6 +44,10 @@ PYTHON_LIZENZ_URL = 'https://docs.python.org/3/license.html'
 # Der Wortlaut liegt hier unverändert, Dateiname ist der PEP-503-Name:
 #   proxy-tools.txt  proxy_tools 0.1.0 (von pywebview, nur Windows),
 #                    github.com/jtushman/proxy_tools, LICENSE.txt @ ccd35a5
+#   pyobjc-core.txt, pyobjc-framework-security.txt,
+#   pyobjc-framework-uniformtypeidentifiers.txt
+#                    pyobjc 12.2.2 (von pywebview, nur macOS, #44), MIT,
+#                    github.com/ronaldoussoren/pyobjc, <Paket>/License.txt @ v12.2.2
 ERSATZ = Path(__file__).resolve().parent / 'lizenzen'
 
 

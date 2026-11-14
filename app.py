@@ -3549,7 +3549,7 @@ def hausgeld_pruefen():
 def ueber_anzeigen():
     """„Über NebenkostenFix“ im Hilfe-Tab (NK-179): Stand, feste Adressen,
     Haftungshinweis. Nichts aus der Datenbank."""
-    weg = aktualisierung.WEGE[aktualisierung.zielsystem(bool(app.config.get('DESKTOP')))]
+    weg = aktualisierung.weg(bool(app.config.get('DESKTOP')))
     system = f'{platform.system()} {platform.release()}'
     return jsonify({
         'version': SOFTWARE_VERSION, 'weg': weg,

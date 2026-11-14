@@ -30,6 +30,7 @@ body:
         - Docker
         - Windows-App
         - Microsoft Store
+        - macOS-App
         - aus dem Quellcode
     validations:
       required: true
