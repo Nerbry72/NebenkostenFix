@@ -597,7 +597,7 @@ def test_server_menue_unter_macos_heisst_ablage_ohne_zweites_beenden(
         system, monkeypatch, tmp_path):
     system('darwin')
     assert _menue(_server_fenster_starten(monkeypatch, tmp_path)) == {
-        'Ablage': ['Fenster zeigen', '—', 'Drucken', 'Neu laden', '—',
+        'Ablage': ['Fenster zeigen', '—', 'Drucken', 'Neu laden', 'Abmelden', '—',
                    'Auf diesem Rechner arbeiten …'],
         'Hilfe': ['Über NebenkostenFix']}
 
@@ -605,7 +605,8 @@ def test_server_menue_unter_macos_heisst_ablage_ohne_zweites_beenden(
 def test_server_menue_unter_windows_wortgleich(system, monkeypatch, tmp_path):
     system('win32')
     assert _menue(_server_fenster_starten(monkeypatch, tmp_path)) == {
-        'Datei': ['Drucken', 'Neu laden', '—', 'Auf diesem Rechner arbeiten …', '—', 'Beenden'],
+        'Datei': ['Drucken', 'Neu laden', 'Abmelden', '—', 'Auf diesem Rechner arbeiten …', '—',
+                  'Beenden'],
         'Hilfe': ['Über NebenkostenFix']}
 
 
@@ -695,7 +696,10 @@ def test_servermodus_unter_windows_ohne_mac_anpassung(system, monkeypatch, tmp_p
     system('win32')
     ablauf = _server_fenster_starten(monkeypatch, tmp_path, 'zu')
     assert 'mac' not in ablauf and list(ablauf['fenster'].events.closing) == []
-    assert ablauf['optionen'] == {
+    # user_agent kommt nur mit einem nutzbaren Schlüsselbund dazu (#52), das prüft
+    # test_desktop_angemeldet.py; hier geht es um die Optionen der Plattform.
+    optionen = {k: v for k, v in ablauf['optionen'].items() if k != 'user_agent'}
+    assert optionen == {
         'private_mode': False,
         'storage_path': str(tmp_path / 'lokal' / 'NebenkostenFix' / 'WebView2')}
 

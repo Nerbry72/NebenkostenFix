@@ -138,7 +138,7 @@ Jede Schaltfläche beginnt mit einem dieser Verben — das Objekt folgt:
 | **übernehmen** | Den ganzen Bestand aus einem Umzugspaket einsetzen (ersetzt alles; fragt nach) | Daten übernehmen |
 | **importieren** | Viele Datensätze aus einer Excel- oder CSV-Tabelle anlegen | Aus Excel importieren, Daten importieren |
 | **prüfen** | Probelauf ohne Änderung: zeigt Fehler je Zeile | Tabelle prüfen |
-| **bleiben** | Die Sitzung vor der Leerlauf-Abmeldung verlängern | Angemeldet bleiben |
+| **weiterarbeiten** | Die Sitzung vor der Leerlauf-Abmeldung verlängern | Weiterarbeiten |
 | **wiederherstellen** | Eine vor der Abmeldung gesicherte Eingabe zurückholen | Eingabe wiederherstellen |
 | **zurück** | Im mehrstufigen Ablauf einen Schritt zurück (Gegenstück zu „weiter“) | Zurück |
 | **melden** | Der Anwendung einen Vorgang mitteilen, der außerhalb geschah | Zustellung melden |
@@ -156,7 +156,8 @@ gleichen Zielen gemeint ist — „PDF erstellen (detailliert)“, „PDF ansehe
 
 Keine Aktionsknöpfe und daher nicht an der Verbliste gemessen: Filter und Auswahlpillen
 (Kategorienamen wie „Strom“, „Wärme“, „Alle Kosten“) sowie reine Anzeigen („Erste Schritte“,
-Kennzahlen).
+Kennzahlen). Auch „Angemeldet bleiben“ ist kein Knopf, sondern nur das Häkchen auf der
+Anmeldeseite der Desktop-App (#52).
 
 ## 7. Sperrliste (maschinell geprüft)
 

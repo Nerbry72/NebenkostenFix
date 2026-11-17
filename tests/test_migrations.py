@@ -51,7 +51,9 @@ BASISREVISION = "63738d5329b4"
 # Phase 58: ``f2a6c8b4d013`` fuegt ``tenants.anschrift``,
 # ``tenants.zustellanschrift`` und ``vermieterdaten.anschrift`` hinzu (Issue #35).
 # ``db48fb4e8716`` legt die Tabelle ``api_schluessel`` an (Zugriffsschluessel).
-KOPFREVISION = "db48fb4e8716"
+# #52: ``fc8938938dce`` legt ``geraete``, ``geraete_ersetzt`` und
+# ``geraete_codes`` an (angemeldet bleiben in der Desktop-App).
+KOPFREVISION = "fc8938938dce"
 
 
 def _umgebung(dbdatei: Path, tmp_path: Path) -> dict:
@@ -3003,3 +3005,106 @@ def test_eine_sicherung_von_vor_den_schluesseln_laesst_sich_einspielen(tmp_path)
     assert ergebnis["schluessel"] == 0
     assert ergebnis["konten"] == ["verwalter"]
     assert ergebnis["haeuser"] == ["Musterhaus"]
+
+
+# ---------------------------------------------------------------------------
+# #52: ``fc8938938dce`` legt die Tabellen der angemeldeten Geraete an
+
+# Die Testdatenbank entsteht mit create_all(), und der Abgleich mit dem
+# gewanderten Schema sieht AUTOINCREMENT nicht. Hier wandert sie wirklich.
+CODE_GERAETE_WANDERUNG = """
+import json
+from sqlalchemy import text
+from flask_migrate import downgrade, upgrade
+import app as anwendung
+from nebenkostenfix.models import db
+
+TABELLEN = ("geraete", "geraete_ersetzt", "geraete_codes")
+
+def tabellen():
+    return sorted(z[0] for z in db.session.execute(text(
+        "SELECT name FROM sqlite_master WHERE type = 'table'")).all())
+
+def spalten(tabelle):
+    return [z[1] for z in db.session.execute(
+        text(f"PRAGMA table_info('{tabelle}')")).all()]
+
+def sequenz():
+    # sqlite_sequence gibt es erst, wenn eine Tabelle AUTOINCREMENT hat.
+    if "sqlite_sequence" not in tabellen():
+        return None
+    return db.session.execute(text(
+        "SELECT seq FROM sqlite_sequence WHERE name = 'geraete'")).scalar()
+
+with anwendung.app.app_context():
+    downgrade(revision="db48fb4e8716")
+
+    # Der Bestand: ein Konto mit einem Zugriffsschluessel.
+    db.session.execute(text(
+        "INSERT INTO users (id, username, password_hash, is_active, created_at)"
+        " VALUES (1, 'vermieter', 'x', 1, '2026-11-01')"))
+    db.session.execute(text(
+        "INSERT INTO api_schluessel (id, user_id, name, hash, umfang, angelegt_am)"
+        " VALUES (1, 1, 'Tabelle', :h, 'lesen', '2026-11-01')"), {"h": "a" * 64})
+    db.session.commit()
+    vorher = [t for t in TABELLEN if t in tabellen()]
+
+    upgrade()
+
+    nachher = {t: spalten(t) for t in TABELLEN if t in tabellen()}
+    schema = db.session.execute(text(
+        "SELECT sql FROM sqlite_master WHERE name = 'geraete'")).scalar()
+    stand = db.session.execute(text("SELECT version_num FROM alembic_version")).scalar()
+
+    # Ein Geraet anlegen, damit sqlite_sequence eine Zeile fuer geraete hat.
+    db.session.execute(text(
+        "INSERT INTO geraete (user_id, name, hash, sitzung, angelegt_am, zuletzt_benutzt_am)"
+        " VALUES (1, 'Notebook', :h, :s, '2026-11-02', '2026-11-02')"),
+        {"h": "b" * 64, "s": "c" * 32})
+    db.session.commit()
+    sequenz_nachher = sequenz()
+
+    downgrade(revision="db48fb4e8716")
+    zurueck = [t for t in TABELLEN if t in tabellen()]
+    sequenz_zurueck = sequenz()
+    bestand = [db.session.execute(text("SELECT username FROM users")).scalar(),
+               db.session.execute(text("SELECT name FROM api_schluessel")).scalar()]
+    stand_zurueck = db.session.execute(
+        text("SELECT version_num FROM alembic_version")).scalar()
+
+print(json.dumps({"vorher": vorher, "nachher": nachher, "schema": schema,
+                  "stand": stand, "sequenz": sequenz_nachher, "zurueck": zurueck,
+                  "sequenz_zurueck": sequenz_zurueck, "bestand": bestand,
+                  "stand_zurueck": stand_zurueck}))
+"""
+
+
+def test_die_geraetewanderung_legt_die_drei_tabellen_an(tmp_path):
+    """#52 (Review): Die Sitzung merkt sich das Geraet ueber einen
+    Zufallswert (``sitzung``, eindeutig), nicht ueber die Nummer: Eine aeltere
+    Sicherung bringt den Zaehler zurueck (Review zu #57). AUTOINCREMENT bleibt
+    trotzdem, damit eine Nummer nach dem Loeschen nicht gleich wiederkommt.
+    Beides steht nur im gewanderten Schema, nicht in dem aus create_all()."""
+    stand = _lauf(CODE_GERAETE_WANDERUNG, tmp_path / "geraete.db", tmp_path)
+    assert stand["vorher"] == []
+    assert set(stand["nachher"]) == {"geraete", "geraete_ersetzt", "geraete_codes"}
+    for spalte in ("id", "user_id", "name", "hash", "sitzung", "angelegt_am",
+                   "zuletzt_benutzt_am"):
+        assert spalte in stand["nachher"]["geraete"]
+    assert stand["nachher"]["geraete_ersetzt"] == ["hash", "geraet_id", "ersetzt_am"]
+    assert stand["nachher"]["geraete_codes"] == ["hash", "zweck", "geraet_id", "gueltig_bis"]
+    assert "AUTOINCREMENT" in stand["schema"]
+    assert "UNIQUE (hash)" in stand["schema"]
+    assert "UNIQUE (sitzung)" in stand["schema"]
+    assert stand["stand"] == KOPFREVISION
+    assert stand["sequenz"] == 1
+
+
+def test_die_geraetewanderung_laesst_sich_zurueckdrehen(tmp_path):
+    """downgrade() nimmt die drei Tabellen samt Zaehler zurueck. Konto und
+    Zugriffsschluessel bleiben."""
+    stand = _lauf(CODE_GERAETE_WANDERUNG, tmp_path / "geraete.db", tmp_path)
+    assert stand["zurueck"] == []
+    assert stand["sequenz_zurueck"] is None
+    assert stand["bestand"] == ["vermieter", "Tabelle"]
+    assert stand["stand_zurueck"] == "db48fb4e8716"

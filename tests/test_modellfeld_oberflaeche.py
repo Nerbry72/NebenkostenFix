@@ -37,6 +37,9 @@ APP_JS = (WURZEL / 'static' / 'app.js').read_text(encoding='utf-8')
 SYSTEMMODELLE = {
     'BillingReportCategory': 'Kopplung Abrechnung/Kostenart: setzt die Anwendung mit der Festsetzung.',
     'BillingReportVersion': 'Schnappschüsse: schreibt nur die Anwendung (R-DOC-02).',
+    # #52: angemeldete Geräte der Desktop-App.
+    'GeraetErsetzt': 'Ersetzte Tokens für die Erkennung von Kopien: schreibt nur die Anwendung.',
+    'GeraetCode': 'Codes zum Abholen und Anmelden, eine Minute gültig: schreibt nur die Anwendung.',
 }
 
 # Spalte → Belagstelle. Der Belag ist eine Nadel, die im HTML oder im
@@ -190,6 +193,13 @@ OBERFLAECHE = {
         'user_id': 's.konto',
         'zuletzt_benutzt_am': 's.zuletzt_benutzt',
     },
+    # #52: Den Rechnernamen schickt die Desktop-App, die Karte zeigt ihn nur.
+    'Geraet': {
+        'name': 'g.name',
+        'user_id': 'g.konto',
+        'angelegt_am': 'g.angelegt_am',
+        'zuletzt_benutzt_am': 'g.zuletzt_benutzt',
+    },
 }
 
 # Spalte → Grund, warum sie keine Oberfläche hat.
@@ -257,6 +267,11 @@ AUSNAHMEN = {
         'id': 'Schlüssel.',
         'hash': 'Der Hash entsteht im Server; den Klartext zeigt die Oberfläche einmal, den Hash nie.',
         'angelegt_am': 'Setzt die Anwendung beim Anlegen.',
+    },
+    'Geraet': {
+        'id': 'Schlüssel.',
+        'hash': 'Der Hash des Gerätetokens entsteht im Server; das Token sieht nur die Desktop-App.',
+        'sitzung': 'Zufallswert für die Sitzung, entsteht im Server; die Oberfläche zeigt ihn nie.',
     },
     'Property': {
         'id': 'Schlüssel.',

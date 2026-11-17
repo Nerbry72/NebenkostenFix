@@ -27,6 +27,7 @@ from nebenkostenfix import umzug
 ALT_USER = 'alt-vermieter'
 HAFTUNG = {'version': 1, 'bestaetigt_am': '2026-01-01T00:00:00+00:00'}
 ALT_PASS = 'altes-passwort-123'
+APP = 'Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 NebenkostenFix-Desktop/0.19.0'
 PNG = (b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00'
        b'\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05'
        b'\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82')
@@ -391,6 +392,80 @@ def test_rundlauf_ueber_die_api_ersetzt_alles(bestand, tmp_path, monkeypatch):
     assert client.get('/api/auth/me').status_code == 401
     assert _anmelden(client, 'neu', 'neues-passwort-1').status_code == 401
     assert _anmelden(client).status_code == 200
+
+
+def _angemeldetes_geraet():
+    """Ein Gerät mit ersetztem Token und offenem Code, wie nach #52."""
+    from datetime import timedelta
+
+    from nebenkostenfix import zeit
+    from nebenkostenfix.models import Geraet, GeraetCode, GeraetErsetzt, User, db
+    konto = User.query.filter_by(username=ALT_USER).one()
+    geraet = Geraet(user_id=konto.id, name='Laptop', hash='a' * 64)
+    db.session.add(geraet)
+    db.session.flush()
+    db.session.add(GeraetErsetzt(hash='b' * 64, geraet_id=geraet.id))
+    db.session.add(GeraetCode(hash='c' * 64, zweck='anmelden', geraet_id=geraet.id,
+                              gueltig_bis=zeit.jetzt_utc() + timedelta(minutes=1)))
+    db.session.commit()
+
+
+GERAETE_TABELLEN = ('geraete', 'geraete_codes', 'geraete_ersetzt')
+
+
+def test_eine_eingespielte_sicherung_meldet_alle_geraete_ab(bestand, tmp_path):
+    """#52: Gerätetokens überleben das Einspielen nicht. Sonst bliebe ein
+    Rechner nach dem Umzug auf einen neuen Server weiter angemeldet."""
+    _angemeldetes_geraet()
+    sicherung = backup.sicherung_erstellen(bestand.app, tmp_path)
+    backup.sicherung_einspielen(bestand.app, sicherung)
+    zeilen = backup.zaehlwerte(backup.datenbankpfad(bestand.app))
+    assert {t: zeilen[t] for t in GERAETE_TABELLEN} == dict.fromkeys(GERAETE_TABELLEN, 0)
+
+
+def _mit_haekchen_anmelden(app):
+    """Wie die Desktop-App mit Häkchen: Die erste Sitzung gehört schon zum
+    Gerät (``geraete.anmelden_mit_haekchen``)."""
+    client = app.test_client()
+    antwort = client.post('/login', query_string={'next': '/'},
+                          data={'username': ALT_USER, 'password': ALT_PASS,
+                                'angemeldet_bleiben': '1'},
+                          headers={'User-Agent': APP})
+    assert antwort.status_code == 302, antwort.get_data(as_text=True)
+    return client
+
+
+def test_eine_aeltere_sicherung_belebt_keine_alte_geraetesitzung(bestand, tmp_path):
+    """Review zu #57: Eine ältere Sicherung bringt den Zähler für die
+    Gerätenummern zurück. Merkte sich die Sitzung die Nummer, gälte eine
+    Sitzung von vor dem Einspielen wieder, sobald dasselbe Konto ein neues
+    Gerät anmeldet."""
+    from nebenkostenfix.models import Geraet, db
+    sicherung = backup.sicherung_erstellen(bestand.app, tmp_path)
+    alt = _mit_haekchen_anmelden(bestand.app)
+    assert alt.get('/api/properties').status_code == 200
+    nummer = Geraet.query.one().id
+
+    backup.sicherung_einspielen(bestand.app, sicherung)
+    db.session.remove()
+    # Keine Anfrage des alten Fensters dazwischen (Notebook zugeklappt):
+    # jede Anfrage leerte die Sitzung, und die Lücke wäre zu.
+
+    _mit_haekchen_anmelden(bestand.app)
+    # Der Zähler kommt aus der Sicherung: dieselbe Nummer wie vorher.
+    assert Geraet.query.one().id == nummer
+    assert alt.get('/api/properties').status_code == 401
+
+
+def test_der_umzug_nennt_die_geraete_nicht_als_abweichung(bestand, tmp_path):
+    _angemeldetes_geraet()
+    bericht = umzug.uebernehmen(bestand.app, _paket(bestand, tmp_path))
+    assert bericht['tabellen']['geraete'] == 0
+    assert not set(bericht['abweichend']) & set(GERAETE_TABELLEN)
+    # Review zu #57: Die Zeilen stehen im Paket (nur Hashes), das Einspielen
+    # verwirft sie. "Nicht im Paket" wäre ungenau.
+    assert any(zeile.startswith('Angemeldete Geräte übernimmt das Einspielen nicht')
+               for zeile in bericht['nicht_im_paket'])
 
 
 def test_vorhandene_vermieterwerte_bleiben(bestand, tmp_path, monkeypatch):

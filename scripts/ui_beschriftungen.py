@@ -77,7 +77,7 @@ VERBEN: set[str] = {
     # NK-161: Tabellen aus Excel/CSV einlesen und probeweise prüfen.
     "importieren", "pr\u00fcfen",
     # NK-162: Sitzung verlängern und einen gesicherten Entwurf zurückholen.
-    "bleiben", "wiederherstellen",
+    "weiterarbeiten", "wiederherstellen",
     # NK-160: im mehrstufigen Assistenten einen Schritt zurückgehen.
     "zur\u00fcck",
     # NK-124/NK-160: die Zustellung einer Abrechnung melden (Fristen).

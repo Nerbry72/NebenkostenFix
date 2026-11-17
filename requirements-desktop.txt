@@ -11,3 +11,6 @@ pyobjc-framework-Quartz==13.0; sys_platform == "darwin"
 pyobjc-framework-WebKit==13.0; sys_platform == "darwin"
 pyobjc-framework-Security==13.0; sys_platform == "darwin"
 pyobjc-framework-UniformTypeIdentifiers==13.0; sys_platform == "darwin"
+# #52: das Gerätetoken für „Angemeldet bleiben“ liegt in der
+# Anmeldeinformationsverwaltung von Windows. Unter macOS fehlt keyring bewusst.
+keyring==25.7.0; sys_platform == "win32"

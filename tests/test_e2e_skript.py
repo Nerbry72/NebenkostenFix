@@ -404,7 +404,8 @@ def test_der_schluesselschritt_laeuft_vor_dem_herunterfahren(tmp_path, monkeypat
     gefahren = []
     schritte = ('baum_auspacken', 'umgebung_anlegen', 'stapel_hoch',
                 'gesundheit_abwarten', 'konto_anlegen', 'anmelden',
-                'abrechnung_erzeugen', 'zugriffsschluessel', 'stapel_runter')
+                'abrechnung_erzeugen', 'zugriffsschluessel', 'angemeldet_bleiben',
+                'stapel_runter')
     for name in schritte:
         monkeypatch.setattr(lauf, name, lambda name=name: gefahren.append(name))
     lauf.arbeit = tmp_path

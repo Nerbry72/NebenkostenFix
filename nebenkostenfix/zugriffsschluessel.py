@@ -39,7 +39,7 @@ from datetime import datetime, timezone
 from flask import has_request_context, jsonify, make_response, request
 
 from nebenkostenfix import anmeldeschutz, zeit
-from nebenkostenfix.models import ApiSchluessel, db
+from nebenkostenfix.models import ApiSchluessel, Geraet, db
 from nebenkostenfix.validation import Eingabe, EingabeFehler
 
 PRAEFIX = 'nkf_'
@@ -102,6 +102,8 @@ NIE_PER_SCHLUESSEL = frozenset({
     'anmeldung_ausschalten', 'logout', 'huelle_passwort',
     'zugriffsschluessel_auflisten', 'zugriffsschluessel_anlegen',
     'zugriffsschluessel_widerrufen',
+    'geraete_auflisten', 'geraet_abmelden', 'geraet_abholen', 'geraet_erneuern',
+    'geraet_widerrufen', 'geraet_anmelden',
     # Der ganze Bestand auf einmal
     'export_data', 'belege_exportieren', 'umzug_export', 'umzug_pruefen',
     'umzug_uebernehmen', 'umzug_hochladen_beginnen', 'umzug_hochladen_stueck',
@@ -154,7 +156,7 @@ def _utc_sekunde(zeitpunkt: datetime) -> datetime:
     return zeitpunkt.astimezone(timezone.utc).replace(microsecond=0)
 
 
-def aelter_als_das_konto(zeile: ApiSchluessel) -> bool:
+def aelter_als_das_konto(zeile: ApiSchluessel | Geraet) -> bool:
     """Wurde der Schluessel vor seinem Konto angelegt?
 
     Dann gehoerte er einem frueheren Konto mit derselben id: ``user_id`` hat
@@ -170,6 +172,9 @@ def aelter_als_das_konto(zeile: ApiSchluessel) -> bool:
     und ist die Uhr seitdem zurueckgestellt, liegt ein neu angelegter
     Schluessel vor der Anlagezeit des Kontos. Er wird abgelehnt, bis die Uhr
     die Anlagezeit wieder eingeholt hat.
+
+    Dieselbe Regel gilt fuer Geraetetokens (``geraete.verwaist``, Review zu
+    #57): gelesen werden nur ``user`` und ``angelegt_am``.
     """
     konto = zeile.user.created_at if zeile.user is not None else None
     angelegt = zeile.angelegt_am

@@ -200,7 +200,8 @@ async function abmelden() {
         // Netz weg. Die Sitzung liegt beim Server, also trotzdem hingehen:
         // dort faellt der naechste Aufruf sowieso in die Sperre.
     }
-    window.location.assign('/login');
+    // #52: daran erkennt die Desktop-App das Abmelden und loescht ihr Token.
+    window.location.assign('/login?abgemeldet=1');
 }
 window.abmelden = abmelden;
 
@@ -236,7 +237,7 @@ async function zeigeAngemeldetenBenutzer() {
         // ueber die Einrichtung offen.
         const offen = !!daten.ohne_anmeldung;
         ['angemeldeterBenutzer', 'kopf-abmelden', 'konto-liste',
-            'konto-passwort-bereich', 'zugriffsschluessel-karte'].forEach(kennung => {
+            'konto-passwort-bereich', 'zugriffsschluessel-karte', 'geraete-karte'].forEach(kennung => {
             const teil = document.getElementById(kennung);
             if (teil) teil.hidden = offen;
         });
@@ -356,6 +357,7 @@ function initApp() {
     fetchVermieterdaten();
     ladeKonten();
     ladeZugriffsschluessel();
+    ladeGeraete();
     ladeSicherungsStatus();
     serverAnzeige();
     ladeUmzug();
@@ -611,6 +613,7 @@ function initTabs() {
                     fetchVermieterdaten();
                     ladeKonten();
                     ladeZugriffsschluessel();
+                    ladeGeraete();
                     ladeSicherungsStatus();
                     ladeUmzug();
                     ladeGesperrteMieter();
@@ -1771,6 +1774,11 @@ function initBarrierearm() {
 const LEERLAUF_WARNUNG_MS = 5 * 60 * 1000;
 let leerlaufMs = 60 * 60 * 1000;
 let letzteBedienung = Date.now();
+// #52: Mit „Angemeldet bleiben“ meldet die Desktop-App sich nach der Grenze
+// beim nächsten Klick still wieder an. „Sie werden abgemeldet“ stimmte dann
+// nicht, und ginge die Seite selbst zur Anmeldung, lüde sie nach jeder Grenze
+// neu: Das Fenster blitzte im Leerlauf ständig.
+let leerlaufStill = false;
 
 async function initLeerlauf() {
     try {
@@ -1783,6 +1791,7 @@ async function initLeerlauf() {
                 return;
             }
             if (ich.leerlauf_s) leerlaufMs = ich.leerlauf_s * 1000;
+            leerlaufStill = ich.geraet === true;
         }
     } catch (e) {
         // Standard 60 Minuten
@@ -1802,7 +1811,7 @@ async function initLeerlauf() {
 
 function leerlaufPruefen() {
     const hinweis = document.getElementById('leerlauf-hinweis');
-    if (!hinweis) return;
+    if (!hinweis || leerlaufStill) return;
     const still = Date.now() - Math.max(window.nkLetzteAnfrage, letzteBedienung);
     const rest = leerlaufMs - still;
     if (rest <= 0) {
@@ -2742,6 +2751,7 @@ function zeigeEinstellungsgruppe(gruppe) {
     // Phase 54: die Kostenarten-Liste lädt, wenn ihre Gruppe gezeigt wird.
     if (gruppe === 'kostenarten') ladeKostenarten();
     if (gruppe === 'konto') ladeZugriffsschluessel();
+    if (gruppe === 'konto') ladeGeraete();
 }
 window.zeigeEinstellungsgruppe = zeigeEinstellungsgruppe;
 
@@ -6645,6 +6655,55 @@ async function zugriffsschluesselWiderrufen(id) {
         ladeZugriffsschluessel();
     } catch (e) {
         showError(meldungZu(e, 'Der Zugriffsschlüssel konnte nicht gelöscht werden.'));
+    }
+}
+
+// --- Angemeldete Geräte (#52) ---
+// Rechner, auf denen die Desktop-App mit „Angemeldet bleiben“ angemeldet
+// ist. Meldet man das eigene ab, endet auch die Sitzung hier; der Weg über
+// /login?abgemeldet=1 sagt der App, dass sie ihr Token löschen soll.
+
+async function ladeGeraete() {
+    try {
+        const res = await fetch('/api/geraete');
+        if (!res.ok) throw await serverFehler(res);
+        const liste = await res.json();
+        document.getElementById('geraete-zeilen').innerHTML = liste.length === 0
+            ? '<tr><td colspan="5" class="text-muted" style="padding: 8px;">Kein Rechner angemeldet. '
+                + 'Meldet sich die Desktop-App mit „Angemeldet bleiben“ an, steht der Rechner hier.</td></tr>'
+            : liste.map(g => `<tr>
+            <td style="padding: 8px;">${escapeHtml(g.name)}${g.dieses_geraet
+                ? ' <span class="text-muted">(dieses Gerät)</span>' : ''}</td>
+            <td style="padding: 8px;">${escapeHtml(g.konto || '')}</td>
+            <td style="padding: 8px;">${escapeHtml(g.angelegt_am || '')}</td>
+            <td style="padding: 8px;">${escapeHtml(g.zuletzt_benutzt || '')}</td>
+            <td class="spalte-knopf"><button class="btn-secondary" data-name="${escapeHtml(g.name)}"
+                onclick="geraetAbmelden(${Number(g.id)}, ${g.dieses_geraet ? 'true' : 'false'}, this.dataset.name)">Abmelden</button></td>
+        </tr>`).join('');
+    } catch (e) {
+        console.error('Fehler beim Laden der angemeldeten Geräte', e);
+    }
+}
+
+// Der Name kommt über data-name, nicht in den onclick-Text: so braucht er
+// kein Escaping für JavaScript. frage() setzt ihn als Text.
+async function geraetAbmelden(id, dieses, name) {
+    const ja = await frage(dieses
+        ? 'Sie werden auch hier abgemeldet. Beim nächsten Start fragt die App wieder nach dem Passwort.'
+        : `„${name}“ ist sofort abgemeldet. Die App fragt dort beim nächsten Start wieder nach dem Passwort.`,
+    'Abmelden', true, 'Gerät abmelden?');
+    if (!ja) return;
+    try {
+        const res = await fetch(`/api/geraete/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw await serverFehler(res);
+        if (dieses) {
+            window.location.assign('/login?abgemeldet=1');
+            return;
+        }
+        showSuccess('Gerät abgemeldet.');
+        ladeGeraete();
+    } catch (e) {
+        showError(meldungZu(e, 'Das Gerät konnte nicht abgemeldet werden.'));
     }
 }
 
