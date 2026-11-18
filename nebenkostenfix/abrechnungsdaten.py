@@ -331,6 +331,8 @@ def lade_vorgang(tenant_id, start_date, end_date, category_ids=None) -> Vorgang:
         wohnungen=tuple(_wohnung(a) for a in wohnungen),
         mieter_der_immobilie=tuple(_mieter(t) for t in mieter_der_immobilie),
         profile={p.category_id: p.billing_type for p in tenant.cost_profiles},
+        prozentanteile={p.category_id: p.percentage for p in tenant.cost_profiles
+                       if p.billing_type == 'prozent'},
         rechnungen=tuple(_rechnung(i) for i in rechnungen),
         zaehler=tuple(_zaehler(m, staende_je_zaehler.get(m.id, []),
                                auszugstage.get(m.apartment_id, frozenset())

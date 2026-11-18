@@ -4083,19 +4083,29 @@ async function openCostProfileModal(tenantId, tenantName) {
     container.innerHTML = '';
     
     categories.forEach(cat => {
-        const val = currentProfile[cat.id] || 'qm';
+        const entry = currentProfile[cat.id] || 'qm';
+        const val = typeof entry === 'object' ? entry.billing_type : entry;
+        const percentage = typeof entry === 'object' ? entry.percentage : '';
         
         container.innerHTML += `
             <div class="form-group" style="background: var(--bg-hover); padding: 12px; border-radius: 8px;">
                 <label style="margin-bottom: 8px;">${escapeHtml(cat.name)}
                     <i class="ph ph-question feld-hilfe" title="Wählen Sie, wie diese Kostenart auf die Wohnungen verteilt wird. Nach Verbrauch (eigener Zähler) weist die ganze Rechnung der Wohnung zu, deren Zähler sie betrifft."></i></label>
-                <select id="profile-cat-${cat.id}" title="Wie wird diese Kostenart umgelegt?">
+                <select id="profile-cat-${cat.id}" title="Wie wird diese Kostenart umgelegt?" onchange="toggleProfilePercentage(${cat.id})">
                     <option value="qm" ${val === 'qm' ? 'selected' : ''}>Umlage nach Wohnfläche</option>
                     <option value="personen" ${val === 'personen' ? 'selected' : ''}>Umlage nach Personen</option>
+                    <option value="prozent" ${val === 'prozent' ? 'selected' : ''}>Umlage nach Prozentsatz</option>
                     <option value="direkt" ${val === 'direkt' ? 'selected' : ''}>Nach Verbrauch (eigener Zähler)</option>
                     <option value="nur_allgemein" ${val === 'nur_allgemein' ? 'selected' : ''}>Nur Anteil am Allgemeinverbrauch</option>
                     <option value="ignoriert" ${val === 'ignoriert' ? 'selected' : ''}>Wird diesem Mieter nicht berechnet</option>
                 </select>
+                <div id="profile-percentage-group-${cat.id}" ${val === 'prozent' ? '' : 'hidden'}>
+                    <label for="profile-percentage-${cat.id}">Vereinbarter Anteil in %</label>
+                    <input id="profile-percentage-${cat.id}" type="number" min="0" max="100" step="0.01"
+                        value="${escapeHtml(String(percentage))}" ${val === 'prozent' ? 'required' : 'disabled'}>
+                    <small>Tragen Sie den Anteil dieser Mietpartei laut Mietvertrag ein, zum Beispiel 30 für 30 %.
+                        Hinterlegen Sie die übrigen Anteile bei den anderen Mietparteien. Prüfen Sie, dass die Anteile zusammen 100 % ergeben.</small>
+                </div>
             </div>
         `;
     });
@@ -4103,18 +4113,29 @@ async function openCostProfileModal(tenantId, tenantName) {
     document.getElementById('cost-profile-modal').classList.add('active');
 }
 
+function toggleProfilePercentage(categoryId) {
+    const aktiv = document.getElementById(`profile-cat-${categoryId}`).value === 'prozent';
+    document.getElementById(`profile-percentage-group-${categoryId}`).hidden = !aktiv;
+    const input = document.getElementById(`profile-percentage-${categoryId}`);
+    input.disabled = !aktiv;
+    input.required = aktiv;
+}
+
 function closeCostProfileModal() {
     document.getElementById('cost-profile-modal').classList.remove('active');
 }
 
 async function saveCostProfile() {
+    if (!document.getElementById('cost-profile-form').reportValidity()) return;
     const tenantId = document.getElementById('profile-tenant-id').value;
     
     const data = {};
     categories.forEach(cat => {
         const select = document.getElementById(`profile-cat-${cat.id}`);
         if (select) {
-            data[cat.id] = select.value;
+            data[cat.id] = select.value === 'prozent'
+                ? {billing_type: 'prozent', percentage: document.getElementById(`profile-percentage-${cat.id}`).value}
+                : select.value;
         }
     });
     

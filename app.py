@@ -2508,7 +2508,8 @@ def get_tenant_profiles(tenant_id):
     profiles = TenantCostProfile.query.filter_by(tenant_id=tenant_id).all()
     result = {}
     for p in profiles:
-        result[p.category_id] = p.billing_type
+        result[p.category_id] = ({'billing_type': p.billing_type, 'percentage': str(p.percentage)}
+                                 if p.billing_type == 'prozent' else p.billing_type)
     return jsonify(result), 200
 
 @app.route('/api/tenants/<int:tenant_id>/profiles', methods=['POST'])
@@ -2521,11 +2522,13 @@ def save_tenant_profiles(tenant_id):
     profile = kostenprofile(request.get_json(silent=True), namen)
     TenantCostProfile.query.filter_by(tenant_id=tenant_id).delete()
 
-    for cat_id, billing_type in list(profile.items()):
+    for cat_id, wert in list(profile.items()):
+        billing_type = wert['billing_type'] if isinstance(wert, dict) else wert
         eintrag = TenantCostProfile(
             tenant_id=tenant_id,
             category_id=cat_id,
-            billing_type=billing_type
+            billing_type=billing_type,
+            percentage=wert['percentage'] if isinstance(wert, dict) else None
         )
         db.session.add(eintrag)
 

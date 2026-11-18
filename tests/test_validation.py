@@ -799,10 +799,14 @@ def test_keine_englische_pflichtfeldmeldung_mehr():
 # --------------------------------------------------------------------------
 
 
-def test_kostenprofile_nimmt_die_fuenf_arten():
+def test_kostenprofile_nimmt_alle_arten():
+    from decimal import Decimal
     from nebenkostenfix.abrechnungsart import ARTEN
-    roh = {str(nummer): art for nummer, art in enumerate(ARTEN, start=1)}
-    assert kostenprofile(roh) == dict(enumerate(ARTEN, start=1))
+    werte = {nummer: ({'billing_type': art, 'percentage': Decimal('30')}
+                      if art == 'prozent' else art)
+             for nummer, art in enumerate(ARTEN, start=1)}
+    roh = {str(nummer): wert for nummer, wert in werte.items()}
+    assert kostenprofile(roh) == werte
 
 
 def test_kostenprofile_nimmt_leerzeichen_und_grossbuchstaben():
@@ -904,3 +908,28 @@ def test_profilroute_speichert_normiert(auth_client, wohnung):
     assert antwort.status_code == 200
     gespeichert = TenantCostProfile.query.filter_by(tenant_id=mieter_id).one()
     assert gespeichert.billing_type == 'direkt'
+
+
+def test_prozentprofil_speichern_laden_und_ungueltige_aenderung(auth_client, wohnung):
+    from decimal import Decimal
+    from nebenkostenfix.models import TenantCostProfile
+
+    _, wng = wohnung
+    kat = _kostenart()
+    mieter_id = auth_client.post('/api/tenants', json={
+        'name': 'Prozentpartei', 'apartment_id': wng.id,
+        'move_in_date': '2025-01-01'}).get_json()['id']
+    url = f'/api/tenants/{mieter_id}/profiles'
+    profil = {str(kat.id): {'billing_type': 'prozent', 'percentage': '30.25'}}
+    assert auth_client.post(url, json=profil).status_code == 200
+    assert auth_client.get(url).get_json() == profil
+    eintrag = TenantCostProfile.query.filter_by(tenant_id=mieter_id).one()
+    assert eintrag.percentage == Decimal('30.25')
+    from nebenkostenfix.abrechnungsdaten import lade_vorgang
+    vorgang = lade_vorgang(mieter_id, '2025-01-01', '2025-12-31')
+    assert vorgang.prozentanteile[kat.id] == Decimal('30.25')
+    assert auth_client.post(url, json={str(kat.id): {
+        'billing_type': 'prozent', 'percentage': '101'}}).status_code == 400
+    assert auth_client.get(url).get_json() == profil
+    assert auth_client.post(url, json={str(kat.id): 'qm'}).status_code == 200
+    assert TenantCostProfile.query.filter_by(tenant_id=mieter_id).one().percentage is None

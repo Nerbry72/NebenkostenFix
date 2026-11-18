@@ -20,7 +20,7 @@ Ein Absturz waere harmlos gewesen: ein Absturz wird bemerkt. Eine Abrechnung,
 der eine Kostenart fehlt, sieht vollstaendig aus. Der Vermieter merkt es erst,
 wenn er die Summe mit seinen Rechnungen vergleicht -- also vermutlich nie.
 
-Hier stehen die fuenf Werte samt der Beschriftung, die der Vermieter liest,
+Hier stehen die sechs Werte samt der Beschriftung, die der Vermieter liest,
 und die Pruefung, die alle drei Wege benutzen: der Schreibweg in ``app.py``,
 das Schema (``models.py`` traegt dieselbe Liste als CHECK-Bedingung) und der
 Rechenkern, der einen unbekannten Wert jetzt ablehnt statt ihn zu
@@ -55,6 +55,7 @@ __all__ = [
 ARTEN = {
     'qm': 'Umlage nach Wohnfläche',
     'personen': 'Umlage nach Personen',
+    'prozent': 'Umlage nach Prozentsatz',
     'direkt': 'Nach Verbrauch (eigener Zähler)',
     'nur_allgemein': 'Nur Anteil am Allgemeinverbrauch',
     'ignoriert': 'Wird diesem Mieter nicht berechnet',
@@ -76,7 +77,7 @@ ERSATZ = 'ignoriert'
 
 
 class AbrechnungsartFehler(ValueError):
-    """Ein Wert, den keine der fuenf Arten kennt."""
+    """Ein Wert, den keine der sechs Arten kennt."""
 
 
 def aufzaehlung() -> str:
@@ -105,7 +106,7 @@ def normiere(wert) -> str:
 
 
 def ist_gueltig(wert) -> bool:
-    """Ob ``wert`` **genau so** eine der fuenf Arten ist -- ohne Normieren.
+    """Ob ``wert`` **genau so** eine der sechs Arten ist -- ohne Normieren.
 
     Fuer Stellen, die nachsehen wollen, was wirklich gespeichert ist:
     ``'Qm'`` ist nicht gueltig, auch wenn ``normiere()`` es retten wuerde.
@@ -139,7 +140,7 @@ def pruefe(wert, *, kostenart: str | None = None) -> str:
         ... except AbrechnungsartFehler as fehler:
         ...     print(fehler)
         Die Kostenart „Wasser“ hat die unbekannte Abrechnungsart „verbrauch“. \
-Erlaubt sind: qm, personen, direkt, nur_allgemein, ignoriert.
+Erlaubt sind: qm, personen, prozent, direkt, nur_allgemein, ignoriert.
     """
     normiert = normiere(wert)
     if ist_gueltig(normiert):

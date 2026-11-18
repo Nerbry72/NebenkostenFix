@@ -42,7 +42,7 @@
  {
   "schluessel": "kostenprofil",
   "begriff": "Kostenprofil",
-  "satz": "Für jeden Mieter und jede Kostenart die Angabe, wie seine Wohnung beteiligt ist: nach Wohnfläche, nach Personen, nach eigenem Zähler oder gar nicht."
+  "satz": "Für jeden Mieter und jede Kostenart die Angabe, wie seine Wohnung beteiligt ist: nach Wohnfläche, nach Personen, nach vereinbartem Prozentsatz, nach eigenem Zähler oder gar nicht."
  },
  {
   "schluessel": "leerstand",

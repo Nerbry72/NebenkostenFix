@@ -475,6 +475,7 @@ class Vorgang:
     wohnungen: tuple = ()
     mieter_der_immobilie: tuple = ()
     profile: Mapping[int, str] = field(default_factory=dict)
+    prozentanteile: Mapping[int, Decimal] = field(default_factory=dict)
     rechnungen: tuple = ()
     zaehler: tuple = ()
     zahlungen: tuple = ()
@@ -3315,6 +3316,20 @@ def rechne(vorgang: Vorgang) -> dict:
             if anteil:
                 vermieter_positionen.append(anteil)
 
+        elif billing_type == 'prozent':
+            from nebenkostenfix.prozent import pruefe_prozent
+
+            try:
+                prozent = pruefe_prozent(vorgang.prozentanteile.get(cat.id))
+            except ValueError as fehler:
+                raise BillingDataError(f'Kostenart „{cat.name}“: {fehler}') from None
+            tenant_cost = prorated_invoice_amount * prozent / Decimal(100)
+            description = f"Umlage nach vereinbartem Prozentsatz ({zahl_text(prozent)} %)"
+            rechenweg.extend(rechenweg_rechnungsbetrag(
+                inv.betrag, overlap_days, invoice_days, prorated_invoice_amount))
+            rechenweg.append(Schritt(
+                f"vereinbarter Anteil {zahl_text(prozent)} %", dec(tenant_cost)))
+
         elif billing_type == 'personen':
             # R-NUM-04: verteilt wird nach Personentagen, nicht nach der Zahl
             # der Mietverhaeltnisse. Gewichtet wird der **volle** Betrag der
@@ -3581,7 +3596,7 @@ def rechne(vorgang: Vorgang) -> dict:
         # der auf 0,00 rundet, bleibt draussen -- eine Zeile "-0,00 EUR" sagt
         # nichts. Positive Anteile stehen wie bisher.
         if (tenant_cost > 0 or runde(tenant_cost) < 0
-                or billing_type in ['direkt', 'ignoriert', 'nur_allgemein']):
+                or billing_type in ['direkt', 'ignoriert', 'nur_allgemein', 'prozent']):
             sub_items = []
 
             # Die Unterposten folgen dem Weg, auf dem die Beschreibung entstand
@@ -3627,7 +3642,7 @@ def rechne(vorgang: Vorgang) -> dict:
                     'description': description,
                     'cost': runde(tenant_cost)
                 })
-            elif billing_type == 'qm':
+            elif billing_type in ('qm', 'prozent'):
                 sub_items.append({
                     'type': 'allgemein',
                     'description': description,
