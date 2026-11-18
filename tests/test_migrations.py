@@ -51,7 +51,8 @@ BASISREVISION = "63738d5329b4"
 # Phase 58: ``f2a6c8b4d013`` fuegt ``tenants.anschrift``,
 # ``tenants.zustellanschrift`` und ``vermieterdaten.anschrift`` hinzu (Issue #35).
 # ``db48fb4e8716`` legt die Tabelle ``api_schluessel`` an (Zugriffsschluessel).
-KOPFREVISION = "db48fb4e8716"
+# Vertragliche Prozentumlage: Anteil im Kostenprofil.
+KOPFREVISION = "a6d8f1c3b902"
 
 
 def _umgebung(dbdatei: Path, tmp_path: Path) -> dict:
@@ -3003,3 +3004,52 @@ def test_eine_sicherung_von_vor_den_schluesseln_laesst_sich_einspielen(tmp_path)
     assert ergebnis["schluessel"] == 0
     assert ergebnis["konten"] == ["verwalter"]
     assert ergebnis["haeuser"] == ["Musterhaus"]
+
+
+def test_prozentmigration_erhaelt_profile_und_prueft_anteile(tmp_path):
+    datei = tmp_path / 'prozent.db'
+    stand = _lauf('''
+import json
+import app as anwendung
+from flask_migrate import downgrade, upgrade
+from sqlalchemy import text
+from nebenkostenfix.models import db
+with anwendung.app.app_context():
+    downgrade(revision="db48fb4e8716")
+    db.session.execute(text("INSERT INTO tenant_cost_profiles (tenant_id, category_id, billing_type) VALUES (1, 1, 'personen')"))
+    db.session.commit()
+    upgrade()
+    zeile = db.session.execute(text("SELECT billing_type, percentage FROM tenant_cost_profiles")).one()
+    print(json.dumps(list(zeile)))
+''', datei, tmp_path)
+    assert stand == ['personen', None]
+
+    import sqlite3
+    import pytest
+    with sqlite3.connect(datei) as verbindung:
+        for art, prozent in [('prozent', None), ('prozent', -1),
+                             ('prozent', 101), ('qm', 30)]:
+            with pytest.raises(sqlite3.IntegrityError):
+                verbindung.execute(
+                    'INSERT INTO tenant_cost_profiles '
+                    '(tenant_id, category_id, billing_type, percentage) VALUES (1, 1, ?, ?)',
+                    (art, prozent))
+        verbindung.execute(
+            "INSERT INTO tenant_cost_profiles (tenant_id, category_id, billing_type, percentage) "
+            "VALUES (1, 1, 'prozent', 30.25)")
+        verbindung.commit()
+    # Rückbau darf eine aktive Vereinbarung nicht in eine andere Umlage umdeuten.
+    ergebnis = subprocess.run(
+        [sys.executable, '-c', '''
+import app as anwendung
+from flask_migrate import downgrade
+with anwendung.app.app_context():
+    downgrade(revision="db48fb4e8716")
+'''], cwd=WURZEL, env=_umgebung(datei, tmp_path),
+        capture_output=True, text=True, timeout=180)
+    assert ergebnis.returncode != 0
+    assert 'prozentualen Kostenprofile' in ergebnis.stderr
+    with sqlite3.connect(datei) as verbindung:
+        assert verbindung.execute(
+            "SELECT percentage FROM tenant_cost_profiles WHERE billing_type = 'prozent'"
+        ).fetchone() == (30.25,)

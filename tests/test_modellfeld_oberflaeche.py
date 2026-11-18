@@ -91,6 +91,7 @@ OBERFLAECHE = {
         'tenant_id': '/profiles`',
         'category_id': 'profile-cat-',
         'billing_type': 'profile-cat-',
+        'percentage': 'profile-percentage-',
     },
     'CostInvoice': {
         'category_id': 'id="invoice-category"',
