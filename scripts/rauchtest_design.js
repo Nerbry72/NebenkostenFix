@@ -1138,6 +1138,10 @@ async function anschriftenPruefen() {
         /formData\.append\('anschrift', document\.getElementById\('tenant-anschrift'\)\.value\)/.test(speichern)
         && /formData\.append\('zustellanschrift', document\.getElementById\('tenant-zustellanschrift'\)\.value\)/.test(speichern)
         && !/if \([a-zA-Z]+\) formData\.append\('anschrift'/.test(speichern));
+    // Befund vom 17.11.: dasselbe fuer den Auszug -- nur so laesst er sich entfernen.
+    pruefe('Mieterdialog: das Auszugsdatum geht immer mit, auch leer',
+        /formData\.append\('move_out_date', moveOut\)/.test(speichern)
+        && !/if \(moveOut\) formData\.append/.test(speichern));
 
     const laden = funktion('fetchVermieterdaten');
     const sichern = funktion('saveVermieterdaten');

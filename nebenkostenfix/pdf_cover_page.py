@@ -97,6 +97,7 @@ def build_cover_page_elements(
     tenant_anrede=None,
     mieter_anschrift=None,
     vermieter_anschrift=None,
+    girocode=(),
 ):
     """Blatt 1 als Liste von Flowables, mit Seitenumbruch am Ende.
 
@@ -111,6 +112,9 @@ def build_cover_page_elements(
         vermieter_name: Name des Vermieters (NK-210); leer zeigt die Rolle
         mieter_anschrift: die Anschrift, an die dieses Blatt geht (Phase 58)
         vermieter_anschrift: die eigene Anschrift als Absender
+        girocode: Flowables des GiroCodes, die unter „Ihr Anteil“ stehen
+            sollen; leer (Standard) heißt, er steht beim Zahlungshinweis
+            oder gar nicht
 
     Returns:
         Liste von Flowables, mit einem PageBreak am Ende
@@ -192,6 +196,8 @@ def build_cover_page_elements(
          False, None),
         (bezeichnung, pdf_stil.geld(betrag), True, farbe),
     ], s, saetze, breite=300, ausrichtung='LEFT', schlicht=True))
+    # Wahlweise der GiroCode direkt unter dem Betrag (Layout „deckblatt“).
+    elemente.extend(girocode)
     elemente.append(Spacer(1, pdf_stil.XL))
 
     # --- Gruß und Unterschrift ---

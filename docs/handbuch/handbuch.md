@@ -219,6 +219,14 @@ Die **Einstellungen** sind in Gruppen geteilt:
   Sie auch die Liste durch und löschen Sie Schlüssel, die Sie nicht kennen. Spielen Sie eine
   ältere Sicherung ein, kommen auch Schlüssel zurück, die Sie danach gelöscht haben: Sehen Sie
   die Liste danach ebenfalls durch.
+  Unter **Angemeldete Geräte** stehen die Rechner, auf denen die Desktop-App mit einem Server
+  angemeldet bleibt. Das wählen Sie bei der Anmeldung in der App mit dem Häkchen „Angemeldet
+  bleiben“, im Browser gibt es das Häkchen nicht. Kreuzen Sie es nur an, wenn sonst niemand den
+  Rechner benutzt. Mit **Abmelden** fragt die App dort beim nächsten Start wieder nach dem
+  Passwort. Jedes Konto sieht alle Rechner und kann jeden abmelden. Ein Rechner, der 30 Tage
+  lang nicht benutzt wird, ist von selbst abgemeldet und verschwindet aus der Liste. Ändern
+  Sie Ihr Passwort, sind alle Rechner Ihres Kontos abgemeldet. Nach dem Einspielen einer
+  Sicherung melden Sie sich auf jedem Rechner einmal neu an.
 - **Updates**: **Automatisch nach Updates suchen**, siehe
   [Updates](../../README.md#updates).
 - **Datenschutz**: **Gesperrte Mietverhältnisse** sind gelöschte Mieter, deren

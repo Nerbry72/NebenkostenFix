@@ -1,13 +1,13 @@
 """Vertraglicher Prozentsatz im Kostenprofil.
 
 Revision ID: a6d8f1c3b902
-Revises: db48fb4e8716
+Revises: fc8938938dce
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = 'a6d8f1c3b902'
-down_revision = 'db48fb4e8716'
+down_revision = 'fc8938938dce'
 branch_labels = None
 depends_on = None
 

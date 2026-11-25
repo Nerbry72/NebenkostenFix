@@ -131,7 +131,7 @@ PYOBJC = {'pyobjc-core', 'pyobjc-framework-Cocoa', 'pyobjc-framework-Quartz',
 
 
 @pytest.mark.parametrize('plattform, erwartet', [
-    ('win32', {'waitress', 'pywebview', 'pyinstaller'}),    # wie bisher
+    ('win32', {'waitress', 'pywebview', 'pyinstaller', 'keyring'}),    # #52: keyring nur unter Windows
     ('darwin', {'waitress', 'pywebview', 'pyinstaller'} | PYOBJC),
     ('linux', {'waitress'}),
 ])

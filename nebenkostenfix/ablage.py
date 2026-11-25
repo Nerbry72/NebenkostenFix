@@ -31,8 +31,8 @@ Der vorhandene Bestand wandert beim Start (``ablage_migration.py``).
 
 Faellt die Ablage aus, ist das kein Grund, die Anwendung nicht zu starten:
 das Basisverzeichnis wird beim Anlegen des Handlers nur versucht, ein
-Fehlschlag landet als Warnung im Protokoll. delete_file() lehnt Pfade mit
-'..' oder fuehrendem Schraegstrich ab.
+Fehlschlag landet als Warnung im Protokoll. delete_file() loest den Pfad
+wie das Ausliefern per realpath auf und loescht nur im Belegordner.
 """
 
 import logging
@@ -181,22 +181,29 @@ class Ablage:
         return self._ablegen(file, date.today().year, ext), self.anzeigename(file, ext)
 
     def delete_file(self, relative_path):
-        """Loescht eine Datei der Ablage per relativem Pfad."""
-        if not relative_path: return False
-        # security check to prevent path traversal
-        if '..' in relative_path or relative_path.startswith('/'):
+        """Loescht eine Datei der Ablage; True nur, wenn sie geloescht wurde.
+
+        Der Pfad kommt aus der Datenbank (relativ, beim Altbestand auch
+        absolut) und wird wie beim Ausliefern ueber
+        ``uploads.pfad_aufloesen`` aufgeloest: ``realpath``, dann muss er per
+        ``commonpath`` im Belegordner liegen. Bis zu einer Durchsicht
+        stand hier nur ein Blick auf ``..`` und einen fuehrenden
+        Schraegstrich -- ein verknuepfter Ordner fuehrte hinaus, und unter
+        Windows verwarf ``os.path.join`` die Wurzel bei ``C:\\...``, UNC-Pfaden
+        und ``\\Ordner``. Was ausserhalb liegt, fehlt oder keine Datei ist,
+        bleibt unberuehrt (False).
+        """
+        from nebenkostenfix.uploads import pfad_aufloesen
+
+        pfad = pfad_aufloesen(self.wurzel, relative_path)
+        if pfad is None:
             return False
-            
-        full_path = os.path.join(self.wurzel, relative_path)
-        if os.path.exists(full_path):
-            try:
-                os.remove(full_path)
-                return True
-            except Exception:
-                protokoll.warning('Datei nicht loeschbar: %s', full_path,
-                                  exc_info=True)
-                return False
-        return False
+        try:
+            os.remove(pfad)
+            return True
+        except Exception:
+            protokoll.warning('Datei nicht loeschbar: %s', pfad, exc_info=True)
+            return False
 
     def save_billing_report(self, file, property_name, apartment_name, tenant_name):
         """Erzeugte Abrechnung; liefert (relativer Pfad, Anzeigename)."""

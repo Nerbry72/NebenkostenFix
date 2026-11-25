@@ -34,6 +34,12 @@ Anmeldung, Ersteinrichtung und Konto -- alles in auth.py, nicht hier
   GET         /api/zugriffsschluessel                      -> zugriffsschluessel_auflisten
   POST        /api/zugriffsschluessel                      -> zugriffsschluessel_anlegen
   DELETE      /api/zugriffsschluessel/<int:id>             -> zugriffsschluessel_widerrufen
+  GET         /api/geraete                                 -> geraete_auflisten
+  DELETE      /api/geraete/<int:id>                        -> geraet_abmelden
+  POST        /api/geraete/abholen                         -> geraet_abholen
+  POST        /api/geraete/erneuern                        -> geraet_erneuern
+  POST        /api/geraete/widerrufen                      -> geraet_widerrufen
+  GET         /geraete/anmelden                            -> geraet_anmelden
   GET,POST    /huelle/passwort                             -> huelle_passwort
 
 Oberflaeche und Betrieb
@@ -117,6 +123,18 @@ Hilfe (NK-158) -- hilfe.py
 
   Die Kurzanleitung zum Ausdrucken (zehn Seiten, große Schrift). Der
   Hilfebereich selbst ist statisch (index.html, static/hilfe-begriffe.json).
+
+PDF-Layout -- pdf_layout.py
+---------------------------
+  GET         /api/einstellungen/pdf-layout                -> pdf_layout_anzeigen
+  PUT         /api/einstellungen/pdf-layout                -> pdf_layout_speichern
+  DELETE      /api/einstellungen/pdf-layout                -> pdf_layout_zuruecksetzen
+  POST        /api/einstellungen/pdf-layout/vorschau       -> pdf_layout_vorschau
+
+  Welche Blöcke die Abrechnungs-PDF zeigt, in welcher Folge, wo der
+  GiroCode steht. Speichern prüft streng (400 mit Meldung), Erzeugen lädt
+  tolerant. Die Vorschau rechnet eine erfundene Beispielimmobilie im
+  Speicher und speichert nichts.
 
 Umzugspaket (NK-164) -- alles in umzug.py
 ------------------------------------------
@@ -318,6 +336,8 @@ from nebenkostenfix.backup import init_backup
 from nebenkostenfix.umzug import init_umzug
 from nebenkostenfix.tabellenimport import ZAHLUNGSARTEN, init_tabellenimport
 from nebenkostenfix.hilfe import init_hilfe
+from nebenkostenfix.pdf_layout import (
+    aus_einstellungen as pdf_layout_aus_einstellungen, init_pdf_layout)
 from nebenkostenfix.jahresabrechnung import init_jahresabrechnung
 from nebenkostenfix.kategorien import init_kategorien
 from flask_migrate import Migrate
@@ -472,6 +492,8 @@ init_umzug(app)
 init_tabellenimport(app)
 # NK-158: Kurzanleitung als PDF.
 init_hilfe(app)
+# Layout der Abrechnungs-PDF: Blöcke, Reihenfolge, GiroCode, Vorschau.
+init_pdf_layout(app)
 # NK-160: Stand eines Abrechnungsjahres für den Assistenten.
 init_jahresabrechnung(app)
 
@@ -1259,15 +1281,61 @@ def _zustellanschrift(mieter, stichtag=None):
         ausgezogen=anschriften.ist_ausgezogen(mieter.move_out_date, heute))
 
 
+def _vorhandene_wohnung(eingabe, zuruecknehmen=False):
+    """Die Wohnung aus ``apartment_id``, oder eine Absage am Feld.
+
+    SQLite setzt den Fremdschluessel ohne PRAGMA foreign_keys nicht durch.
+    Ein Mieter an einer freien Nummer stuende in keiner Wohnung, seine
+    Vorauszahlungen brachen mit 500 ab, und die naechste Wohnung, die diese
+    Nummer bekommt, erbte ihn samt Abrechnung und Zahlungen. Dasselbe Muster
+    wie bei den Zahlungen ('Diesen Mieter gibt es nicht.').
+    """
+    wohnung = db.session.get(Apartment, eingabe.ganzzahl('apartment_id', pflicht=True))
+    if wohnung is None:
+        if zuruecknehmen:
+            db.session.rollback()
+        raise EingabeFehler('Die angegebene Wohnung gibt es nicht.', 'apartment_id')
+    return wohnung
+
+
+def _mietzeit_pruefen(einzug, auszug, feld='move_out_date', zuruecknehmen=False):
+    """Absage, wenn der Auszug vor dem Einzug liegt (Befund vom 17.11.).
+
+    Auszug am Tag des Einzugs ist erlaubt. ``feld`` ist das Feld, das die
+    Anfrage verschoben hat: Wer nur den Einzug hinter einen gespeicherten
+    Auszug schiebt, soll am Einzug hören, was nicht geht. Der Tabellenimport
+    prüft dasselbe (``tabellenimport._zeile_mieter``).
+    """
+    if einzug is None or auszug is None or auszug >= einzug:
+        return
+    if zuruecknehmen:
+        db.session.rollback()
+    einzug_text, auszug_text = einzug.strftime('%d.%m.%Y'), auszug.strftime('%d.%m.%Y')
+    if feld == 'move_in_date':
+        raise EingabeFehler(
+            f'Das Einzugsdatum ({einzug_text}) liegt nach dem Auszug '
+            f'({auszug_text}). Bitte das Auszugsdatum mit ändern oder leeren.',
+            feld)
+    raise EingabeFehler(
+        f'Das Auszugsdatum ({auszug_text}) liegt vor dem Einzug '
+        f'({einzug_text}). Auszug am Tag des Einzugs geht, früher nicht.',
+        feld)
+
+
 @app.route('/api/tenants', methods=['POST'])
 def create_tenant():
     eingabe = Eingabe.aus_request()
+    wohnung = _vorhandene_wohnung(eingabe)
+    name = eingabe.text('name', pflicht=True, maxlaenge=200)
+    einzug = eingabe.datum('move_in_date', pflicht=True)
+    auszug = eingabe.datum('move_out_date')
+    _mietzeit_pruefen(einzug, auszug)
 
     new_tenant = Tenant(
-        apartment_id=eingabe.ganzzahl('apartment_id', pflicht=True),
-        name=eingabe.text('name', pflicht=True, maxlaenge=200),
-        move_in_date=eingabe.datum('move_in_date', pflicht=True),
-        move_out_date=eingabe.datum('move_out_date'),
+        apartment_id=wohnung.id,
+        name=name,
+        move_in_date=einzug,
+        move_out_date=auszug,
         last_billed_until=eingabe.datum('last_billed_until'),
         anrede=_anrede_aus(eingabe),
         anschrift=_anschrift_aus(eingabe, 'anschrift'),
@@ -1278,12 +1346,7 @@ def create_tenant():
 
     vertrag = eingabe.datei('contract_file')
     if vertrag:
-        apt = Apartment.query.get(new_tenant.apartment_id)
-        if apt is None:
-            db.session.rollback()
-            raise EingabeFehler(
-                'Die angegebene Wohnung gibt es nicht.', 'apartment_id')
-        contract_path = nas_handler.save_tenant_contract(vertrag, apt.property.name, apt.name, new_tenant.name)
+        contract_path = nas_handler.save_tenant_contract(vertrag, wohnung.property.name, wohnung.name, new_tenant.name)
         new_tenant.contract_path = contract_path
 
     db.session.commit()
@@ -1340,16 +1403,26 @@ def update_delete_tenant(id):
     if eingabe.vorhanden('name'):
         tenant.name = eingabe.text('name', pflicht=True, maxlaenge=200)
     if eingabe.vorhanden('apartment_id'):
-        tenant.apartment_id = eingabe.ganzzahl('apartment_id', pflicht=True)
+        # Der Name oben kann schon gesetzt (und beim Laden der Wohnung
+        # mitgeschrieben) sein; die Absage nimmt ihn mit zurueck.
+        tenant.apartment_id = _vorhandene_wohnung(eingabe, zuruecknehmen=True).id
     # Ein Pflichtdatum, das dasteht, muss lesbar sein. Bis NK-028 schluckte
     # ein except ValueError: pass das kaputte Datum und antwortete 200, ohne
     # etwas geaendert zu haben.
+    einzug, auszug = tenant.move_in_date, tenant.move_out_date
     if eingabe.vorhanden('move_in_date'):
-        tenant.move_in_date = eingabe.datum('move_in_date', pflicht=True)
+        einzug = eingabe.datum('move_in_date', pflicht=True)
     # Auszug und Abrechnungsstand duerfen leer geschickt werden, das raeumt
     # sie aus. Etwas Unlesbares darin ist trotzdem eine Absage.
     if eingabe.vorhanden('move_out_date'):
-        tenant.move_out_date = eingabe.datum('move_out_date')
+        auszug = eingabe.datum('move_out_date')
+    # Geprueft wird der Stand nach der Anfrage, nicht der alte: wer beide
+    # Daten zusammen verschiebt, darf das. Die Absage nimmt Name und Wohnung
+    # aus derselben Anfrage mit zurueck.
+    _mietzeit_pruefen(
+        einzug, auszug, zuruecknehmen=True,
+        feld='move_out_date' if eingabe.vorhanden('move_out_date') else 'move_in_date')
+    tenant.move_in_date, tenant.move_out_date = einzug, auszug
     if eingabe.vorhanden('last_billed_until'):
         tenant.last_billed_until = eingabe.datum('last_billed_until')
     if eingabe.vorhanden('anrede'):
@@ -1380,17 +1453,67 @@ def update_delete_tenant(id):
                     raise
 
     vertrag = eingabe.datei('contract_file')
+    alter_vertrag = neuer_vertrag = None
     if vertrag:
         apt = Apartment.query.get(tenant.apartment_id)
         if apt is None:
             db.session.rollback()
             raise EingabeFehler(
                 'Die angegebene Wohnung gibt es nicht.', 'apartment_id')
-        contract_path = nas_handler.save_tenant_contract(vertrag, apt.property.name, apt.name, tenant.name)
-        tenant.contract_path = contract_path
+        alter_vertrag = tenant.contract_path
+        neuer_vertrag = nas_handler.save_tenant_contract(vertrag, apt.property.name, apt.name, tenant.name)
+        tenant.contract_path = neuer_vertrag
 
-    db.session.commit()
+    _festschreiben_mit_neuer_datei(neuer_vertrag)
+    # Erst nach dem Commit: scheitert er, zeigt die Zeile noch auf den alten
+    # Vertrag, und der muss dann noch da sein.
+    if alter_vertrag and alter_vertrag != neuer_vertrag:
+        _ersetzte_datei_loeschen(alter_vertrag)
     return jsonify({'message': 'Tenant updated'}), 200
+
+
+def _festschreiben_mit_neuer_datei(neuer_pfad):
+    """Commit; scheitert er, verschwindet die eben abgelegte Datei wieder.
+
+    Die neue Datei liegt vor dem Commit schon im Belegordner. Scheitert er,
+    zeigt keine Zeile auf sie, und sie laege verwaist herum -- bei einem
+    Mietvertrag ein personenbezogenes Dokument, das keine Auskunft und keine
+    Loeschung mehr findet (Befund aus einer Durchsicht). Der Fehler des Commits geht
+    danach unveraendert weiter; laesst sich die Datei nicht entfernen, sagt
+    das Protokoll welche.
+    """
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        if neuer_pfad:
+            try:
+                nas_handler.delete_file(neuer_pfad)
+            except Exception:
+                protokoll.warning('Neue Datei blieb im Belegordner liegen: %s',
+                                  neuer_pfad, exc_info=True)
+        raise
+
+
+def _ersetzte_datei_loeschen(relativer_pfad):
+    """Raeumt eine ersetzte Datei aus dem Belegordner (Datenschutz).
+
+    Ein ersetzter Mietvertrag oder Sammelbeleg blieb vorher liegen bzw.
+    verschwand schon vor dem Commit. Aufzurufen erst nach dem Commit: kein
+    Verweis zeigt mehr auf die Datei, keine Auskunft und keine Loeschung
+    (NK-078) faende sie. Zeigt eine andere Zeile noch auf die Datei, bleibt
+    sie. Die Aenderung selbst ist zu diesem Zeitpunkt schon festgeschrieben;
+    ein Fehler beim Aufraeumen wird protokolliert und laesst die Anfrage
+    gelingen.
+    """
+    from nebenkostenfix import backup
+    try:
+        if backup.pfad_verwiesen(relativer_pfad):
+            return
+        nas_handler.delete_file(relativer_pfad)
+    except Exception:
+        protokoll.warning('Ersetzte Datei blieb im Belegordner liegen: %s',
+                          relativer_pfad, exc_info=True)
 
 @app.route('/api/tenants/<int:id>/contract', methods=['GET'])
 def get_tenant_contract(id):
@@ -1967,6 +2090,27 @@ def _anlage_pruefen(heizungsanlage_id, property_id):
             'Der Zähler kann nur eine Anlage derselben Immobilie messen.',
             'heizungsanlage_id')
 
+
+def _wohnung_pruefen(property_id, apartment_id):
+    """Immobilie gibt es, und die Wohnung (falls eine) liegt in ihr.
+
+    SQLite setzt den Fremdschluessel ohne PRAGMA nicht durch: vorher hing ein
+    Zaehler an einer Wohnung aus einem anderen Haus oder an einer Nummer, die
+    es nicht gibt. Ohne Wohnung ist es ein Hauszaehler, das bleibt erlaubt.
+    """
+    if db.session.get(Property, property_id) is None:
+        raise EingabeFehler('Die angegebene Immobilie gibt es nicht.', 'property_id')
+    if apartment_id is None:
+        return
+    wohnung = db.session.get(Apartment, apartment_id)
+    if wohnung is None:
+        raise EingabeFehler('Die angegebene Wohnung gibt es nicht.', 'apartment_id')
+    if wohnung.property_id != property_id:
+        raise EingabeFehler(
+            'Der Zähler kann nur einer Wohnung derselben Immobilie gehören.',
+            'apartment_id')
+
+
 def _einheit_am_zaehler(zaehler):
     """Die Masseinheit, die dieser Zaehler anzeigt (Phase 55).
 
@@ -2020,6 +2164,7 @@ def create_meter():
         einheit=_zaehlereinheit(
             eingabe, eingabe.ganzzahl('category_id', pflicht=True)),
     )
+    _wohnung_pruefen(new_meter.property_id, new_meter.apartment_id)
     _anlage_pruefen(new_meter.heizungsanlage_id, new_meter.property_id)
     db.session.add(new_meter)
     db.session.commit()
@@ -2032,9 +2177,12 @@ def update_meter(id):
 
     Immobilie, Wohnung und Hauptzaehler bleiben: sie bestimmen, wessen
     Verbrauch der Zaehler misst. Wer das aendern will, legt einen neuen an.
+    Kommen Immobilie oder Wohnung trotzdem mit, und zwar anders als bisher,
+    ist das ein 400 statt ein stilles 200 ohne Wirkung.
     """
     m = Meter.query.get_or_404(id)
     eingabe = Eingabe.aus_request()
+    _zuordnung_bleibt(eingabe, m)
     if eingabe.vorhanden('meter_number'):
         m.meter_number = eingabe.text('meter_number', pflicht=True, maxlaenge=100)
     if eingabe.vorhanden('ort'):
@@ -2057,9 +2205,40 @@ def update_meter(id):
         m.heizungsanlage_id = eingabe.ganzzahl('heizungsanlage_id')
     if eingabe.vorhanden('einheit'):
         m.einheit = _zaehlereinheit(eingabe, m.category_id)
-        _anlage_pruefen(m.heizungsanlage_id, m.property_id)
+    # Immer, nicht nur mit einheit: sonst setzte ein PUT allein mit
+    # heizungsanlage_id die Anlage eines fremden Hauses ungeprueft.
+    _anlage_pruefen(m.heizungsanlage_id, m.property_id)
     db.session.commit()
     return jsonify({'id': m.id}), 200
+
+
+def _zuordnung_bleibt(eingabe, m):
+    """Absage, wenn ein PUT den Zaehler in Immobilie oder Wohnung verschoebe.
+
+    Dieselben Werte noch einmal zu schicken ist erlaubt und wird nicht
+    geprueft: sonst bekaeme ein Altzaehler, der durch den frueheren Fehler an
+    einer hausfremden Wohnung haengt, bei jedem Speichern ein 400. Erst wenn
+    sich etwas aendert, dieselbe Pruefung wie beim Anlegen -- eine fremde oder
+    unbekannte Wohnung bekommt dieselbe Meldung --, dann die Regel aus NK-258,
+    dass beides beim Bearbeiten bleibt.
+    """
+    if not (eingabe.vorhanden('property_id') or eingabe.vorhanden('apartment_id')):
+        return
+    property_id = (eingabe.ganzzahl('property_id', pflicht=True)
+                   if eingabe.vorhanden('property_id') else m.property_id)
+    apartment_id = (eingabe.ganzzahl('apartment_id')
+                    if eingabe.vorhanden('apartment_id') else m.apartment_id)
+    if (property_id, apartment_id) == (m.property_id, m.apartment_id):
+        return
+    _wohnung_pruefen(property_id, apartment_id)
+    if property_id != m.property_id:
+        raise EingabeFehler(
+            'Ein Zähler bleibt bei seiner Immobilie. Für eine andere '
+            'Immobilie legen Sie bitte einen neuen Zähler an.', 'property_id')
+    if apartment_id != m.apartment_id:
+        raise EingabeFehler(
+            'Ein Zähler bleibt bei seiner Wohnung. Für eine andere '
+            'Wohnung legen Sie bitte einen neuen Zähler an.', 'apartment_id')
 
 
 # Was _ablesung_pruefen am Stand bemaengelt, heisst beim Wechsel Endstand.
@@ -2226,6 +2405,20 @@ def _ablesung_pruefen(meter_id: int, datum: date, wert: float, wert_nt, eigene_i
     return None
 
 
+def _nt_stand_pruefen(meter, wert_nt, bisher=None):
+    """Ein NT-Stand gehoert nur an einen Zweitarifzaehler -- hart, ohne Rueckfrage.
+
+    Der Kern zaehlt ``value + value_nt`` als Stand; am Eintarifzaehler landete
+    der NT-Wert also im Verbrauch. Der Tabellenimport weist das schon ab. Ein
+    leeres Feld und ein unveraendert mitgeschickter Altwert (``bisher``) gehen
+    durch, damit sich alte Staende weiter bearbeiten und berichtigen lassen.
+    """
+    if wert_nt is None or meter.has_dual_tariff or wert_nt == bisher:
+        return
+    raise EingabeFehler('Der Zähler hat nur einen Tarif. Ein NT-Stand gehört nicht dazu.',
+                        'value_nt')
+
+
 @app.route('/api/readings', methods=['POST'])
 def create_reading():
     eingabe = Eingabe.aus_request()
@@ -2245,6 +2438,9 @@ def create_reading():
             f'{", ".join(ABLESUNGSARTEN)}.', 'ablesungsart')
 
     meter = Meter.query.get_or_404(meter_id)
+    # Auch mit trotzdem: ein NT-Stand am Eintarifzaehler ist kein Tippfehler,
+    # den man bestaetigen koennte. Vor dem Foto, damit nichts in der Ablage liegt.
+    _nt_stand_pruefen(meter, value_nt)
     # Vor dem Wechseltag gehoert ein Stand an den alten Zaehler: hart, wie die
     # Gegenrichtung im Wechseldialog, und bevor ein Foto in der Ablage liegt.
     vorher = vor_dem_wechseltag(meter, reading_date)
@@ -2316,6 +2512,7 @@ def update_reading(id):
     frage = None
     if (reading.reading_date, reading.value, reading.value_nt) != stand_vorher:
         try:
+            _nt_stand_pruefen(reading.meter, reading.value_nt, bisher=stand_vorher[2])
             if reading.reading_date != stand_vorher[0]:
                 vorher = vor_dem_wechseltag(reading.meter, reading.reading_date)
                 if vorher:
@@ -2667,20 +2864,18 @@ def update_invoice_document(doc_id):
     doc.description = description
 
     file = eingabe.datei('file')
+    alte_datei = neue_datei = None
     if file:
-        # Delete old file
-        try:
-            nas_handler.delete_file(doc.document_path)
-        except Exception:
-            protokoll.warning('Alte Datei blieb im Belegordner liegen: %s',
-                              doc.document_path, exc_info=True)
-
-        # Upload new file
-        document_path, filename = nas_handler.save_general_document(file, prop.name)
-        doc.document_path = document_path
+        alte_datei = doc.document_path
+        neue_datei, filename = nas_handler.save_general_document(file, prop.name)
+        doc.document_path = neue_datei
         doc.filename = filename
-            
-    db.session.commit()
+
+    _festschreiben_mit_neuer_datei(neue_datei)
+    # Die alte Datei erst nach dem Commit: scheitert er, zeigt die Zeile noch
+    # auf sie (wie beim Mietvertrag).
+    if alte_datei and alte_datei != neue_datei:
+        _ersetzte_datei_loeschen(alte_datei)
     return jsonify({'id': doc.id, 'filename': doc.filename}), 200
 
 # --- Invoices ---
@@ -3401,6 +3596,8 @@ def finalize_bill():
     # auf dem Deckblatt, mit den Zahlen aus diesem Ergebnis.
     anschreiben_text = _anschreiben_fuer(mieter, bill_data, vorauszahlung=(
         _vorauszahlung_vorschlag(mieter, bill_data, category_ids)))
+    # Das Layout aus den Einstellungen, tolerant geladen (Standard ohne Wahl).
+    layout = pdf_layout_aus_einstellungen()
     pdf_bytes = pdf_gen.generate(
         bill_data['line_items'],
         bill_data['total_amount'],
@@ -3412,8 +3609,9 @@ def finalize_bill():
         anschreiben=anschreiben_text,
         vorbehalt=bill_data.get('vorbehalt'),
         ausweis_35a=bill_data.get('ausweis_35a'),
+        layout=layout,
     )
-        
+
     # Save to NAS with type-specific filename
     tenant = Tenant.query.get(tenant_id)
     prop = tenant.apartment.property
@@ -3482,6 +3680,8 @@ def finalize_bill():
         # nicht stillschweigend anders berechnet werden kann, wenn sich später
         # Stammdaten ändern. Die Detailroute liefert ab hier den Schnappschuss.
         eingangsdaten, ergebnis = schnappschuss(engine.vorgang, bill_data)
+        # Dazu das Layout, mit dem das Blatt gesetzt wurde.
+        eingangsdaten['pdf_layout'] = layout
         db.session.add(BillingReportVersion(
             report_id=report.id,
             nummer=1,
@@ -3789,6 +3989,10 @@ def vermieter_logo_loeschen():
     return jsonify({'logo': False, 'geloescht': geloescht})
 
 
+OHNE_EXPORT = frozenset({'users', 'api_schluessel', 'geraete', 'geraete_ersetzt',
+                         'geraete_codes'})
+
+
 @app.route('/api/export', methods=['GET', 'POST'])
 def export_data():
     """Alle Daten als JSON. Per POST mit ``passphrase`` verschluesselt
@@ -3800,12 +4004,13 @@ def export_data():
 
     # NK-269: jede Tabelle, damit eine neue nicht wieder fehlt (Zahlungen,
     # Soll und Versionen fehlten); die Konten bleiben draussen (Passwort-Hash),
-    # die Zugriffsschluessel auch (ihr Hash oeffnet die API).
+    # die Zugriffsschluessel und angemeldeten Geraete auch (Hashes, die
+    # Zugang geben).
     data = {
         tabelle.name: [to_dict(z) for z in db.session.execute(
             tabelle.select().order_by(*tabelle.primary_key.columns)).mappings()]
         for tabelle in db.metadata.sorted_tables
-        if tabelle.name not in ('users', 'api_schluessel')
+        if tabelle.name not in OHNE_EXPORT
     }
     if request.method == 'GET':
         return jsonify(data)
@@ -4467,6 +4672,10 @@ def korrigiere_billing_report(id):
             'nur eine Kopie der alten.'}), 400
     
     eingangsdaten, ergebnis = schnappschuss(engine.vorgang, bill_data)
+    # Das Layout von heute setzt die neuen PDFs; der Schnappschuss hält fest,
+    # welches es war.
+    layout = pdf_layout_aus_einstellungen()
+    eingangsdaten['pdf_layout'] = layout
     version = BillingReportVersion(
         report_id=report.id,
         nummer=(ersetzt.nummer if ersetzt else 0) + 1,
@@ -4524,6 +4733,7 @@ def korrigiere_billing_report(id):
             anschreiben=anschreiben_text,
             vorbehalt=bill_data.get('vorbehalt'),
             ausweis_35a=bill_data.get('ausweis_35a'),
+            layout=layout,
         )
         pdf_path, _ = nas_handler.save_billing_report(
             DummyFile(dateiname, pdf_bytes), prop.name,
@@ -4626,9 +4836,32 @@ def add_payment():
     # keine Absage an den Vermieter ist, sondern ein Fehler der Anwendung.
     # Was die Eingabe betrifft, hat die Pruefung oben schon abgelehnt.
     if is_recurring:
+        # Eine Serie, die vor ihrem Beginn endet, bucht nichts -- bei einer
+        # Vorauszahlung legte sie unten trotzdem ein Soll an, also einen
+        # Rueckstand samt Zahlungserinnerung ohne eine einzige Zahlung. Ohne
+        # Enddatum laeuft die Serie bis Ende naechsten Jahres; auch dahinter
+        # darf sie deshalb nicht beginnen.
         if end_date is None:
             end_date = date(date.today().year + 1, 12, 31)
+            if end_date < start_date:
+                raise EingabeFehler(
+                    f'Ohne Enddatum endet die Serie am {end_date:%d.%m.%Y}, der '
+                    'erste Zahlungstag liegt danach. Bitte geben Sie ein '
+                    'Enddatum an.', 'end_date')
+        elif end_date < start_date:
+            raise EingabeFehler(
+                'Das Enddatum der Serie liegt vor dem ersten Zahlungstag.',
+                'end_date')
+        # Die Serie hinterlegt ihren Betrag als Soll, und ein Soll ist nie
+        # negativ (ck_vorauszahlung_soll_betrag, min_wert=0 in der Soll-Route).
+        # Ohne diese Pruefung endete die Buchung in einer 500.
+        if type_ == 'Nebenkostenvorauszahlung' and amount < 0:
+            raise EingabeFehler(
+                'Eine Vorauszahlung kann nicht negativ sein.', 'amount')
 
+        # Jeder Termin zaehlt vom Starttag aus und wird nur in einem kuerzeren
+        # Monat auf dessen Ende gekappt. Vom Vortermin aus gerechnet blieb der
+        # gekappte Tag stehen: 31.01., 28.02., 28.03. statt 31.03.
         current_date = start_date
         created_count = 0
         while current_date <= end_date:
@@ -4640,19 +4873,23 @@ def add_payment():
                 billing_report_id=billing_report_id if type_ == 'Nebenkostenzahlung' else None
             )
             db.session.add(payment)
-            current_date = add_months(current_date, 1)
             created_count += 1
             if created_count > 120:
                 break
+            current_date = add_months(start_date, created_count)
         # NK-261: die Serie ist der vereinbarte Betrag; er bleibt als Soll
-        # stehen. Vor dem Einzug gibt es kein Soll (wie in der Route dazu).
+        # stehen. Vor dem Einzug und nach dem Auszug gibt es kein Soll (wie in
+        # der Route dazu); der Auszugstag selbst ist noch ein Stichtag. Die
+        # Zahlungen bucht die Serie trotzdem, gekuerzt wird sie hier nicht.
         # Ein Zugriffsschluessel erfasst nur: Gibt es schon ein Soll, legt er
         # weder einen Stichtag an noch berichtigt er einen. Auch ein neuer
         # Stichtag aenderte die Vereinbarung ab seinem Tag (Review zu #48).
         # Den Mieter hat die Pruefung oben geladen; ohne ihn gibt es 400.
         antwort = {'message': f'{created_count} Zahlungen erfolgreich erfasst'}
         if (type_ == 'Nebenkostenvorauszahlung'
-                and start_date >= tenant.move_in_date):
+                and start_date >= tenant.move_in_date
+                and (tenant.move_out_date is None
+                     or start_date <= tenant.move_out_date)):
             if zugriffsschluessel.aktueller() is None or not tenant.vorauszahlung_soll:
                 soll, _ = _soll_setzen(tenant, start_date, amount)
             else:

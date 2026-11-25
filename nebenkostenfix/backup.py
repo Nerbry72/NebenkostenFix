@@ -878,6 +878,14 @@ def _einspielen_klartext(app, archiv, sicherheitskopie_nach=None,
         if herrichten is not None:
             with app.app_context():
                 herrichten(belege=False)
+                # #52: angemeldete Geraete ueberleben das Einspielen nicht,
+                # sonst bliebe ein Rechner nach dem Umzug auf einen neuen
+                # Server weiter angemeldet. Erst hier: aeltere Archive
+                # kennen die Tabellen noch nicht.
+                from nebenkostenfix import geraete
+                from nebenkostenfix.models import db
+                geraete.alle_loeschen()
+                db.session.commit()
             _verbindungen_schliessen(app)
         zusatz = _zusatz_anwenden(app, entpackt, manifest)
         # Erst hier importiert: auth -> umzug -> backup -> auth waere ein Kreis.
@@ -968,11 +976,17 @@ def _anwendung_uebernehmen(ordner: Path, werte) -> list[str]:
     # Nur bekannte Schluessel mit dem erwarteten Typ; ein ``None`` beim
     # Hinweis heisst „nie bestaetigt“ und ueberschreibt nichts. Der Schalter
     # ``ohne_anmeldung`` (NK-197) gilt nur mit bool; fehlt er (alte Pakete),
-    # bleibt der Wert am Ziel unverändert.
+    # bleibt der Wert am Ziel unverändert. Das PDF-Layout kommt nur als
+    # Objekt und wird tolerant geladen -- ein Paket aus einer neueren
+    # Fassung mit unbekannten Blöcken bricht das Einspielen nicht ab.
     werte = {k: v for k, v in werte.items()
              if (k == 'haftung' and isinstance(v, dict))
              or (k == 'updates_automatisch' and isinstance(v, bool))
-             or (k == 'ohne_anmeldung' and isinstance(v, bool))}
+             or (k == 'ohne_anmeldung' and isinstance(v, bool))
+             or (k == 'pdf_layout' and isinstance(v, dict))}
+    if 'pdf_layout' in werte:
+        from nebenkostenfix import pdf_layout
+        werte['pdf_layout'] = pdf_layout.laden(werte['pdf_layout'])
     if werte:
         app_einstellungen.schreiben(ordner, **werte)
     return sorted(werte)
@@ -1105,6 +1119,31 @@ def dateiverweise_pruefen(app) -> list:
                              'spalte': spalte, 'pfad': pfad}
                         )
     return fehlend
+
+
+def pfad_verwiesen(relativer_pfad: str) -> bool:
+    """Zeigt irgendeine Zeile aus PFADSPALTEN noch auf diese Datei?
+
+    Wer eine Datei im Belegordner ersetzt, darf die alte nur loeschen, wenn
+    nichts mehr auf sie zeigt -- auch keine andere Tabelle. Dieselbe Liste wie
+    die Belegpruefung, damit eine neue Pfadspalte beide Stellen erreicht.
+    Laeuft in der Sitzung der Anfrage, also gegen den gerade festgeschriebenen
+    Stand.
+    """
+    from sqlalchemy import text
+
+    from nebenkostenfix.models import db
+
+    for tabelle, spalte in PFADSPALTEN:
+        treffer = db.session.execute(
+            # Bandit-Ausnahme (B608): Tabelle/Spalte aus der Konstante PFADSPALTEN,
+            # der Pfad geht als gebundener Parameter hinein
+            text(f"SELECT 1 FROM {tabelle} WHERE {spalte} = :pfad LIMIT 1"),  # nosec B608
+            {'pfad': relativer_pfad},
+        ).first()
+        if treffer is not None:
+            return True
+    return False
 
 
 def lesbare_groesse(bytes_: int) -> str:

@@ -30,6 +30,8 @@ Instanz mit eigenen Konten), in der Windows-App ohne (E-1).
 
 Bewusst nicht im Paket (und im Bericht genannt): Sitzungsschlüssel,
 Sicherungsziele und Datenordner-Wahl, Anmeldesperren, Protokolle, Einmal-Code.
+Angemeldete Geräte stehen im Paket (nur Hashes), das Einspielen verwirft sie
+(#52). Auch das nennt der Bericht.
 """
 
 from __future__ import annotations
@@ -63,7 +65,13 @@ NICHT_IM_PAKET = [
     'Sitzungsschlüssel: Sie melden sich auf diesem Rechner einmal neu an.',
     'Sicherungsziele und die Wahl des Datenordners (Pfade des alten Rechners).',
     'Anmeldesperren, Protokolle und der Einmal-Code der Einrichtung.',
+    'Angemeldete Geräte übernimmt das Einspielen nicht: In der Desktop-App melden Sie '
+    'sich einmal neu an.',
 ]
+
+# Leert das Einspielen (backup._einspielen_klartext, #52); kein Unterschied,
+# den der Bericht nennen muesste.
+GERAETE_TABELLEN = frozenset({'geraete', 'geraete_ersetzt', 'geraete_codes'})
 
 # Endpunkte, die vor der Einrichtung erreichbar sind (auth._require_login).
 VOR_DER_EINRICHTUNG = frozenset({
@@ -328,7 +336,8 @@ def uebernehmen(app, archiv: Path, passphrase: str | None = None) -> dict:
     nachher = backup.zaehlwerte(backup.datenbankpfad(app))
     vorher = bericht.get('zaehlwerte') or {}
     abweichend = {t: {'paket': n, 'hier': nachher.get(t)}
-                  for t, n in vorher.items() if nachher.get(t) != n}
+                  for t, n in vorher.items()
+                  if nachher.get(t) != n and t not in GERAETE_TABELLEN}
     ergebnis = {
         'sicherheitskopie': bericht['sicherheitskopie'],
         'schemastand_paket': bericht['alembic_revision'],

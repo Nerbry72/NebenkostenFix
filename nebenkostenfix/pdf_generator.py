@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from io import BytesIO
 # Bandit-Ausnahme: maskiert Text fuer reportlab, parst kein XML
 from xml.sax.saxutils import escape  # nosec B406
@@ -8,7 +9,6 @@ from reportlab.platypus import KeepTogether, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from datetime import datetime
 from decimal import Decimal
-from nebenkostenfix import zeit
 from nebenkostenfix.pdf_cover_page import (
     build_cover_page_elements, COLOR_BORDER, COLOR_MUTED,
 )
@@ -18,11 +18,40 @@ from nebenkostenfix.girocode_generator import (
 from nebenkostenfix.geld import NULL, text as geld_text
 from nebenkostenfix import pdf_stil
 from nebenkostenfix import pdf_uebersicht
+from nebenkostenfix import pdf_layout
 from nebenkostenfix.rechenkern import VERMIETERANTEIL_VORSATZ
 from nebenkostenfix.zeitraum import HINWEIS_TAGESKONVENTION
 from nebenkostenfix import marke
 from nebenkostenfix.abrechnung_version import SOFTWARE_VERSION, REGEL_VERSION
 
+
+#: Die Blöcke der Abrechnungs-PDF in ihrer Standardreihenfolge (F1-01),
+#: festgelegt in ``pdf_layout.BLOECKE``. ``generate()`` geht die
+#: eingeschalteten Blöcke des Layouts durch; je ID liefert
+#: ``PDFGenerator._block_<id>`` die Flowables. Der GiroCode ist ein
+#: Unterblock: im Standard von ``zahlung`` (Zahlungssatz und Kasten bleiben
+#: ein ``KeepTogether``, NK-270), wahlweise auf dem Deckblatt oder aus.
+#: ``verbrauchsnachweise`` gibt es nur in der ausführlichen Fassung.
+STANDARDLAYOUT = pdf_layout.STANDARDLAYOUT
+
+
+@dataclass(frozen=True)
+class _Inhalt:
+    """Was ``generate()`` bekommt, einmal für alle Blöcke zusammengefasst."""
+
+    line_items: list
+    total_amount: Decimal
+    prepaid_amount: Decimal
+    balance: Decimal
+    co2_ausweis: dict | None
+    landlord_share: dict | None
+    anschreiben: str | None
+    vorbehalt: str | None
+    ausweis_35a: dict | None
+    vermieter: str
+    vermieter_adresse: str
+    #: Wo der GiroCode steht: ``zahlung``, ``deckblatt`` oder ``aus``.
+    girocode: str = pdf_layout.GIROCODE_STANDARD
 
 
 def vermieter_anschrift() -> str:
@@ -576,64 +605,121 @@ class PDFGenerator:
 
     def generate(self, line_items, total_amount, prepaid_amount=NULL,
                  co2_ausweis=None, landlord_share=None, anschreiben=None,
-                 vorbehalt=None, ausweis_35a=None):
+                 vorbehalt=None, ausweis_35a=None, layout=None):
+        """Die Abrechnungs-PDF: die eingeschalteten Blöcke des Layouts hintereinander.
+
+        F1-01: Jeder Block ist eine eigene Methode ``_block_<id>``, die ihre
+        Flowables liefert; hier wird nur noch die Liste durchgegangen. Ein
+        Block, der nichts zu zeigen hat (kein Heizungsteil, kein § 35a, die
+        einfache Fassung ohne Nachweise), liefert eine leere Liste.
+
+        ``layout`` ist ein Layout im Format von ``pdf_layout``; ohne Angabe
+        gilt der Standard, und das Blatt bleibt, wie es war. Es wird
+        tolerant geladen: Unbekanntes fällt weg, Pflichtblöcke bleiben an.
+        """
+        layout = pdf_layout.laden(layout)
         buffer = BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4,
                                 rightMargin=56.7, leftMargin=56.7,
                                 topMargin=56.7, bottomMargin=56.7)
-        
+
+        inhalt = _Inhalt(
+            line_items=line_items,
+            total_amount=total_amount,
+            prepaid_amount=prepaid_amount,
+            balance=total_amount - prepaid_amount,
+            co2_ausweis=co2_ausweis,
+            landlord_share=landlord_share,
+            anschreiben=anschreiben,
+            vorbehalt=vorbehalt,
+            ausweis_35a=ausweis_35a,
+            # NK-210: der Name aus den Einstellungen statt der Rolle
+            vermieter=vermieter_ausweis()[0],
+            vermieter_adresse=vermieter_anschrift(),
+            girocode=layout['girocode'],
+        )
+        bloecke = self._bloecke()
         elements = []
-        
-        # Prepend cover page (Deckblatt)
-        balance = total_amount - prepaid_amount
-        # NK-210: der Name aus den Einstellungen statt der Rolle
-        vermieter = vermieter_ausweis()[0]
-        vermieter_adresse = vermieter_anschrift()
-        cover_elements = build_cover_page_elements(
+        for block in pdf_layout.aktive_bloecke(layout):
+            elements.extend(bloecke[block](inhalt))
+
+        doc.build(elements, onFirstPage=_fuss_zeichnen, onLaterPages=_fuss_zeichnen)
+
+        pdf_data = buffer.getvalue()
+        buffer.close()
+        return pdf_data
+
+    def _bloecke(self):
+        """Block-ID → Methode, die die Flowables des Blocks liefert."""
+        return {
+            'deckblatt': self._block_deckblatt,
+            'uebersicht': self._block_uebersicht,
+            'kostenaufstellung': self._block_kostenaufstellung,
+            'heizung_co2': self._block_heizung_co2,
+            'ausweis_35a': self._block_ausweis_35a,
+            'belegliste': self._block_belegliste,
+            'zahlung': self._block_zahlung,
+            'verbrauchsnachweise': self._block_verbrauchsnachweise,
+        }
+
+    def _block_deckblatt(self, inhalt):
+        """Blatt 1: Anschriften, Betreff, Brief, „Ihr Anteil“; endet mit Umbruch."""
+        return build_cover_page_elements(
             property_name=self.property_name,
             apartment_name=self.apartment_name,
             tenant_name=self.tenant_name,
             tenant_anrede=self.tenant_anrede,
             start_date=self.start_date,
             end_date=self.end_date,
-            total_amount=total_amount,
-            prepaid_amount=prepaid_amount,
-            balance=balance,
+            total_amount=inhalt.total_amount,
+            prepaid_amount=inhalt.prepaid_amount,
+            balance=inhalt.balance,
             # NK-064: das Anschreiben des Vermieters spricht auf dem
             # Deckblatt statt des festen Grußes; ohne Vorlage wie gehabt.
-            anschreiben=anschreiben,
-            vermieter_name=vermieter,
+            anschreiben=inhalt.anschreiben,
+            vermieter_name=inhalt.vermieter,
             # Phase 59: der Briefkopf des Musters -- Empfaenger mit
             # Anschrift, Absender mit Anschrift.
             mieter_anschrift=self.tenant_anschrift,
-            vermieter_anschrift=vermieter_adresse,
+            vermieter_anschrift=inhalt.vermieter_adresse,
+            # Wahlweise steht der GiroCode direkt unter „Ihr Anteil“.
+            girocode=(self._block_girocode(inhalt)
+                      if inhalt.girocode == 'deckblatt' else ()),
         )
-        elements.extend(cover_elements)
 
+    def _block_uebersicht(self, inhalt):
+        """Das Übersichtsblatt: eine Zeile je Position, drei Summen."""
         # Phase 59 (Issue #35, Punkt 2): das Uebersichtsblatt -- eine Zeile
         # je Position, drei Summen. Es kommt **vor** den Detailteil und
         # nimmt ihm nichts weg: Der Melder wollte ausdruecklich beides.
         # `build_uebersicht_elements` bricht ab, wenn seine Summe von
         # `total_amount` abweicht; zwei Blaetter, die sich widersprechen,
         # sind schlimmer als ein Blatt weniger.
-        elements.extend(pdf_uebersicht.build_uebersicht_elements(
-            line_items,
-            gesamtsumme=total_amount,
-            vorauszahlungen=prepaid_amount,
+        return pdf_uebersicht.build_uebersicht_elements(
+            inhalt.line_items,
+            gesamtsumme=inhalt.total_amount,
+            vorauszahlungen=inhalt.prepaid_amount,
             property_name=self.property_name,
             apartment_name=self.apartment_name,
             tenant_name=self.tenant_name,
             start_date=self.start_date,
             end_date=self.end_date,
-            vermieter_name=vermieter,
-            vermieter_anschrift=vermieter_adresse,
+            vermieter_name=inhalt.vermieter,
+            vermieter_anschrift=inhalt.vermieter_adresse,
             mieter_anschrift=self.tenant_anschrift,
-        ))
-        
+        )
+
+    def _block_kostenaufstellung(self, inhalt):
+        """Die Aufstellung der Kosten mit Summenblock und Fußnoten."""
+        line_items = inhalt.line_items
+        total_amount = inhalt.total_amount
+        prepaid_amount = inhalt.prepaid_amount
+        vorbehalt = inhalt.vorbehalt
+        elements = []
+
         start_fmt = datetime.fromisoformat(self.start_date).strftime('%d.%m.%Y')
         end_fmt = datetime.fromisoformat(self.end_date).strftime('%d.%m.%Y')
-        creation_date = zeit.als_ortszeit(zeit.jetzt_utc(), '%d.%m.%Y')
-        
+
         # Phase 60: **kein zweiter Briefkopf.** Objekt, Vermieter und Datum
         # stehen auf Blatt 1 und im Kopf des Uebersichtsblatts; hier noch
         # einmal gesetzt, lasen sie sich wie der Anfang eines neuen
@@ -961,47 +1047,72 @@ class PDFGenerator:
         if vorbehalt:
             elements.append(Spacer(1, 10))
             elements.append(Paragraph(escape(vorbehalt), self.styles['Fussnote']))
+        return elements
 
+    def _block_heizung_co2(self, inhalt):
+        """Heizkosten und CO2-Ausweis; leer ohne Heizzeile der Anlage."""
         # NK-060: der Heizkosten- und CO2-Abschnitt -- Verteilung, Stufe,
         # Vermieteranteil -- gehoert auf beide Wege des Dokuments, denn der
         # Vermieter sendet nur eine der beiden Fassungen.
-        elements.extend(self._heizung_co2_elemente(
-            line_items, co2_ausweis, landlord_share))
+        return self._heizung_co2_elemente(
+            inhalt.line_items, inhalt.co2_ausweis, inhalt.landlord_share)
 
+    def _block_ausweis_35a(self, inhalt):
+        """Die Lohnanteile nach § 35a EStG; leer ohne Lohnanteile."""
         # NK-268: die Lohnanteile nach § 35a EStG, auf beiden Fassungen.
-        elements.extend(self._ausweis_35a_elemente(ausweis_35a))
+        return self._ausweis_35a_elemente(inhalt.ausweis_35a)
 
+    def _block_belegliste(self, inhalt):
+        """Die Belegliste, in der ausführlichen Fassung mit Beträgen."""
         # R-DOC-01 Punkt 8: die Belegliste gehoert auf beide Wege des
         # Dokuments -- der Vermieter sendet nur eine der beiden Fassungen,
         # also muss jede fuer sich die Zuordnung Position zu Beleg tragen.
         # NK-244: genau einmal; die ausfuehrliche Fassung mit Betraegen.
-        elements.extend(self._belegliste_elemente(
-            line_items, mit_betraegen=self.detailliert))
+        return self._belegliste_elemente(
+            inhalt.line_items, mit_betraegen=self.detailliert)
 
-        elements.append(Spacer(1, 40))
-        
+    def _block_zahlung(self, inhalt):
+        """Zahlungssatz und Rückfragen, darin der GiroCode -- als ein Block.
+
+        NK-270: Satz und Kasten bleiben zusammen; passt der Block nicht
+        mehr, rueckt er als Ganzes auf die naechste Seite.
+        """
+        elements = [Spacer(1, 40)]
         # NK-248: die hinterlegte IBAN steht im Satz. NK-264: ich/wir nach
         # der Art des Vermieters, ohne Angabe neutral.
         saetze = anschreiben_saetze(vermieter_art())
         zahlungsblock = []
-        if balance > 0:
+        if inhalt.balance > 0:
             zahlungsblock.append(Paragraph(
                 zahlungssatz(saetze, vermieter_ausweis()[1]),
                 self.styles['HeaderNormal']))
         zahlungsblock.append(Paragraph(saetze['rueckfragen'], self.styles['HeaderNormal']))
-        # GiroCode (EPC-QR) -- nur bei Nachzahlung. NK-270: Satz und Kasten
-        # bleiben zusammen direkt nach der Belegliste; passt der Block nicht
-        # mehr, rueckt er als Ganzes auf die naechste Seite.
-        zahlungsblock.extend(build_girocode_elements(
-            balance=balance,
+        if inhalt.girocode == 'zahlung':
+            zahlungsblock.extend(self._block_girocode(inhalt))
+        elements.append(KeepTogether(zahlungsblock))
+        return elements
+
+    def _block_girocode(self, inhalt):
+        """Der GiroCode (EPC-QR), beim Zahlungshinweis oder auf dem Deckblatt.
+
+        Nur bei Nachzahlung und mit Name und IBAN des Vermieters, sonst leer.
+        """
+        return build_girocode_elements(
+            balance=inhalt.balance,
             tenant_name=self.tenant_name,
             apartment_name=self.apartment_name,
             start_date=self.start_date,
             end_date=self.end_date,
-        ))
-        elements.append(KeepTogether(zahlungsblock))
-        
+        )
 
+    def _block_verbrauchsnachweise(self, inhalt):
+        """Die Verbrauchsnachweise der ausführlichen Fassung, ab neuer Seite.
+
+        Davor steht der Verweis „auf den folgenden Seiten“ -- er gehört zu
+        diesem Block, denn er erscheint genau dann, wenn der Block erscheint.
+        """
+        line_items = inhalt.line_items
+        elements = []
         # NK-245: ohne Zaehlerzeile kein leerer Nachweisteil samt Umbruch.
         if self.detailliert and any(item.get('meter_details') for item in line_items):
             # Der Verweis klebte am GiroCode-Kasten darüber.
@@ -1208,10 +1319,4 @@ class PDFGenerator:
                 # stand. Passt er nicht mehr, fängt er auf der nächsten
                 # Seite als Ganzes an.
                 elements.append(KeepTogether([t, Spacer(1, 20)]))
-
-
-        doc.build(elements, onFirstPage=_fuss_zeichnen, onLaterPages=_fuss_zeichnen)
-        
-        pdf_data = buffer.getvalue()
-        buffer.close()
-        return pdf_data
+        return elements

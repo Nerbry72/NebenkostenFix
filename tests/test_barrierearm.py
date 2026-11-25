@@ -108,4 +108,8 @@ def test_leerlauf_hinweis_fuenf_minuten_vorher(auth_client):
     antwort = auth_client.get('/api/auth/me').get_json()
     assert antwort['leerlauf_s'] == auth._leerlauf_s()
     assert 'const LEERLAUF_WARNUNG_MS = 5 * 60 * 1000;' in SKRIPT
-    assert 'Angemeldet bleiben' in SEITE
+    # Review zu #57: Der Knopf heißt nicht wie das Häkchen der Desktop-App.
+    hinweis = SEITE[SEITE.index('id="leerlauf-hinweis"'):]
+    hinweis = hinweis[:hinweis.index('</div>')]
+    assert '>Weiterarbeiten</button>' in hinweis
+    assert not re.search(r'<button[^>]*>\s*Angemeldet bleiben\s*</button>', SEITE)

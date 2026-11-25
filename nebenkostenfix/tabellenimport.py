@@ -653,7 +653,13 @@ def _zeile_mieter(z, zu, felder, aufl, hinweise):
     personen_roh = als_text(_wert(z, zu, 'personen'))
     personen = 1
     if personen_roh:
-        personen = int(als_zahl(personen_roh, felder['personen'].titel))
+        titel = felder['personen'].titel
+        zahl = als_zahl(personen_roh, titel)
+        # Nicht abschneiden: „2,5“ als 2 verschöbe über die Personentage
+        # (R-NUM-04) Kosten zwischen den Mietern. Von Hand geht „2,5“ auch nicht.
+        if not zahl.is_integer():
+            raise ZeilenFehler(f'{titel}: bitte eine ganze Zahl, hier stand „{personen_roh}“.')
+        personen = int(zahl)
         if personen < 1:
             raise ZeilenFehler('Personen: mindestens 1.')
     for anderer in Tenant.query.filter_by(apartment_id=wohnung.id).all():

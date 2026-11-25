@@ -25,11 +25,12 @@ Die Nebenkostenabrechnung für private Vermieter. Kostenlos, und Ihre Daten blei
 
 ## Neuerungen in dieser Version
 
-Version 0.20.1: Fehlerbehebungen bei Gutschriften und beim Zählerwechsel, dazu neuere Bibliotheken.
+Version 0.21.0: Mit einem eigenen NebenkostenFix-Server bleibt die App auf Wunsch angemeldet, dazu mehrere Fehlerbehebungen.
 
-- Behoben: Eine Gutschrift, etwa eine Rückerstattung des Versorgers, die nach Wohnfläche oder Personen umgelegt wird, steht jetzt mit negativem Betrag in der Abrechnung und senkt die Summe des Mieters. Bisher fiel sie beim Mieter still heraus.
-- Behoben: Am neuen Zähler eines Zählerwechsels nimmt die App keinen Stand mehr an, der vor dem Wechseltag liegt. So bleibt der Verbrauch des alten Zählers in der Abrechnung.
-- Die mitgelieferten Bibliotheken sind auf neuem Stand.
+- Neu: Ist die App mit Ihrem eigenen NebenkostenFix-Server verbunden, fragt sie mit „Angemeldet bleiben“ beim Start nicht mehr nach dem Passwort. Die angemeldeten Rechner stehen unter Einstellungen → Konto und lassen sich dort abmelden.
+- Behoben: Eine Zahlungsserie zum Monatsende bleibt nach dem Februar am Monatsende, und ein Enddatum vor dem ersten Zahlungstag erzeugt keinen Rückstand mehr.
+- Behoben: Ein geleertes Auszugsdatum wird entfernt, ein Auszug vor dem Einzug abgewiesen.
+- Behoben: Der Mieterimport nimmt keine Personenzahl mit Nachkommastelle mehr an, und ein ersetzter Mietvertrag bleibt nicht mehr als Datei liegen.
 
 ## Produktmerkmale
 

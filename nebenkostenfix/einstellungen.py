@@ -8,7 +8,10 @@ Hier steht, was keine Tabelle braucht (NK-174, NK-175):
 - ``update_gefunden``: was diese Suche Neues gefunden hat, sonst ``None``;
 - ``ohne_anmeldung`` (NK-197): ob die App ohne Anmeldung läuft. ``None``
   heißt „nie gewählt, es gilt die Vorgabe der Plattform“ (Windows ja,
-  Docker nein), ``True``/``False`` heißt „ausdrücklich gewählt“.
+  Docker nein), ``True``/``False`` heißt „ausdrücklich gewählt“;
+- ``pdf_layout``: welche Blöcke die Abrechnungs-PDF zeigt, in welcher
+  Reihenfolge und wo der GiroCode steht. ``None`` heißt Werkseinstellung;
+  Format, Prüfung und tolerantes Laden stehen in ``pdf_layout.py``.
 
 ``UEBERTRAGBAR`` wandert im ``.nkfix`` mit (D-96), die letzte Suche nicht --
 auf dem neuen Rechner wird einfach wieder gesucht.
@@ -24,8 +27,8 @@ from nebenkostenfix.dateisperre import dateisperre
 
 DATEINAME = 'app-einstellungen.json'
 STANDARD = {'haftung': None, 'updates_automatisch': True, 'update_geprueft': None,
-            'update_gefunden': None, 'ohne_anmeldung': None}
-UEBERTRAGBAR = ('haftung', 'updates_automatisch', 'ohne_anmeldung')
+            'update_gefunden': None, 'ohne_anmeldung': None, 'pdf_layout': None}
+UEBERTRAGBAR = ('haftung', 'updates_automatisch', 'ohne_anmeldung', 'pdf_layout')
 
 
 def ohne_anmeldung_gewuenscht(stand: dict, desktop) -> bool:

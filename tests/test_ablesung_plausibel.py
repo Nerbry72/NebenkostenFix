@@ -16,7 +16,7 @@ from datetime import date, timedelta
 import pytest
 
 from nebenkostenfix import zeit
-from nebenkostenfix.models import MeterReading
+from nebenkostenfix.models import MeterReading, db
 from tests import billing_factories as f
 
 
@@ -52,10 +52,18 @@ def test_negativer_stand_ist_ein_fehler(auth_client, zaehler):
     assert antwort.status_code == 400
     assert antwort.get_json() == {'error': 'Ein Zählerstand kann nicht negativ sein.',
                                   'feld': 'value'}
-    antwort = _neu(auth_client, zaehler, '2024-06-30', '1', value_nt='-0,5')
-    assert antwort.status_code == 400
-    assert antwort.get_json()['feld'] == 'value_nt'
     assert _anzahl(zaehler) == 2
+
+    # Ein NT-Zaehlwerk hat nur der Zweitarifzaehler; am Eintarifzaehler waere
+    # schon der NT-Stand an sich die Absage, nicht sein Vorzeichen.
+    strom = f.meter(zaehler.property, f.category('Strom'), 'SZ-NT-1', is_main=False)
+    strom.has_dual_tariff = True
+    db.session.commit()
+    antwort = _neu(auth_client, strom, '2024-06-30', '1', value_nt='-0,5', trotzdem='1')
+    assert antwort.status_code == 400
+    assert antwort.get_json() == {'error': 'Ein Zählerstand kann nicht negativ sein.',
+                                  'feld': 'value_nt'}
+    assert _anzahl(strom) == 0
 
 
 def test_datum_in_der_zukunft_ist_ein_fehler(auth_client, zaehler):
@@ -124,6 +132,10 @@ def test_nt_zaehlwerk_laeuft_nicht_rueckwaerts(auth_client, app_ctx):
     """Review PR 26: die Monotonie galt nur fuer HT; ein NT-Stand unter dem
     vorigen ging ohne Frage durch."""
     z = f.meter(f.house(), f.category('Strom'), 'SZ-2', is_main=False)
+    # Ein NT-Zaehlwerk hat nur der Zweitarifzaehler; am Eintarifzaehler waere
+    # der NT-Stand schon eine Absage (400), keine Rueckfrage.
+    z.has_dual_tariff = True
+    db.session.commit()
     f.reading(z, date(2025, 1, 1), 100.0, value_nt=50.0)
     antwort = _neu(auth_client, z, '2025-06-30', '150', value_nt='40')
     assert antwort.status_code == 409

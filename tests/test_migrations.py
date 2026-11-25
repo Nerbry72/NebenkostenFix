@@ -51,7 +51,9 @@ BASISREVISION = "63738d5329b4"
 # Phase 58: ``f2a6c8b4d013`` fuegt ``tenants.anschrift``,
 # ``tenants.zustellanschrift`` und ``vermieterdaten.anschrift`` hinzu (Issue #35).
 # ``db48fb4e8716`` legt die Tabelle ``api_schluessel`` an (Zugriffsschluessel).
-# Vertragliche Prozentumlage: Anteil im Kostenprofil.
+# #52: ``fc8938938dce`` legt ``geraete``, ``geraete_ersetzt`` und
+# ``geraete_codes`` an (angemeldet bleiben in der Desktop-App).
+# Danach Prozentumlage und ausdrückliche Bestätigung zu § 2 HeizkostenV.
 KOPFREVISION = "c2e7b9a41d06"
 
 
@@ -3077,3 +3079,172 @@ with anwendung.app.app_context():
 ''', tmp_path / 'heizkostenv.db', tmp_path)
     erwartet = [['prozent', 30.25, 0], ['qm', None, 0]]
     assert stand == {'vorher': erwartet, 'nachher': erwartet}
+
+
+# ---------------------------------------------------------------------------
+# #52: ``fc8938938dce`` legt die Tabellen der angemeldeten Geraete an
+
+# Die Testdatenbank entsteht mit create_all(), und der Abgleich mit dem
+# gewanderten Schema sieht AUTOINCREMENT nicht. Hier wandert sie wirklich.
+CODE_GERAETE_WANDERUNG = """
+import json
+from sqlalchemy import text
+from flask_migrate import downgrade, upgrade
+import app as anwendung
+from nebenkostenfix.models import db
+
+TABELLEN = ("geraete", "geraete_ersetzt", "geraete_codes")
+
+def tabellen():
+    return sorted(z[0] for z in db.session.execute(text(
+        "SELECT name FROM sqlite_master WHERE type = 'table'")).all())
+
+def spalten(tabelle):
+    return [z[1] for z in db.session.execute(
+        text(f"PRAGMA table_info('{tabelle}')")).all()]
+
+def sequenz():
+    # sqlite_sequence gibt es erst, wenn eine Tabelle AUTOINCREMENT hat.
+    if "sqlite_sequence" not in tabellen():
+        return None
+    return db.session.execute(text(
+        "SELECT seq FROM sqlite_sequence WHERE name = 'geraete'")).scalar()
+
+with anwendung.app.app_context():
+    downgrade(revision="db48fb4e8716")
+
+    # Der Bestand: ein Konto mit einem Zugriffsschluessel.
+    db.session.execute(text(
+        "INSERT INTO users (id, username, password_hash, is_active, created_at)"
+        " VALUES (1, 'vermieter', 'x', 1, '2026-11-01')"))
+    db.session.execute(text(
+        "INSERT INTO api_schluessel (id, user_id, name, hash, umfang, angelegt_am)"
+        " VALUES (1, 1, 'Tabelle', :h, 'lesen', '2026-11-01')"), {"h": "a" * 64})
+    db.session.commit()
+    vorher = [t for t in TABELLEN if t in tabellen()]
+
+    upgrade()
+
+    nachher = {t: spalten(t) for t in TABELLEN if t in tabellen()}
+    schema = db.session.execute(text(
+        "SELECT sql FROM sqlite_master WHERE name = 'geraete'")).scalar()
+    stand = db.session.execute(text("SELECT version_num FROM alembic_version")).scalar()
+
+    # Ein Geraet anlegen, damit sqlite_sequence eine Zeile fuer geraete hat.
+    db.session.execute(text(
+        "INSERT INTO geraete (user_id, name, hash, sitzung, angelegt_am, zuletzt_benutzt_am)"
+        " VALUES (1, 'Notebook', :h, :s, '2026-11-02', '2026-11-02')"),
+        {"h": "b" * 64, "s": "c" * 32})
+    db.session.commit()
+    sequenz_nachher = sequenz()
+
+    downgrade(revision="db48fb4e8716")
+    zurueck = [t for t in TABELLEN if t in tabellen()]
+    sequenz_zurueck = sequenz()
+    bestand = [db.session.execute(text("SELECT username FROM users")).scalar(),
+               db.session.execute(text("SELECT name FROM api_schluessel")).scalar()]
+    stand_zurueck = db.session.execute(
+        text("SELECT version_num FROM alembic_version")).scalar()
+
+print(json.dumps({"vorher": vorher, "nachher": nachher, "schema": schema,
+                  "stand": stand, "sequenz": sequenz_nachher, "zurueck": zurueck,
+                  "sequenz_zurueck": sequenz_zurueck, "bestand": bestand,
+                  "stand_zurueck": stand_zurueck}))
+"""
+
+
+def test_die_geraetewanderung_legt_die_drei_tabellen_an(tmp_path):
+    """#52 (Review): Die Sitzung merkt sich das Geraet ueber einen
+    Zufallswert (``sitzung``, eindeutig), nicht ueber die Nummer: Eine aeltere
+    Sicherung bringt den Zaehler zurueck (Review zu #57). AUTOINCREMENT bleibt
+    trotzdem, damit eine Nummer nach dem Loeschen nicht gleich wiederkommt.
+    Beides steht nur im gewanderten Schema, nicht in dem aus create_all()."""
+    stand = _lauf(CODE_GERAETE_WANDERUNG, tmp_path / "geraete.db", tmp_path)
+    assert stand["vorher"] == []
+    assert set(stand["nachher"]) == {"geraete", "geraete_ersetzt", "geraete_codes"}
+    for spalte in ("id", "user_id", "name", "hash", "sitzung", "angelegt_am",
+                   "zuletzt_benutzt_am"):
+        assert spalte in stand["nachher"]["geraete"]
+    assert stand["nachher"]["geraete_ersetzt"] == ["hash", "geraet_id", "ersetzt_am"]
+    assert stand["nachher"]["geraete_codes"] == ["hash", "zweck", "geraet_id", "gueltig_bis"]
+    assert "AUTOINCREMENT" in stand["schema"]
+    assert "UNIQUE (hash)" in stand["schema"]
+    assert "UNIQUE (sitzung)" in stand["schema"]
+    assert stand["stand"] == KOPFREVISION
+    assert stand["sequenz"] == 1
+
+
+def test_die_geraetewanderung_laesst_sich_zurueckdrehen(tmp_path):
+    """downgrade() nimmt die drei Tabellen samt Zaehler zurueck. Konto und
+    Zugriffsschluessel bleiben."""
+    stand = _lauf(CODE_GERAETE_WANDERUNG, tmp_path / "geraete.db", tmp_path)
+    assert stand["zurueck"] == []
+    assert stand["sequenz_zurueck"] is None
+    assert stand["bestand"] == ["vermieter", "Tabelle"]
+    assert stand["stand_zurueck"] == "db48fb4e8716"
+
+
+def test_sicherung_vor_prozentumlage_wird_auf_neuen_kopf_aktualisiert(tmp_path):
+    """Eine echte 0.21-Sicherung erhält Profile und durchläuft beide eigenen Schritte."""
+    stand = _lauf('''
+import json, os
+from datetime import date
+from pathlib import Path
+from sqlalchemy import inspect, text
+from flask_migrate import downgrade, upgrade
+import app as anwendung
+from nebenkostenfix import backup
+from nebenkostenfix.models import Apartment, CostCategory, Geraet, Property, Tenant, User, db
+
+with anwendung.app.app_context():
+    downgrade(revision="fc8938938dce")
+    haus = Property(name="Altbau", is_standalone=False)
+    nutzer = User(username="verwalter", password_hash="kein-echter-hash")
+    db.session.add_all([haus, nutzer])
+    db.session.flush()
+    wohnung = Apartment(property_id=haus.id, name="Wohnung A", sqm=60)
+    db.session.add(wohnung)
+    db.session.flush()
+    mieter = Tenant(apartment_id=wohnung.id, name="Altpartei", move_in_date=date(2024, 1, 1))
+    db.session.add(mieter)
+    db.session.flush()
+    kat = CostCategory.query.filter_by(betrkv_nr=1).first()
+    db.session.execute(text(
+        "INSERT INTO tenant_cost_profiles (tenant_id, category_id, billing_type)"
+        " VALUES (:mieter, :kat, 'personen')"), {"mieter": mieter.id, "kat": kat.id})
+    db.session.add(Geraet(user_id=nutzer.id, name="Notebook", hash="a" * 64))
+    db.session.commit()
+    archiv = backup.sicherung_erstellen(anwendung.app, Path(os.environ["DATA_DIR"]) / "sicherungen")
+
+    upgrade()
+    geraete_nach_upgrade = Geraet.query.count()
+    db.session.execute(text(
+        "UPDATE tenant_cost_profiles SET billing_type = 'prozent', percentage = 30.25"))
+    db.session.add(Property(name="Nach dem Update", is_standalone=False))
+    db.session.commit()
+
+    bericht = backup.sicherung_einspielen(anwendung.app, archiv)
+    revision = db.session.execute(text("SELECT version_num FROM alembic_version")).scalar()
+    profile = [list(r) for r in db.session.execute(text(
+        "SELECT billing_type, percentage, heizkostenv_bestaetigt FROM tenant_cost_profiles"))]
+    haeuser = [p.name for p in Property.query.all()]
+    mieter = [t.name for t in Tenant.query.all()]
+    konten = [u.username for u in User.query.all()]
+    tabellen = inspect(db.engine).get_table_names()
+    geraete_nach_einspielen = Geraet.query.count()
+
+print(json.dumps({"bericht": bericht, "revision": revision, "profile": profile,
+    "haeuser": haeuser, "mieter": mieter, "konten": konten, "tabellen": tabellen,
+    "geraete_nach_upgrade": geraete_nach_upgrade,
+    "geraete_nach_einspielen": geraete_nach_einspielen}))
+''', tmp_path / 'vor-prozent.db', tmp_path)
+    assert stand['bericht']['alembic_revision'] == 'fc8938938dce'
+    assert stand['bericht']['schemastand_nachher'] == stand['revision'] == KOPFREVISION
+    assert stand['profile'] == [['personen', None, 0]]
+    assert stand['haeuser'] == ['Altbau']
+    assert stand['mieter'] == ['Altpartei']
+    assert stand['konten'] == ['verwalter']
+    assert {'geraete', 'geraete_ersetzt', 'geraete_codes'} <= set(stand['tabellen'])
+    assert stand['geraete_nach_upgrade'] == 1
+    # Das Einspielen meldet Geräte gemäß der Sicherheitsregel von 0.21 ab.
+    assert stand['geraete_nach_einspielen'] == 0
