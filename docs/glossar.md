@@ -54,9 +54,22 @@ Rechenkern dürfen nicht auseinanderlaufen:
 Bei `prozent` wird im Kostenprofil jeder Mietpartei je Kostenart ihr vereinbarter
 Anteil von 0 bis 100 % mit höchstens zwei Nachkommastellen eingetragen. Für zwei
 Parteien beispielsweise 30 % und 70 %. Die Anteile werden nicht automatisch
-auf 100 % umgerechnet; prüfen Sie die Summe für die beteiligten Mietparteien.
+auf 100 % umgerechnet. Während der Eingabe zeigt die App die Summe je Kostenart
+und Mietzeitraum an. Mehr als 100 % können nicht gespeichert werden.
+Der nicht verteilte Rest wird einschließlich Leerstand als Vermieteranteil
+auf der Abrechnung ausgewiesen. Für dieselbe Kostenart dürfen im selben
+Zeitraum Prozentumlage und andere Umlagearten nicht gemischt abgerechnet werden;
+nicht beteiligte Mietparteien können die Kostenart ignorieren.
 Zeitanteile werden wie bei der Wohnflächenumlage berücksichtigt. Direkt einer
 Wohnung zugewiesene Rechnungen bleiben vollständig dieser Wohnung zugeordnet.
+
+Bei Heizung, Warmwasser und verbundenen Anlagen wird das Prozentfeld erst
+nach ausdrücklicher Bestätigung des Hinweises zu § 2 HeizkostenV freigeschaltet.
+Die Bestätigung wird je Mietpartei und Kostenart gespeichert. Sie bestätigt,
+dass der Nutzer den Hinweis gelesen und die Zulässigkeit für seinen Fall
+geprüft hat; sie ersetzt keine rechtliche Voraussetzung. Vorhandene Profile
+werden nicht automatisch als bestätigt übernommen. Beim Wechsel zu einer
+anderen Umlageart wird die Bestätigung zurückgesetzt.
 
 Auf dem Abrechnungsblatt heißt die Zeile einer direkt zugewiesenen Rechnung
 „Direkt zugewiesen (100 % der Rechnung für diese Wohnung)“ — sie behauptet keine
@@ -206,7 +219,7 @@ oder ein Pflichtbegriff in der Oberfläche kein „?“ hat.
 | nachzahlung | Nachzahlung | Waren die Kosten höher als die Vorauszahlungen, zahlt der Mieter den Unterschied nach. |
 | sammelrechnung | Sammelrechnung | Ein Dokument des Anbieters, aus dem Sie mehrere einzelne Rechnungen erfassen, etwa die Jahresabrechnung der Stadtwerke für Wasser und Abwasser. |
 | umlagefaehig | umlagefähig | Kosten, die Sie nach § 2 Betriebskostenverordnung auf den Mieter umlegen dürfen, wenn der Mietvertrag es vorsieht; Reparaturen, Verwaltung und Rücklagen gehören nicht dazu. |
-| umlageschluessel | Umlageschlüssel | Die Regel, nach der eine Rechnung auf die Wohnungen verteilt wird: nach Wohnfläche, nach Personen oder nach dem Verbrauch laut Zähler. |
+| umlageschluessel | Umlageschlüssel | Die Regel, nach der eine Rechnung auf die Wohnungen verteilt wird: nach Wohnfläche, nach Personen, nach vereinbartem Prozentsatz oder nach dem Verbrauch laut Zähler. |
 | unterzaehler | Unterzähler | Ein eigener Zähler in einer Wohnung, der misst, was diese Wohnung vom Verbrauch des ganzen Hauses selbst verbraucht hat. |
 | vorauszahlung | Vorauszahlung | Der Betrag, den der Mieter jeden Monat zusätzlich zur Miete auf die Nebenkosten zahlt; die Abrechnung stellt ihn den tatsächlichen Kosten gegenüber. |
 | wohnflaeche | Wohnfläche | Die Fläche der Wohnung in m² laut Mietvertrag; nach ihr werden die meisten Kosten verteilt. |

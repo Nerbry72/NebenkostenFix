@@ -69,7 +69,7 @@ kern:
 	  tests/test_belegeinsicht.py \
 	  tests/test_abrechnungstabelle.py \
 	  tests/test_heizung_kostenarten.py tests/test_zaehlerwechsel.py \
-	  tests/test_gutschrift_umlage.py tests/test_prozent_umlage.py \
+	  tests/test_gutschrift_umlage.py tests/test_prozent_umlage.py tests/test_heizkosten_prozent.py \
 	  -q --no-header \
 	  --cov=nebenkostenfix.rechenkern --cov-branch --cov-report=term-missing --cov-fail-under=95
 

@@ -148,6 +148,7 @@ Stammdaten -- Immobilie, Wohnung, Mieter, Anbieter, Kostenart
   GET         /api/tenants/<int:id>/contract               -> get_tenant_contract
   GET         /api/tenants/<int:tenant_id>/export          -> export_tenant
   GET         /api/tenants/<int:tenant_id>/profiles        -> get_tenant_profiles
+  GET         /api/tenants/<int:tenant_id>/profiles/percentages -> get_tenant_percentage_totals
   POST        /api/tenants/<int:tenant_id>/profiles        -> save_tenant_profiles
   GET         /api/tenants/<int:tenant_id>/haushaltsgroessen -> get_haushaltsgroessen
   POST        /api/tenants/<int:tenant_id>/haushaltsgroessen -> save_haushaltsgroesse
@@ -1361,6 +1362,23 @@ def update_delete_tenant(id):
     if eingabe.vorhanden('zustellanschrift'):
         tenant.zustellanschrift = _anschrift_aus(eingabe, 'zustellanschrift')
 
+    if any(eingabe.vorhanden(feld) for feld in ('apartment_id', 'move_in_date', 'move_out_date')):
+        from nebenkostenfix.prozentprofile import pruefe_summe
+
+        # Auch eine spätere Änderung der Mietzeit oder des Hauses darf die
+        # bereits gespeicherten Prozentsätze nicht über 100 % bringen.
+        with db.session.no_autoflush:
+            prozentprofile = {
+                p.category_id: {'billing_type': 'prozent', 'percentage': p.percentage}
+                for p in tenant.cost_profiles if p.billing_type == 'prozent'}
+            if prozentprofile:
+                try:
+                    pruefe_summe(tenant, prozentprofile,
+                                 {k.id: k.name for k in CostCategory.query.all()})
+                except EingabeFehler:
+                    db.session.rollback()
+                    raise
+
     vertrag = eingabe.datei('contract_file')
     if vertrag:
         apt = Apartment.query.get(tenant.apartment_id)
@@ -1688,6 +1706,7 @@ def get_categories():
             # nachvollziehbar sein, welche Position aus § 2 BetrKV gemeint ist
             # (R-DOC-01). Beides geht mit ueber die Grenze.
             'betrkv_nr': c.betrkv_nr,
+            'heizkostenv_hinweis': betrkv.ist_heizkosten(c.name, c.betrkv_nr),
             'betrkv_bezeichnung': betrkv.bezeichnung(c.betrkv_nr),
             # Phase 54: die Liste sagt dem Formular, was noch aenderbar ist,
             # und zeigt, wie viel an der Kostenart haengt.
@@ -2503,23 +2522,58 @@ def get_zeitraumvorschlag(tenant_id):
         return jsonify({'beginn': None, 'ende': None, 'gruende': [str(e)]}), 200
 
 # --- Tenant Cost Profiles ---
+@app.route('/api/tenants/<int:tenant_id>/profiles/percentages', methods=['GET'])
+def get_tenant_percentage_totals(tenant_id):
+    from nebenkostenfix.prozent import summenabschnitte
+    from nebenkostenfix.prozentprofile import andere_anteile
+    from nebenkostenfix.zeitraum import grenze
+
+    mieter = db.get_or_404(Tenant, tenant_id)
+    andere = andere_anteile(mieter)
+    return jsonify({
+        k.id: [{'start': von.isoformat(), 'end': bis.isoformat() if bis else None,
+                'percentage': str(summe)}
+               for von, bis, summe in summenabschnitte(
+                   andere.get(k.id, []), mieter.move_in_date,
+                   grenze(mieter.move_out_date) if mieter.move_out_date else None)]
+        for k in CostCategory.query.all()
+    }), 200
+
+
 @app.route('/api/tenants/<int:tenant_id>/profiles', methods=['GET'])
 def get_tenant_profiles(tenant_id):
     profiles = TenantCostProfile.query.filter_by(tenant_id=tenant_id).all()
+    kostenarten = {k.id: k for k in CostCategory.query.all()}
     result = {}
     for p in profiles:
         result[p.category_id] = ({'billing_type': p.billing_type, 'percentage': str(p.percentage)}
                                  if p.billing_type == 'prozent' else p.billing_type)
+        kat = kostenarten.get(p.category_id)
+        if p.billing_type == 'prozent' and kat and betrkv.ist_heizkosten(kat.name, kat.betrkv_nr):
+            result[p.category_id]['heizkostenv_bestaetigt'] = p.heizkostenv_bestaetigt
     return jsonify(result), 200
 
 @app.route('/api/tenants/<int:tenant_id>/profiles', methods=['POST'])
 def save_tenant_profiles(tenant_id):
+    from nebenkostenfix.prozentprofile import pruefe_summe
+
+    mieter = db.get_or_404(Tenant, tenant_id)
     # Geprueft wird vor dem Loeschen: die alten Profile sind weg, sobald die
     # Schleife laeuft, und eine Absage mittendrin liesse den Mieter ohne
     # Kostenprofile zurueck. Die Namen der Kostenarten gehen mit in die
     # Pruefung, damit die Meldung die Zeile benennt (F-25, NK-096).
-    namen = {k.id: k.name for k in CostCategory.query.all()}
+    kostenarten = {k.id: k for k in CostCategory.query.all()}
+    namen = {k.id: k.name for k in kostenarten.values()}
     profile = kostenprofile(request.get_json(silent=True), namen)
+    heizkosten_ids = {k.id for k in kostenarten.values() if betrkv.ist_heizkosten(k.name, k.betrkv_nr)}
+    for kat_id, wert in profile.items():
+        if (kat_id in heizkosten_ids and isinstance(wert, dict)
+                and wert.get('heizkostenv_bestaetigt') is not True):
+            raise EingabeFehler(
+                f'Kostenart „{namen[kat_id]}“: Bitte den Hinweis zu § 2 HeizkostenV '
+                'lesen und die Prüfung der Zulässigkeit ausdrücklich bestätigen.',
+                feld=f'kostenart_{kat_id}')
+    pruefe_summe(mieter, profile, namen)
     TenantCostProfile.query.filter_by(tenant_id=tenant_id).delete()
 
     for cat_id, wert in list(profile.items()):
@@ -2528,7 +2582,9 @@ def save_tenant_profiles(tenant_id):
             tenant_id=tenant_id,
             category_id=cat_id,
             billing_type=billing_type,
-            percentage=wert['percentage'] if isinstance(wert, dict) else None
+            percentage=wert['percentage'] if isinstance(wert, dict) else None,
+            heizkostenv_bestaetigt=(cat_id in heizkosten_ids and isinstance(wert, dict)
+                                   and wert.get('heizkostenv_bestaetigt') is True)
         )
         db.session.add(eintrag)
 

@@ -52,7 +52,7 @@ BASISREVISION = "63738d5329b4"
 # ``tenants.zustellanschrift`` und ``vermieterdaten.anschrift`` hinzu (Issue #35).
 # ``db48fb4e8716`` legt die Tabelle ``api_schluessel`` an (Zugriffsschluessel).
 # Vertragliche Prozentumlage: Anteil im Kostenprofil.
-KOPFREVISION = "a6d8f1c3b902"
+KOPFREVISION = "c2e7b9a41d06"
 
 
 def _umgebung(dbdatei: Path, tmp_path: Path) -> dict:
@@ -3053,3 +3053,27 @@ with anwendung.app.app_context():
         assert verbindung.execute(
             "SELECT percentage FROM tenant_cost_profiles WHERE billing_type = 'prozent'"
         ).fetchone() == (30.25,)
+
+
+def test_heizkostenv_bestaetigung_migriert_ohne_stillschweigende_zustimmung(tmp_path):
+    stand = _lauf('''
+import json
+import app as anwendung
+from flask_migrate import downgrade, upgrade
+from sqlalchemy import text
+from nebenkostenfix.models import db
+with anwendung.app.app_context():
+    downgrade(revision="a6d8f1c3b902")
+    db.session.execute(text("INSERT INTO tenant_cost_profiles (tenant_id, category_id, billing_type, percentage) VALUES (1, 1, 'prozent', 30.25), (2, 1, 'qm', NULL)"))
+    db.session.commit()
+    upgrade()
+    vorher = [list(r) for r in db.session.execute(text("SELECT billing_type, percentage, heizkostenv_bestaetigt FROM tenant_cost_profiles ORDER BY id"))]
+    db.session.execute(text("UPDATE tenant_cost_profiles SET heizkostenv_bestaetigt = 1 WHERE billing_type = 'prozent'"))
+    db.session.commit()
+    downgrade(revision="a6d8f1c3b902")
+    upgrade()
+    nachher = [list(r) for r in db.session.execute(text("SELECT billing_type, percentage, heizkostenv_bestaetigt FROM tenant_cost_profiles ORDER BY id"))]
+    print(json.dumps({'vorher': vorher, 'nachher': nachher}))
+''', tmp_path / 'heizkostenv.db', tmp_path)
+    erwartet = [['prozent', 30.25, 0], ['qm', None, 0]]
+    assert stand == {'vorher': erwartet, 'nachher': erwartet}

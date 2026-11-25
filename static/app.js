@@ -4069,15 +4069,26 @@ function renderInvoices() {
 }
 
 // --- Tenant Cost Profile Logic ---
+let profilePercentageContext = {};
+
 async function openCostProfileModal(tenantId, tenantName) {
     document.getElementById('profile-tenant-name').textContent = tenantName;
     document.getElementById('profile-tenant-id').value = tenantId;
     
-    let currentProfile = {};
+    let currentProfile;
     try {
-        const res = await fetch(`/api/tenants/${tenantId}/profiles`);
-        if (res.ok) currentProfile = await res.json();
-    } catch(e) { console.error(e); }
+        const [res, totals] = await Promise.all([
+            fetch(`/api/tenants/${tenantId}/profiles`),
+            fetch(`/api/tenants/${tenantId}/profiles/percentages`)
+        ]);
+        if (!res.ok) throw await serverFehler(res);
+        if (!totals.ok) throw await serverFehler(totals);
+        currentProfile = await res.json();
+        profilePercentageContext = await totals.json();
+    } catch(e) {
+        showError(meldungZu(e, 'Die Kostenprofile konnten nicht geladen werden.'));
+        return;
+    }
     
     const container = document.getElementById('cost-profile-categories');
     container.innerHTML = '';
@@ -4086,6 +4097,8 @@ async function openCostProfileModal(tenantId, tenantName) {
         const entry = currentProfile[cat.id] || 'qm';
         const val = typeof entry === 'object' ? entry.billing_type : entry;
         const percentage = typeof entry === 'object' ? entry.percentage : '';
+        const bestaetigt = typeof entry === 'object' && entry.heizkostenv_bestaetigt === true;
+        const prozentErlaubt = !cat.heizkostenv_hinweis || bestaetigt;
         
         container.innerHTML += `
             <div class="form-group" style="background: var(--bg-hover); padding: 12px; border-radius: 8px;">
@@ -4100,15 +4113,36 @@ async function openCostProfileModal(tenantId, tenantName) {
                     <option value="ignoriert" ${val === 'ignoriert' ? 'selected' : ''}>Wird diesem Mieter nicht berechnet</option>
                 </select>
                 <div id="profile-percentage-group-${cat.id}" ${val === 'prozent' ? '' : 'hidden'}>
+                    ${cat.heizkostenv_hinweis ? `
+                        <div class="warnkasten">
+                            <strong>Hinweis zu § 2 HeizkostenV</strong>
+                            <p>Bei Heiz- und Warmwasserkosten haben die Vorgaben der Heizkostenverordnung
+                                grundsätzlich Vorrang vor vertraglichen Vereinbarungen. Eine Ausnahme nennt
+                                § 2 für Gebäude mit höchstens zwei Wohnungen, von denen eine der Vermieter
+                                selbst bewohnt.
+                                <a href="https://www.gesetze-im-internet.de/heizkostenv/__2.html"
+                                    target="_blank" rel="noopener noreferrer">Gesetzestext ansehen</a></p>
+                            <label class="haken-zeile" style="margin-top: 12px;">
+                                <input type="checkbox" id="profile-heizkostenv-${cat.id}"
+                                    ${bestaetigt ? 'checked' : ''} ${val === 'prozent' ? 'required' : 'disabled'}
+                                    onchange="toggleProfilePercentage(${cat.id})">
+                                <span>Ich habe den Hinweis gelesen und die Zulässigkeit der vertraglichen
+                                    Prozentumlage für meinen Fall geprüft.</span>
+                            </label>
+                            <small>Die Bestätigung ersetzt keine rechtliche Voraussetzung.</small>
+                        </div>` : ''}
                     <label for="profile-percentage-${cat.id}">Vereinbarter Anteil in %</label>
                     <input id="profile-percentage-${cat.id}" type="number" min="0" max="100" step="0.01"
-                        value="${escapeHtml(String(percentage))}" ${val === 'prozent' ? 'required' : 'disabled'}>
+                        value="${escapeHtml(String(percentage))}" ${val === 'prozent' && prozentErlaubt ? 'required' : 'disabled'}
+                        oninput="updateProfilePercentageTotal(${cat.id})" aria-describedby="profile-total-${cat.id}">
                     <small>Tragen Sie den Anteil dieser Mietpartei laut Mietvertrag ein, zum Beispiel 30 für 30 %.
-                        Hinterlegen Sie die übrigen Anteile bei den anderen Mietparteien. Prüfen Sie, dass die Anteile zusammen 100 % ergeben.</small>
+                        Hinterlegen Sie die übrigen Anteile bei den anderen Mietparteien. Nicht verteilte Anteile trägt der Vermieter.</small>
+                    <div id="profile-total-${cat.id}" role="status" aria-live="polite"></div>
                 </div>
             </div>
         `;
     });
+    categories.forEach(cat => updateProfilePercentageTotal(cat.id));
     
     document.getElementById('cost-profile-modal').classList.add('active');
 }
@@ -4116,9 +4150,47 @@ async function openCostProfileModal(tenantId, tenantName) {
 function toggleProfilePercentage(categoryId) {
     const aktiv = document.getElementById(`profile-cat-${categoryId}`).value === 'prozent';
     document.getElementById(`profile-percentage-group-${categoryId}`).hidden = !aktiv;
+    const bestaetigung = document.getElementById(`profile-heizkostenv-${categoryId}`);
+    if (bestaetigung) {
+        bestaetigung.disabled = !aktiv;
+        bestaetigung.required = aktiv;
+        if (!aktiv) bestaetigung.checked = false;
+    }
     const input = document.getElementById(`profile-percentage-${categoryId}`);
-    input.disabled = !aktiv;
-    input.required = aktiv;
+    input.disabled = !aktiv || (bestaetigung && !bestaetigung.checked);
+    input.required = !input.disabled;
+    updateProfilePercentageTotal(categoryId);
+}
+
+function updateProfilePercentageTotal(categoryId) {
+    const input = document.getElementById(`profile-percentage-${categoryId}`);
+    const output = document.getElementById(`profile-total-${categoryId}`);
+    input.setCustomValidity('');
+    output.replaceChildren();
+    if (input.disabled) return;
+    const raw = input.value.trim().replace(',', '.');
+    if (!raw || !/^\d+(?:\.\d{1,2})?$/.test(raw)) return;
+    // In Hundertstelprozent rechnen, damit 30,25 + 69,75 exakt 100 ergibt.
+    const own = Math.round(Number(raw) * 100);
+    const segments = profilePercentageContext[categoryId] || [];
+    let overflow = false;
+    segments.forEach(segment => {
+        const total = Math.round(Number(segment.percentage) * 100) + own;
+        const number = value => (value / 100).toLocaleString('de-DE', {maximumFractionDigits: 2});
+        const row = document.createElement('div');
+        const period = segments.length > 1
+            ? `Ab ${datumText(segment.start)}: ` : '';
+        row.textContent = `${period}Gesamtanteil: ${number(total)} % · ` +
+            (total > 10000 ? `${number(total - 10000)} Prozentpunkte zu viel`
+                : total === 10000 ? 'vollständig verteilt'
+                    : `${number(10000 - total)} % Vermieteranteil`);
+        if (total > 10000) {
+            row.style.color = 'var(--danger-color)';
+            overflow = true;
+        }
+        output.appendChild(row);
+    });
+    if (overflow) input.setCustomValidity('Die Summe der Anteile darf 100 % nicht überschreiten.');
 }
 
 function closeCostProfileModal() {
@@ -4126,6 +4198,7 @@ function closeCostProfileModal() {
 }
 
 async function saveCostProfile() {
+    categories.forEach(cat => updateProfilePercentageTotal(cat.id));
     if (!document.getElementById('cost-profile-form').reportValidity()) return;
     const tenantId = document.getElementById('profile-tenant-id').value;
     
@@ -4136,6 +4209,9 @@ async function saveCostProfile() {
             data[cat.id] = select.value === 'prozent'
                 ? {billing_type: 'prozent', percentage: document.getElementById(`profile-percentage-${cat.id}`).value}
                 : select.value;
+            if (select.value === 'prozent' && cat.heizkostenv_hinweis) {
+                data[cat.id].heizkostenv_bestaetigt = document.getElementById(`profile-heizkostenv-${cat.id}`).checked;
+            }
         }
     });
     
@@ -9618,6 +9694,7 @@ async function renderTenantOverview(propId) {
         'nur_allgemein': 'Allgemein',
         'qm': 'nach m²',
         'personen': 'nach Personen',
+        'prozent': 'nach Prozentsatz',
         'ignoriert': 'Ignoriert'
     };
     
@@ -9626,6 +9703,7 @@ async function renderTenantOverview(propId) {
         'nur_allgemein': DIAGRAMM_FARBE.blau,
         'qm': DIAGRAMM_FARBE.lila,
         'personen': DIAGRAMM_FARBE.gelb,
+        'prozent': DIAGRAMM_FARBE.gruen,
         'ignoriert': DIAGRAMM_FARBE.grau
     };
     
@@ -9709,14 +9787,16 @@ async function renderTenantOverview(propId) {
         
         // Billing profiles as pills
         const profiles = allProfiles[idx] || {};
-        const profileKeys = Object.keys(profiles).filter(k => profiles[k] !== 'ignoriert');
+        const profilArt = entry => entry && typeof entry === 'object' ? entry.billing_type : entry;
+        const profileKeys = Object.keys(profiles).filter(k => profilArt(profiles[k]) !== 'ignoriert');
         
         if (profileKeys.length > 0) {
             const pillContainer = document.createElement('div');
             pillContainer.style.cssText = 'display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color);';
             
             profileKeys.forEach(catId => {
-                const bt = profiles[catId];
+                const entry = profiles[catId];
+                const bt = profilArt(entry);
                 const catName = catMap[parseInt(catId)] || `Kat. ${catId}`;
                 
                 const pill = document.createElement('span');
@@ -9728,6 +9808,12 @@ async function renderTenantOverview(propId) {
                     border: 1px solid ${billingTypeColors[bt] || DIAGRAMM_FARBE.grau};
                 `;
                 pill.textContent = `${catName}: ${billingTypeLabels[bt] || bt}`;
+                if (bt === 'prozent' && entry && entry.percentage != null) {
+                    const percentage = Number(String(entry.percentage).replace(',', '.'));
+                    if (Number.isFinite(percentage)) {
+                        pill.textContent += ' · ' + percentage.toLocaleString('de-DE', {maximumFractionDigits: 2}) + ' %';
+                    }
+                }
                 pillContainer.appendChild(pill);
             });
             

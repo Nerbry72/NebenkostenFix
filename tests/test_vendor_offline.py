@@ -134,16 +134,35 @@ def _ohne_data_uris(text):
     return re.sub(r'data:[a-z]+/[a-z0-9.+-]+;[^\s"\'<>)]*', '', text)
 
 
+def _ohne_gesetzeslink(text):
+    """Der Gesetzestext wird nur nach einem Klick geöffnet, nicht geladen.
+
+    Nur das href dieses einen Navigationslinks ausnehmen. Dieselbe Adresse
+    in fetch(), Skripten oder anderen Attributen bleibt ein Verstoß.
+    """
+    return re.sub(
+        r'(<a\s+href=")https://www\.gesetze-im-internet\.de/heizkostenv/__2\.html(")',
+        r'\1\2', text)
+
+
 def test_projektdateien_holen_nichts_vom_netz():
     """Keine vom Projekt geschriebene Datei verweist auf einen Server (F-54)."""
     verstoesse = []
     for name in PROJEKT_DATEIEN:
-        inhalt = _ohne_data_uris((STATIC / name).read_text(encoding='utf-8'))
+        inhalt = _ohne_gesetzeslink(_ohne_data_uris((STATIC / name).read_text(encoding='utf-8')))
         for fund in re.findall(r'https?://[^\s"\'<>)\]]+', inhalt):
             verstoesse.append(f'{name}: {fund}')
     assert verstoesse == [], (
         'Die Oberfläche lädt Code aus dem Internet (F-54): '
         + '; '.join(verstoesse))
+
+
+def test_gesetzeslink_erlaubt_keinen_automatischen_netzbezug():
+    url = 'https://www.gesetze-im-internet.de/heizkostenv/__2.html'
+    assert url not in _ohne_gesetzeslink(f'<a href="{url}" target="_blank">Gesetz</a>')
+    for code in (f'fetch("{url}")', f'<script src="{url}"></script>',
+                 '<a href="https://fremd.invalid/datei">Link</a>'):
+        assert _ohne_gesetzeslink(code) == code
 
 
 @pytest.mark.parametrize('paket', sorted(PAKETE), ids=sorted(PAKETE))

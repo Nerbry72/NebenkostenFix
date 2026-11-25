@@ -127,6 +127,8 @@ AUSNAHMEN = {
     'serie': 'Serienknopf aus Number(tenantId), escapeHtml(s.betrag), escapeHtml(s.gueltig_ab)',
     # Phase 54: eigene Kostenarten
     'nummer': 'Nummernzelle aus Number(k.betrkv_nr) und escapeHtml(k.betrkv_bezeichnung)',
+    'cat.heizkostenv_hinweis ? ` <div class="warnkasten"> <strong':
+        'Fester Gesetzeshinweis; IDs aus Kostenart-ID, Attribute aus booleschen Werten',
 }
 
 

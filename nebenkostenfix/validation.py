@@ -528,6 +528,13 @@ def kostenprofile(rohdaten, kostenart_namen=None) -> dict:
                 except ValueError as fehler:
                     raise EingabeFehler(str(fehler), feld=f'kostenart_{nummer}') from None
                 geprueft[nummer] = {'billing_type': art, 'percentage': prozent}
+                if 'heizkostenv_bestaetigt' in eintrag:
+                    bestaetigt = eintrag['heizkostenv_bestaetigt']
+                    if not isinstance(bestaetigt, bool):
+                        raise EingabeFehler(
+                            'Die Bestätigung zur Heizkostenverordnung muss ausdrücklich '
+                            'als Ja oder Nein angegeben werden.', feld=f'kostenart_{nummer}')
+                    geprueft[nummer]['heizkostenv_bestaetigt'] = bestaetigt
             else:
                 geprueft[nummer] = art
         except AbrechnungsartFehler as fehler:

@@ -230,6 +230,8 @@ class TenantCostProfile(db.Model):
     # nicht an zwei Stellen nachgetragen werden muss.
     billing_type = db.Column(db.String(50), nullable=False, default=VORGABE)
     percentage = db.Column(db.Numeric(5, 2), nullable=True)
+    heizkostenv_bestaetigt = db.Column(
+        db.Boolean, nullable=False, default=False, server_default=sa.false())
 
     # CHECK seit NK-096 (Revision b4e7f2a91c65). Geprueft wird schon an der
     # Eingabe (validation.kostenprofile) und im Rechenkern -- aber eine Regel

@@ -41,7 +41,7 @@ from xml.sax.saxutils import escape  # nosec B406
 from nebenkostenfix import (abrechnungsart, anschrift as anschriften, betrkv,
                             heizung, pdf_stil, zeit)
 from nebenkostenfix.geld import NULL
-from nebenkostenfix.rechenkern import DIREKT_ZUGEWIESEN, euro_text
+from nebenkostenfix.rechenkern import DIREKT_ZUGEWIESEN, euro_text, zahl_text
 
 #: Die Nummern des § 2 BetrKV, die unter die HeizkostenV fallen -- aus dem
 #: Kern, nicht aus einer eigenen Liste.
@@ -174,7 +174,10 @@ def schluessel_text(posten: dict) -> str:
 def anteil_text(posten: dict) -> str:
     """Der Anteil des Mieters an der verteilten Masse, in Prozent.
 
-    Gerechnet wird gegen ``prorated_amount`` -- die Masse, die nach der
+    Bei vertraglicher Prozentumlage gilt der eingegebene Satz. Er wird
+    nicht aus gerundeten Eurobeträgen zurückgerechnet.
+
+    Bei den übrigen Arten wird gegen ``prorated_amount`` gerechnet -- die Masse, die nach der
     Zeitabgrenzung tatsächlich verteilt wurde. Gegen den Rechnungsbetrag
     zu rechnen ergäbe bei einem unterjährigen Zeitraum eine Quote, mit der
     die Zeile auf dem Blatt nicht mehr aufgeht.
@@ -182,6 +185,9 @@ def anteil_text(posten: dict) -> str:
     ``—`` steht, wo ein Prozentsatz nichts erklärt: beim eigenen Zähler
     und wo keine Masse da ist, durch die man teilen könnte.
     """
+    if (posten.get('billing_type') == 'prozent'
+            and not ist_direkt_zugewiesen(posten) and posten.get('percentage') is not None):
+        return f"{zahl_text(posten['percentage'])} %"
     if _aus_der_ablesung(posten):
         return OHNE_ANTEIL
     masse = posten.get('prorated_amount')
