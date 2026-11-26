@@ -365,6 +365,17 @@ def login_required(view):
     return wrapper
 
 
+# Dasselbe Skript wie in static/index.html: setzt data-theme vor dem ersten Bild, aus der
+# Wahl in nk-thema oder sonst aus der Systemeinstellung. tests/test_anmeldeseiten_dunkel.py
+# prüft, dass beide gleich bleiben. Die CSP erlaubt Inline-Skripte (script-src 'unsafe-inline').
+THEMA_SKRIPT = (
+    "<script>(function () { var t = null; try { t = localStorage.getItem('nk-thema'); } "
+    "catch (e) { /* ohne Speicher gilt das System */ } if (t !== 'dark' && t !== 'light') "
+    "t = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; "
+    "document.documentElement.dataset.theme = t; })();</script>"
+)
+
+
 def _seitenkopf(titel: str) -> str:
     """Kopf der Anmelde-, Einrichtungs- und Passwortseite (NK-155): Marke,
     Schrift und Farben der Anwendung statt Systemschrift und fremdem Blau.
@@ -372,6 +383,7 @@ def _seitenkopf(titel: str) -> str:
     return (
         '<!doctype html>\n<html lang="de"><head><meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+        + THEMA_SKRIPT + '\n'
         f'<title>{titel} – {marke.PRODUKT}</title>\n'
         '<link rel="icon" href="/static/marke/favicon.svg" type="image/svg+xml">\n'
         '<link rel="icon" href="/static/marke/favicon.ico" sizes="48x48">\n'
