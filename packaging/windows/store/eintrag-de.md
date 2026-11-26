@@ -33,6 +33,7 @@ Version 0.22.0: Den Aufbau der Abrechnungs-PDF legen Sie jetzt selbst fest, dazu
 - Behoben: Der Import von Zählerständen weist negative Stände und Ablesedaten in der Zukunft ab.
 - Behoben: Eine Zahlungsserie mit mehr als 120 Terminen bricht nicht mehr still ab, sondern wird am Enddatum abgewiesen.
 - Behoben: Der Pfeil der Auswahlfelder ist im dunklen Modus gut zu sehen.
+- Behoben: Am Zweitarifzähler nimmt die App keinen Stand ohne NT-Wert mehr an.
 
 ## Produktmerkmale
 
