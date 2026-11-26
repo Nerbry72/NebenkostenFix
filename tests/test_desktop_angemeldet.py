@@ -206,7 +206,15 @@ def test_das_backend_ist_fest_gewaehlt(monkeypatch):
     assert type(desktop._systembackend()) is Tresor
     modul.WinVaultKeyring = Kaputt
     assert desktop._systembackend() is None
-    # Ohne keyring (Linux, der Mac auf main): kein Schlüsselbund.
+    # Unter macOS der Schlüsselbund des Systems, ebenso fest gewählt.
+    monkeypatch.setattr(sys, 'platform', 'darwin')
+    mac = types.ModuleType('keyring.backends.macOS')
+    monkeypatch.setitem(sys.modules, 'keyring.backends.macOS', mac)
+    mac.Keyring = Tresor
+    assert type(desktop._systembackend()) is Tresor
+    mac.Keyring = Kaputt
+    assert desktop._systembackend() is None
+    # Linux bringt kein Paket mit keyring mit: kein Schlüsselbund.
     monkeypatch.setattr(sys, 'platform', 'linux')
     assert desktop._systembackend() is None
 
@@ -604,10 +612,14 @@ def test_der_durchlauf_laesst_nichts_zurueck(monkeypatch):
     ('win32', {'schluesselbund': 'WinVaultKeyring', 'schluesselbund_durchlauf': True}, True),
     ('win32', {'schluesselbund': 'WinVaultKeyring', 'schluesselbund_durchlauf': False}, False),
     ('win32', {'schluesselbund': 'keiner', 'schluesselbund_durchlauf': None}, False),
+    # Unter macOS ohne Durchlauf (die CI fragte sonst nach dem Schlüsselbund),
+    # aber das Paket muss keyring mitbringen.
+    ('darwin', {'schluesselbund': 'Keyring', 'schluesselbund_durchlauf': None}, True),
+    ('darwin', {'schluesselbund': 'keiner', 'schluesselbund_durchlauf': None}, False),
     ('linux', {'schluesselbund': 'keiner', 'schluesselbund_durchlauf': None}, True),
 ])
-def test_unter_windows_gehoert_der_schluesselbund_zum_bestehen(monkeypatch, plattform,
-                                                              bericht, ok):
+def test_unter_windows_und_macos_gehoert_der_schluesselbund_zum_bestehen(
+        monkeypatch, plattform, bericht, ok):
     monkeypatch.setattr(sys, 'platform', plattform)
     assert desktop.schluesselbund_bestanden(bericht) is ok
     quelle = inspect.getsource(desktop.selbsttest)
@@ -616,7 +628,7 @@ def test_unter_windows_gehoert_der_schluesselbund_zum_bestehen(monkeypatch, plat
 
 def test_keyring_ist_fest_gepinnt():
     zeilen = (WURZEL / 'requirements-desktop.txt').read_text(encoding='utf-8').splitlines()
-    assert 'keyring==25.7.0; sys_platform == "win32"' in zeilen
+    assert 'keyring==25.7.0; sys_platform == "win32" or sys_platform == "darwin"' in zeilen
 
 
 def test_die_anleitung_zum_servermodus_erklaert_es():
@@ -624,4 +636,14 @@ def test_die_anleitung_zum_servermodus_erklaert_es():
     assert 'Nach jedem Start der App meldet man sich neu an.' not in text
     for wort in ('Angemeldet bleiben', 'Anmeldeinformationsverwaltung', 'Datei → Abmelden',
                  '30 Tage'):
+        assert wort in text, wort
+
+
+def test_die_anleitung_zum_servermodus_nennt_den_schluesselbund_von_macos():
+    """Die Mac-App bringt keyring mit. Nach jedem Update fragt macOS einmal,
+    ob die App den Eintrag lesen darf (ad-hoc signiert, die Freigabe hängt am
+    cdhash; Handtest 25.11.2026)."""
+    text = ' '.join((WURZEL / 'docs' / 'servermodus.md').read_text(encoding='utf-8').split())
+    assert 'Unter macOS fehlt' not in text
+    for wort in ('Schlüsselbund', 'Immer erlauben', 'Ablehnen', 'Ablage → Abmelden'):
         assert wort in text, wort
