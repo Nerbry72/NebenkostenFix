@@ -2387,6 +2387,18 @@ def _ablesung_pruefen(meter_id: int, datum: date, wert: float, wert_nt, eigene_i
     return None
 
 
+def _beide_zaehlwerke_pruefen(meter: Meter, wert_nt) -> None:
+    """Am Zweitarifzaehler gehoert zu jedem Stand auch der NT-Stand (R-NUM-06).
+
+    Der Kern liest einen fehlenden NT-Stand als 0; das NT-Register liefe
+    rechnerisch rueckwaerts und der Verbrauch schrumpfte still. Darum ist
+    das eine Absage (400) wie beim Zaehlerwechsel, keine Rueckfrage.
+    """
+    if meter.has_dual_tariff and wert_nt is None:
+        raise EingabeFehler(
+            'Der Zähler hat zwei Tarife. Bitte auch den NT-Stand eintragen.', 'value_nt')
+
+
 def _nt_stand_pruefen(meter, wert_nt, bisher=None):
     """Ein NT-Stand gehoert nur an einen Zweitarifzaehler -- hart, ohne Rueckfrage.
 
@@ -2421,8 +2433,10 @@ def create_reading():
 
     meter = Meter.query.get_or_404(meter_id)
     # Auch mit trotzdem: ein NT-Stand am Eintarifzaehler ist kein Tippfehler,
-    # den man bestaetigen koennte. Vor dem Foto, damit nichts in der Ablage liegt.
+    # den man bestaetigen koennte, und am Zweitarifzaehler gehoeren beide
+    # Zaehlwerke dazu. Vor dem Foto, damit nichts in der Ablage liegt.
     _nt_stand_pruefen(meter, value_nt)
+    _beide_zaehlwerke_pruefen(meter, value_nt)
     # Vor dem Wechseltag gehoert ein Stand an den alten Zaehler: hart, wie die
     # Gegenrichtung im Wechseldialog, und bevor ein Foto in der Ablage liegt.
     vorher = vor_dem_wechseltag(meter, reading_date)
@@ -2488,6 +2502,15 @@ def update_reading(id):
                 f'Die Ablesungsart „{art}“ gibt es nicht. Erlaubt sind: '
                 f'{", ".join(ABLESUNGSARTEN)}.', 'ablesungsart')
         reading.ablesungsart = art
+
+    # Wer den NT-Stand mitschickt und leer laesst, wuerde ihn am
+    # Zweitarifzaehler loeschen. Wer ihn nicht mitschickt, laesst ihn stehen.
+    if eingabe.vorhanden('value_nt'):
+        try:
+            _beide_zaehlwerke_pruefen(reading.meter, reading.value_nt)
+        except EingabeFehler:
+            db.session.rollback()
+            raise
 
     # Geprueft wird nur, was sich am Stand aendert: wer nur Foto, Ablesungsart oder
     # Anbieter nachtraegt, soll nicht die alte Rueckfrage noch einmal sehen.

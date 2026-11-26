@@ -758,6 +758,8 @@ def _zeile_zaehlerstaende(z, zu, felder, aufl, hinweise):
         raise ZeilenFehler(f"{felder['datum'].titel}: das Datum liegt in der Zukunft.")
     if stand_nt is not None and not zaehler[0].has_dual_tariff:
         raise ZeilenFehler('Stand Niedertarif: der Zähler hat nur einen Tarif.')
+    if stand_nt is None and zaehler[0].has_dual_tariff:
+        raise ZeilenFehler('Stand Niedertarif: der Zähler hat zwei Tarife, der NT-Stand fehlt.')
     vorher = vor_dem_wechseltag(zaehler[0], datum)
     if vorher:
         raise ZeilenFehler(f'Ablesedatum: {vorher}')
