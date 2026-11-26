@@ -4131,9 +4131,7 @@ async function openCostProfileModal(tenantId, tenantName) {
                             <p>Bei Heiz- und Warmwasserkosten haben die Vorgaben der Heizkostenverordnung
                                 grundsätzlich Vorrang vor vertraglichen Vereinbarungen. Eine Ausnahme nennt
                                 § 2 für Gebäude mit höchstens zwei Wohnungen, von denen eine der Vermieter
-                                selbst bewohnt.
-                                <a href="https://www.gesetze-im-internet.de/heizkostenv/__2.html"
-                                    target="_blank" rel="noopener noreferrer">Gesetzestext ansehen</a></p>
+                                selbst bewohnt.</p>
                             <label class="haken-zeile" style="margin-top: 12px;">
                                 <input type="checkbox" id="profile-heizkostenv-${cat.id}"
                                     ${bestaetigt ? 'checked' : ''} ${val === 'prozent' ? 'required' : 'disabled'}
