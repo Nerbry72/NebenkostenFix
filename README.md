@@ -415,6 +415,24 @@ Probelauf mit Fehlern je Zeile. Übernommen wird nur, wenn keine Zeile einen Feh
 
 ---
 
+## Mit einem KI-Assistenten (optional)
+
+Einen Zugriff für Programme ohne Browser legen Sie unter Einstellungen → Konto an, als
+Zugriffsschlüssel (englisch API-Key). Das ist nur nötig, wenn Sie einen KI-Assistenten an Ihre
+Daten lassen möchten. Ohne Schlüssel bleibt alles beim Alten.
+
+> **Achtung:** Ein Programm mit Zugriffsschlüssel sieht alles, was Sie hier sehen: Mieter,
+> Beträge, Zählerstände. Verbinden Sie einen KI-Assistenten, gehen diese Daten an dessen
+> Anbieter. Mit einem lokalen Modell bleiben sie auf Ihrem Rechner.
+
+Für die Verbindung gibt es einen eigenständigen MCP-Server:
+[nkfix-mcp](https://github.com/ChriRas/nkfix-mcp). Er ist ein separates Projekt mit eigenen
+Versionen. Er ist nicht Teil von NebenkostenFix, wird nicht mit NebenkostenFix ausgeliefert
+und stammt nicht vom Maintainer dieses Repos. Fehler und Wünsche dazu gehören in die Issues
+von nkfix-mcp, nicht hierher.
+
+---
+
 ## Sicherheit
 
 - Mit Anmeldung (Vorgabe in Docker) ist ohne Anmeldung nur `/api/health` sowie die Anmelde- und
