@@ -97,3 +97,29 @@ def test_unbestaetigtes_nachbarprofil_wird_ebenfalls_abgelehnt():
 def test_erkennung_nutzt_katalognummer_vor_altbestandsname(name, nummer, erwartet):
     from nebenkostenfix.betrkv import ist_heizkosten
     assert ist_heizkosten(name, nummer) is erwartet
+
+
+@pytest.mark.parametrize('nummer', [4, 5])
+@pytest.mark.parametrize('bestaetigt', [False, True])
+def test_ignorierte_anlagenrechnung_hat_keinen_prozentrest(nummer, bestaetigt):
+    """Nachbarprofile dürfen weder einen Prozentrest noch eine Sperre erzeugen."""
+    from nebenkostenfix.rechenkern import Heizungsanlage
+
+    kat = Kategorie(1, 'Heizung' if nummer == 4 else 'Warmwasser', False, nummer)
+    rechnung = replace(_rechnung(1, kat, '1000', 'H-1'), heizungsanlage_id=7)
+    welt = replace(
+        _welt([rechnung]),
+        heizungsanlagen=(Heizungsanlage(id=7, name='Zentrale Anlage'),),
+        profile={1: 'ignoriert'},
+        profile_der_immobilie={1: {1: 'ignoriert'}, 2: {1: 'prozent'}},
+        prozentanteile_der_immobilie={2: {1: Decimal('70')}},
+        heizkostenv_bestaetigungen=frozenset({(2, 1)} if bestaetigt else set()),
+    )
+
+    ergebnis = rechne(welt)
+
+    assert ergebnis['total_amount'] == Decimal('0.00')
+    assert ergebnis['landlord_share']['prozent_amount'] == Decimal('0.00')
+    assert ergebnis['landlord_share']['positions'] == []
+    assert len(ergebnis['line_items']) == 1
+    assert ergebnis['line_items'][0]['billing_type'] == 'ignoriert'

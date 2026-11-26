@@ -1590,6 +1590,12 @@ def _leerstandsbilanz(vorgang: Vorgang, von: date, bis: date, nur=None) -> list:
 
 def _vermieterprozentanteil(vorgang, rechnung, von, bis):
     """Nicht vergebene Prozentanteile, taggenau einschließlich Leerstand."""
+    # Anlagenrechnungen folgen der Heizkostenverteilung, nicht den
+    # Prozentprofilen. Bei „ignoriert“ bleiben sie in der allgemeinen
+    # Schleife, erzeugen aber auch dort keinen Prozentrest.
+    if any(a.id == rechnung.heizungsanlage_id for a in vorgang.heizungsanlagen):
+        return None
+
     from nebenkostenfix.prozent import pruefe_prozent, summenabschnitte
 
     kat = rechnung.kategorie
