@@ -336,7 +336,8 @@ from nebenkostenfix.umzug import init_umzug
 from nebenkostenfix.tabellenimport import ZAHLUNGSARTEN, init_tabellenimport
 from nebenkostenfix.hilfe import init_hilfe
 from nebenkostenfix.pdf_layout import (
-    aus_einstellungen as pdf_layout_aus_einstellungen, init_pdf_layout)
+    aus_einstellungen as pdf_layout_aus_einstellungen,
+    aus_schnappschuss as pdf_layout_aus_schnappschuss, init_pdf_layout)
 from nebenkostenfix.jahresabrechnung import init_jahresabrechnung
 from nebenkostenfix.kategorien import init_kategorien
 from flask_migrate import Migrate
@@ -2702,6 +2703,7 @@ def get_zeitraumvorschlag(tenant_id):
 # --- Tenant Cost Profiles ---
 @app.route('/api/tenants/<int:tenant_id>/profiles', methods=['GET'])
 def get_tenant_profiles(tenant_id):
+    db.get_or_404(Tenant, tenant_id)
     profiles = TenantCostProfile.query.filter_by(tenant_id=tenant_id).all()
     result = {}
     for p in profiles:
@@ -2710,6 +2712,11 @@ def get_tenant_profiles(tenant_id):
 
 @app.route('/api/tenants/<int:tenant_id>/profiles', methods=['POST'])
 def save_tenant_profiles(tenant_id):
+    # Erst den Mieter: SQLite setzt den Fremdschluessel nicht durch und
+    # vergibt eine freie Nummer neu. Profile fuer eine unbekannte Nummer
+    # erbte sonst der naechste neue Mieter, etwa 'ignoriert' fuer eine
+    # Kostenart, die dann still in seiner Abrechnung fehlte.
+    db.get_or_404(Tenant, tenant_id)
     # Geprueft wird vor dem Loeschen: die alten Profile sind weg, sobald die
     # Schleife laeuft, und eine Absage mittendrin liesse den Mieter ohne
     # Kostenprofile zurueck. Die Namen der Kostenarten gehen mit in die
@@ -3062,6 +3069,15 @@ def update_invoice(id):
         invoice.document_path = None
     else:
         file = eingabe.datei('file')
+        # Issue #78: Eine Datei ersetzt einen vorhandenen Beleg nur, wenn die
+        # Oberfläche das ausdrücklich sagt. Sonst hing eine im Dialog
+        # liegengebliebene Datei die Rechnung still auf eine fremde PDF um.
+        if (file and (invoice.invoice_document_id or invoice.document_path)
+                and not eingabe.wahrheit('beleg_ersetzen')):
+            raise EingabeFehler(
+                'Diese Rechnung hat schon einen Beleg, er wurde nicht ersetzt. '
+                'Laden Sie die Seite neu und wählen Sie die neue Datei noch '
+                'einmal, wenn Sie ihn ersetzen möchten.', 'file')
         if file:
             rel_path, filename = nas_handler.save_general_document(file, prop.name)
             doc = InvoiceDocument(
@@ -3537,8 +3553,14 @@ def finalize_bill():
     # auf dem Deckblatt, mit den Zahlen aus diesem Ergebnis.
     anschreiben_text = _anschreiben_fuer(mieter, bill_data, vorauszahlung=(
         _vorauszahlung_vorschlag(mieter, bill_data, category_ids)))
-    # Das Layout aus den Einstellungen, tolerant geladen (Standard ohne Wahl).
-    layout = pdf_layout_aus_einstellungen()
+    # Das Layout: für eine neue Abrechnung das aus den Einstellungen
+    # (Standard ohne Wahl). Die zweite Fassung einer bestehenden nimmt das
+    # aus dem Schnappschuss ihrer gültigen Version -- sonst sähen die beiden
+    # Fassungen verschieden aus, sobald der Vermieter das Layout umstellt.
+    if existing_report is not None:
+        layout = pdf_layout_aus_schnappschuss(existing_report.aktuelle_version)
+    else:
+        layout = pdf_layout_aus_einstellungen()
     pdf_bytes = pdf_gen.generate(
         bill_data['line_items'],
         bill_data['total_amount'],
@@ -4722,6 +4744,14 @@ def get_payments():
     result.sort(key=lambda x: x['payment_date'], reverse=True)
     return jsonify(result)
 
+# Eine Serienbuchung legt jeden Termin als eigene Zahlung an. Die Grenze
+# schuetzt vor einer versehentlich riesigen Serie, etwa durch einen Vertipper
+# im Jahr. Wer mehr braucht, teilt die Serie auf. Bisher brach die
+# Schleife still nach 121 Buchungen ab und meldete trotzdem Erfolg; bei einer
+# Vorauszahlung standen die Monate danach als Rueckstand im Soll und Ist.
+SERIE_MAX_TERMINE = 120
+
+
 @app.route('/api/payments', methods=['POST'])
 def add_payment():
     from datetime import date
@@ -4782,7 +4812,8 @@ def add_payment():
         # Rueckstand samt Zahlungserinnerung ohne eine einzige Zahlung. Ohne
         # Enddatum laeuft die Serie bis Ende naechsten Jahres; auch dahinter
         # darf sie deshalb nicht beginnen.
-        if end_date is None:
+        ohne_ende = end_date is None
+        if ohne_ende:
             end_date = date(date.today().year + 1, 12, 31)
             if end_date < start_date:
                 raise EingabeFehler(
@@ -4799,6 +4830,27 @@ def add_payment():
         if type_ == 'Nebenkostenvorauszahlung' and amount < 0:
             raise EingabeFehler(
                 'Eine Vorauszahlung kann nicht negativ sein.', 'amount')
+        # Die Grenze wird vor der ersten Buchung geprueft, mit derselben
+        # Terminrechnung wie in der Schleife: gezaehlt wird bis zum ersten
+        # Termin nach dem Ende, hoechstens bis einer ueber der Grenze.
+        # Abgelehnt wird ganz, damit weder Zahlungen noch ein Soll entstehen.
+        termine = 0
+        while (termine <= SERIE_MAX_TERMINE
+               and add_months(start_date, termine) <= end_date):
+            termine += 1
+        if termine > SERIE_MAX_TERMINE:
+            letzter = add_months(start_date, SERIE_MAX_TERMINE - 1)
+            grenze = f'Eine Serie umfasst höchstens {SERIE_MAX_TERMINE} Zahlungen.'
+            if ohne_ende:
+                raise EingabeFehler(
+                    'Ohne Enddatum läuft die Serie bis zum '
+                    f'{end_date:%d.%m.%Y}. {grenze} Mit diesem Beginn endet '
+                    f'sie spätestens am {letzter:%d.%m.%Y}. Bitte geben Sie '
+                    'ein Enddatum an und teilen Sie die Serie auf.', 'end_date')
+            raise EingabeFehler(
+                f'{grenze} Mit diesem Beginn endet sie spätestens am '
+                f'{letzter:%d.%m.%Y}. Bitte teilen Sie die Serie auf.',
+                'end_date')
 
         # Jeder Termin zaehlt vom Starttag aus und wird nur in einem kuerzeren
         # Monat auf dessen Ende gekappt. Vom Vortermin aus gerechnet blieb der
@@ -4815,8 +4867,6 @@ def add_payment():
             )
             db.session.add(payment)
             created_count += 1
-            if created_count > 120:
-                break
             current_date = add_months(start_date, created_count)
         # NK-261: die Serie ist der vereinbarte Betrag; er bleibt als Soll
         # stehen. Vor dem Einzug und nach dem Auszug gibt es kein Soll (wie in

@@ -105,8 +105,8 @@ def test_index_nutzt_die_designklassen_statt_inline_farben():
     # NK-144: zwei Auswahlpillen im Rechnungen-Tab (Liste / Zeitleiste);
     # NK-156: fünf Gruppen der Einstellungen (K8); Eingang / Alle / Nach Kostenart;
     # Phase 47: „Nur offene Zahlungen“ in der Historie; Phase 54: sechste
-    # Einstellungs-Gruppe „Kostenarten“.
-    assert len(re.findall(r'class="filter-pill', html)) == 17
+    # Einstellungs-Gruppe „Kostenarten“; PDF-Aufbau: siebte Gruppe „Abrechnung“.
+    assert len(re.findall(r'class="filter-pill', html)) == 18
 
 
 def test_kein_off_palette_farbliteral_in_inline_styles():

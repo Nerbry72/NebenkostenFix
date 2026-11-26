@@ -42,7 +42,7 @@ import re
 from datetime import datetime
 
 from reportlab.lib.styles import ParagraphStyle
-from reportlab.platypus import Paragraph, Spacer, Table, TableStyle, PageBreak
+from reportlab.platypus import KeepTogether, Paragraph, Spacer, Table, TableStyle, PageBreak
 # Bandit-Ausnahme: maskiert Text fuer reportlab, parst kein XML
 from xml.sax.saxutils import escape  # nosec B406
 
@@ -187,17 +187,24 @@ def build_cover_page_elements(
         bezeichnung, farbe, betrag = 'Saldo:', None, NULL
 
     elemente.append(Spacer(1, pdf_stil.M))
-    elemente.append(Paragraph('Ihr Anteil an den Nebenkosten',
-                              saetze['Zwischentitel']))
-    elemente.append(Spacer(1, pdf_stil.M))
-    elemente.append(pdf_stil.summenblock([
-        ('Ihre Nebenkosten:', pdf_stil.geld(total_amount), False, None),
-        ('Ihre Vorauszahlungen:', '- ' + pdf_stil.geld(prepaid_amount),
-         False, None),
-        (bezeichnung, pdf_stil.geld(betrag), True, farbe),
-    ], s, saetze, breite=300, ausrichtung='LEFT', schlicht=True))
-    # Wahlweise der GiroCode direkt unter dem Betrag (Layout „deckblatt“).
-    elemente.extend(girocode)
+    anteil = [
+        Paragraph('Ihr Anteil an den Nebenkosten', saetze['Zwischentitel']),
+        Spacer(1, pdf_stil.M),
+        pdf_stil.summenblock([
+            ('Ihre Nebenkosten:', pdf_stil.geld(total_amount), False, None),
+            ('Ihre Vorauszahlungen:', '- ' + pdf_stil.geld(prepaid_amount),
+             False, None),
+            (bezeichnung, pdf_stil.geld(betrag), True, farbe),
+        ], s, saetze, breite=300, ausrichtung='LEFT', schlicht=True),
+    ]
+    if girocode:
+        # Wahlweise der GiroCode direkt unter dem Betrag (Layout „deckblatt“).
+        # Anteil, Überschrift und Code bleiben auf einer Seite: Sonst brach
+        # ein langer Brief den Kasten auseinander, und der Code stand ohne
+        # seinen Betrag oben auf Seite 2.
+        elemente.append(KeepTogether([*anteil, *girocode]))
+    else:
+        elemente.extend(anteil)
     elemente.append(Spacer(1, pdf_stil.XL))
 
     # --- Gruß und Unterschrift ---

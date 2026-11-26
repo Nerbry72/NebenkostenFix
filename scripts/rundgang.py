@@ -45,7 +45,8 @@ TRENNLINIEN_JS = """() => [...document.querySelectorAll('.section-header-getrenn
 BEREICHE = ['dashboard', 'properties', 'tenants', 'meters', 'invoices',
             'billing', 'payments', 'reports', 'settings']
 BREITEN = [(1440, 900), (768, 1024), (390, 844)]
-EINSTELLUNGS_GRUPPEN = ['vermieter', 'kostenarten', 'sicherung', 'konto', 'updates', 'datenschutz']
+EINSTELLUNGS_GRUPPEN = ['vermieter', 'kostenarten', 'abrechnung', 'sicherung', 'konto', 'updates',
+                        'datenschutz']
 # Jeder Dialog einmal (Ausdruck in app.js). ``__rg`` legt AUSWAHL_JS mit
 # Haus, Mieter, Zähler und Anlage der Beispielimmobilie an.
 DIALOGE = {

@@ -293,12 +293,17 @@ def build_uebersicht_elements(
     vermieter_name: str = '',
     vermieter_anschrift: str | None = None,
     mieter_anschrift: str | None = None,
+    aufstellung_folgt: bool = True,
 ) -> list:
     """Das Uebersichtsblatt als Liste von Flowables, mit Seitenumbruch.
 
     ``mieter_anschrift`` ist die Anschrift, an die diese Abrechnung geht --
     die Auswahl zwischen Wohnung und Zustelladresse hat
     ``anschrift.fuer_zustellung`` schon getroffen (Phase 58).
+
+    ``aufstellung_folgt`` sagt, ob die Aufstellung der Kosten hinter dem
+    Blatt steht (Standard). Steht sie im gewählten Aufbau davor, verweist
+    die Fußnote auf sie statt auf „die folgenden Seiten“.
     """
     stand = uebersicht(posten, vorauszahlungen=vorauszahlungen)
     pruefe_summe(stand, gesamtsumme)
@@ -395,11 +400,13 @@ def build_uebersicht_elements(
             s, len(schluss), kopfzeilen=0, zebra_ab=1 if len(rumpf) % 2 else 2)))
         zusammen.append(rest)
     elemente.append(tabelle)
+    wo = ('auf den folgenden Seiten' if aufstellung_folgt
+          else 'in der Aufstellung der Kosten')
     elemente.append(KeepTogether(zusammen + [
         Spacer(1, pdf_stil.L), summen, Spacer(1, pdf_stil.L),
         Paragraph(
-            'Wie sich jede Position errechnet, mit Rechenweg und Belegen, steht '
-            'auf den folgenden Seiten. Bei Positionen mit eigenem Zähler bleiben '
+            f'Wie sich jede Position errechnet, mit Rechenweg und Belegen, steht '
+            f'{wo}. Bei Positionen mit eigenem Zähler bleiben '
             'Gesamtkosten und Anteil leer: Der Betrag kommt aus der Ablesung, '
             'nicht aus einem Anteil an einer Summe.', saetze['Fuss'])]))
     elemente.append(PageBreak())

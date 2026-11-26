@@ -46,7 +46,7 @@ from pathlib import Path
 
 from sqlalchemy.exc import SQLAlchemyError
 
-from nebenkostenfix import betrkv
+from nebenkostenfix import betrkv, zeit
 from nebenkostenfix.geld import GeldFehler, runde
 
 MAX_ZEILEN = 5000
@@ -748,6 +748,14 @@ def _zeile_zaehlerstaende(z, zu, felder, aufl, hinweise):
     stand = als_zahl(_wert(z, zu, 'stand'), felder['stand'].titel)
     nt_roh = _wert(z, zu, 'stand_nt')
     stand_nt = als_zahl(nt_roh, felder['stand_nt'].titel) if als_text(nt_roh) else None
+    # Was nie stimmen kann, weist auch die Handeingabe hart ab (NK-216):
+    # ein negativer Stand und eine Ablesung nach dem heutigen Tag in Berlin.
+    if stand < 0:
+        raise ZeilenFehler(f"{felder['stand'].titel}: ein Zählerstand kann nicht negativ sein.")
+    if stand_nt is not None and stand_nt < 0:
+        raise ZeilenFehler(f"{felder['stand_nt'].titel}: ein Zählerstand kann nicht negativ sein.")
+    if datum > zeit.als_ortsdatum(zeit.jetzt_utc()):
+        raise ZeilenFehler(f"{felder['datum'].titel}: das Datum liegt in der Zukunft.")
     if stand_nt is not None and not zaehler[0].has_dual_tariff:
         raise ZeilenFehler('Stand Niedertarif: der Zähler hat nur einen Tarif.')
     vorher = vor_dem_wechseltag(zaehler[0], datum)

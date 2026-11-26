@@ -92,6 +92,18 @@ def standard() -> dict:
             'girocode': GIROCODE_STANDARD}
 
 
+#: So viele Zeichen eines unbekannten Werts nennt eine Fehlermeldung höchstens.
+MELDUNG_HOECHSTENS = 50
+
+
+def _kurz(wert) -> str:
+    """Ein fremder Wert für die Meldung, nach ``MELDUNG_HOECHSTENS`` Zeichen gekappt."""
+    text = str(wert)
+    if len(text) <= MELDUNG_HOECHSTENS:
+        return text
+    return text[:MELDUNG_HOECHSTENS] + '…'
+
+
 def _stellenwort(index: int) -> str:
     return 'erster Stelle' if index == 0 else f'Stelle {index + 1}'
 
@@ -122,7 +134,7 @@ def pruefen(daten) -> dict:
     girocode = daten.get('girocode', GIROCODE_STANDARD)
     if girocode not in _ORTE:
         raise LayoutFehler(
-            f'Unbekannter Ort für den GiroCode: „{girocode}“. '
+            f'Unbekannter Ort für den GiroCode: „{_kurz(girocode)}“. '
             f'Möglich sind: {", ".join(_ORTE)}.')
 
     bloecke, gesehen = [], set()
@@ -131,7 +143,7 @@ def pruefen(daten) -> dict:
             raise LayoutFehler('Jeder Eintrag in „bloecke“ braucht einen Blocknamen.')
         name = eintrag['block']
         if name not in _NACH_ID:
-            raise LayoutFehler(f'Unbekannter Block „{name}“.')
+            raise LayoutFehler(f'Unbekannter Block „{_kurz(name)}“.')
         titel = _NACH_ID[name].titel
         if name in gesehen:
             raise LayoutFehler(f'Der Block „{titel}“ steht doppelt im Layout.')
@@ -186,6 +198,23 @@ def aus_einstellungen(ordner=None) -> dict:
     """Das gespeicherte Layout, tolerant geladen."""
     from nebenkostenfix import einstellungen
     return laden(einstellungen.lesen(ordner).get('pdf_layout'))
+
+
+def aus_schnappschuss(version) -> dict:
+    """Das Layout, mit dem eine festgesetzte Abrechnung gesetzt wurde.
+
+    Es steht im Schnappschuss der Version (``eingangsdaten['pdf_layout']``)
+    und wird wie jede Einstellung tolerant geladen. Jedes weitere Blatt
+    derselben Version (die zweite Fassung) nimmt dieses Layout, nicht das
+    heutige -- beide Fassungen sehen gleich aus, egal was der Vermieter
+    seitdem umgestellt hat. Versionen aus der Zeit vor dem einstellbaren
+    Aufbau und Abrechnungen ohne Version tragen keins; ihr Blatt entstand
+    im Standard, und dabei bleibt es.
+    """
+    eingangsdaten = getattr(version, 'eingangsdaten', None)
+    if not isinstance(eingangsdaten, dict):
+        return standard()
+    return laden(eingangsdaten.get('pdf_layout'))
 
 
 def _antwort(layout: dict) -> dict:

@@ -284,14 +284,18 @@ const zeitraumFehler = (() => {
         };
         const meldungen = [];
         const aufrufe = [];
+        let layoutHinweisGefragt = 0;
         const oeffnen = new Function('document', 'showError', 'generateBillPreview', 'escapeHtml',
             // Der Servervorschlag (NK-186) braucht fetch; hier zählt nur die Vorbelegung.
             'zeitraumVorschlagen',
+            // Der Hinweis „Eigenes PDF-Layout aktiv“ fragt den Server selbst.
+            'pdfLayoutHinweisLaden',
             'let currentBillingSelection = null;\n'
             + [teil('vorgeschlagenerZeitraum'), teil('pruefeAbrechnungszeitraum'),
                teil('openBillingSelectionModal')].join('\n')
             + '\nreturn openBillingSelectionModal;')(
-            dokument, m => meldungen.push(m), (...a) => aufrufe.push(a), s => String(s), () => {});
+            dokument, m => meldungen.push(m), (...a) => aufrufe.push(a), s => String(s), () => {},
+            () => { layoutHinweisGefragt++; });
         oeffnen({
             tenant_id: 7,
             categories: [
@@ -299,6 +303,7 @@ const zeitraumFehler = (() => {
                 { category_id: 2, category_name: 'B', suggested_start: '2023-07-01', suggested_end: '2024-06-30', invoice_count: 1 },
             ],
         });
+        if (layoutHinweisGefragt !== 1) return 'der Dialog fragt den PDF-Aufbau nicht ab';
         const beginn = felder['billing-period-start'];
         const ende = felder['billing-period-end'];
         if (beginn.value !== '2023-07-01' || ende.value !== '2024-12-31') {
@@ -342,11 +347,12 @@ pruefe('Gefahrenzone traegt die Klasse statt Inline-Farben',
     html.includes('dashboard-card glass-panel gefahrenzone'));
 pruefe('Datenbank-Knopf ist .btn-gefahr', html.includes('class="btn-gefahr"'));
 pruefe('Detailliertes PDF ist .btn-tint', html.includes('btn-secondary btn-tint'));
-// Siebzehn Pillen: Rechnungen (Eingang/Alle/Nach Kostenart, Liste/Zeitleiste), Einstellungen
-// (sechs Gruppen, Phase 54 ergänzt Kostenarten), Statistik (fünf Filter), Historie
-// (Nur offene Zahlungen, Phase 47); dieselbe Zahl sichert test_ui_konsistenz.py.
-pruefe('Siebzehn Auswahlpillen, keine mit Inline-Stil',
-    (html.match(/class="filter-pill/g) || []).length === 17
+// Achtzehn Pillen: Rechnungen (Eingang/Alle/Nach Kostenart, Liste/Zeitleiste), Einstellungen
+// (sieben Gruppen, Phase 54 ergänzt Kostenarten, der PDF-Aufbau die Abrechnung), Statistik
+// (fünf Filter), Historie (Nur offene Zahlungen, Phase 47); dieselbe Zahl sichert
+// test_ui_konsistenz.py.
+pruefe('Achtzehn Auswahlpillen, keine mit Inline-Stil',
+    (html.match(/class="filter-pill/g) || []).length === 18
     && !/class="filter-pill[^"]*"[^>]*style=/.test(html));
 pruefe('Cache-Buster erhoeht (style.css)', /style\.css\?v=\d+/.test(html));
 pruefe('Cache-Buster erhoeht (app.js)', /app\.js\?v=\d+/.test(html));
@@ -2539,6 +2545,668 @@ async function zugriffsschluesselPruefen() {
         && weg.erfolge.length === 1 && weg.fehlerMeldungen.length === 0);
 }
 
+// PDF-Aufbau (Einstellungen → Abrechnung): der Bereich lädt das Layout per
+// GET, zeichnet jede Zeile nur mit textContent (ein innerHTML wirft hier),
+// hält das Deckblatt vorn und Pflichtteile an, verschiebt per Pfeil und per
+// Ziehen, speichert per PUT, stellt per DELETE den Standard her, zeigt die
+// Vorschau aus POST …/vorschau über die Hülle und nennt Fehler des Servers.
+// Der Katalog kommt aus nebenkostenfix/pdf_layout.py, damit Pflicht und
+// feste Stelle hier nicht von Hand nachgebaut sind.
+async function pdfLayoutPruefen() {
+    const funktion = name => {
+        const m = appQuelle.match(new RegExp(`(async )?function ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n\\}`));
+        if (!m) throw new Error(`${name} nicht gefunden`);
+        return m[0];
+    };
+    const adresse = appQuelle.match(/const PDF_LAYOUT_ADRESSE = [^\n]*\n/);
+    if (!adresse) throw new Error('PDF_LAYOUT_ADRESSE nicht gefunden');
+    const gruppen = appQuelle.match(/const EINSTELLUNGS_GRUPPEN = [^\n]*\n/);
+    if (!gruppen) throw new Error('EINSTELLUNGS_GRUPPEN nicht gefunden');
+    const nichtGeladen = appQuelle.match(/const PDF_LAYOUT_NICHT_GELADEN = [^\n]*\n/);
+    if (!nichtGeladen) throw new Error('PDF_LAYOUT_NICHT_GELADEN nicht gefunden');
+    const ladeTexte = appQuelle.match(/const PDF_LAYOUT_LADEFEHLER = [^\n]*\nconst PDF_LAYOUT_SERVERFEHLER = [^\n]*\n/);
+    if (!ladeTexte) throw new Error('PDF_LAYOUT_LADEFEHLER/PDF_LAYOUT_SERVERFEHLER nicht gefunden');
+    const quelltext = adresse[0] + gruppen[0] + nichtGeladen[0] + ladeTexte[0] + 'let pdfLayoutStand = null;\n'
+        + ['pdfLayoutAusAntwort', 'pdfLayoutZiehen',
+        'pdfLayoutTitel', 'pdfLayoutHinweisZeigen', 'ladePdfLayout', 'pdfLayoutHinweisLaden', 'pdfLayoutKnopf',
+        'pdfLayoutZeile', 'pdfLayoutZeichnen', 'pdfLayoutSchieben', 'pdfLayoutDaten', 'pdfLayoutSpeichern',
+        'pdfLayoutStandard', 'pdfLayoutVorschau', 'pdfLayoutGeaendert', 'pdfLayoutVerlassen',
+        'pdfLayoutVorDemVerlassen', 'zeigeEinstellungsgruppe', 'zeigeServerKarte', 'abmelden'].map(funktion).join('\n');
+    const ladeText = new Function(ladeTexte[0] + 'return { PDF_LAYOUT_LADEFEHLER, PDF_LAYOUT_SERVERFEHLER };')();
+    // Für die Fehlerfälle die echten Helfer aus app.js: eine Notseite ohne
+    // JSON oder ein abgerissenes Netz sollen die Ersatztexte zeigen.
+    const echteHelfer = new Function(funktion('serverFehler') + '\n' + funktion('meldungZu')
+        + '\nreturn { serverFehler, meldungZu };')();
+    const OHNE_JSON = Symbol('ohne JSON');
+    const NETZ_WEG = Symbol('Netz weg');
+
+    const pyQuelle = fs.readFileSync(path.join(__dirname, '..', 'nebenkostenfix', 'pdf_layout.py'), 'utf8');
+    const katalog = [...pyQuelle.matchAll(/Block\('(\w+)', '([^']*)'(, pflicht=True)?(, stelle=0)?\)/g)]
+        .map(m => ({ block: m[1], titel: m[2], pflicht: !!m[3], fest: !!m[4] }));
+    const standardIds = katalog.map(b => b.block);
+    const orte = [{ ort: 'zahlung', titel: 'Beim Zahlungshinweis am Ende' },
+        { ort: 'deckblatt', titel: 'Auf dem Deckblatt' }, { ort: 'aus', titel: 'Kein GiroCode' }];
+    const antwort = (ids, eigen, girocode = 'zahlung') => ({
+        layout: { bloecke: ids.map(b => ({ block: b, an: true })), girocode },
+        ist_standard: !eigen, bloecke: katalog, girocode_orte: orte,
+    });
+    pruefe('PDF-Aufbau: der Katalog aus pdf_layout.py ist lesbar, Deckblatt fest vorn, Belegliste frei',
+        katalog.length >= 6 && katalog[0].block === 'deckblatt' && katalog[0].fest && katalog[0].pflicht
+        && katalog.some(b => b.block === 'belegliste' && !b.pflicht && !b.fest));
+
+    let fokussiert = null, fokusOptionen = null, gescrollt = null;
+    const element = tag => {
+        const el = {
+            tag, kinder: [], attribute: {}, textContent: '', hidden: false, disabled: false, value: '',
+            hoerer: {}, klassen: new Set(), dataset: {}, style: {},
+            setAttribute(n, w) { el.attribute[n] = String(w); },
+            getAttribute(n) { return n in el.attribute ? el.attribute[n] : null; },
+            appendChild(k) { el.kinder.push(k); return k; },
+            replaceChildren(...k) { el.kinder = k; },
+            addEventListener(t, f) { el.hoerer[t] = f; },
+            focus(optionen) { fokussiert = el; fokusOptionen = optionen || null; },
+            scrollIntoView() { gescrollt = el; },
+        };
+        el.classList = {
+            add: k => el.klassen.add(k), remove: k => el.klassen.delete(k), contains: k => el.klassen.has(k),
+            toggle: (k, an) => { if (an) el.klassen.add(k); else el.klassen.delete(k); },
+        };
+        Object.defineProperty(el, 'innerHTML', { get: () => '', set: () => { throw new Error('innerHTML im PDF-Aufbau'); } });
+        return el;
+    };
+    // Die Zeilenvorlage aus index.html: querySelector kennt nur Klassen, die dort wirklich stehen.
+    const vorlageAnfang = html.indexOf('<template id="pdf-layout-vorlage">');
+    const vorlageText = vorlageAnfang < 0 ? '' : html.slice(vorlageAnfang, html.indexOf('</template>', vorlageAnfang));
+    const vorlageKlassen = new Set([...vorlageText.matchAll(/class="([^"]*)"/g)].flatMap(m => m[1].split(/\s+/)));
+    pruefe('PDF-Aufbau: die Zeilenvorlage hat Kästchen, Titel, Marke und zwei Pfeilknöpfe im Markup',
+        /<input type="checkbox" class="pdf-layout-haken">/.test(vorlageText)
+        && ['pdf-layout-griff', 'pdf-layout-titel', 'pdf-layout-marke', 'pdf-layout-hoch', 'pdf-layout-runter']
+            .every(k => vorlageKlassen.has(k)));
+    const zeilenKopie = () => {
+        const zeile = element('li');
+        const teile = {};
+        for (const k of ['griff', 'haken', 'titel', 'marke', 'hoch', 'runter']) teile['.pdf-layout-' + k] = element(k);
+        zeile.teile = teile;
+        zeile.querySelector = sel => {
+            if (!vorlageKlassen.has(sel.slice(1)) || !teile[sel]) throw new Error(`${sel} fehlt in der Vorlage`);
+            return teile[sel];
+        };
+        return zeile;
+    };
+    const lauf = (antworten, ja = true, echt = false) => {
+        const felder = {}, aufrufe = [], fehlerMeldungen = [], erfolge = [], geoeffnet = [], fragen = [];
+        felder['pdf-layout-vorlage'] = { content: { firstElementChild: { cloneNode: () => zeilenKopie() } } };
+        // Wie in index.html: die Ladefehler-Meldung ist zunächst verborgen.
+        felder['pdf-layout-ladefehler'] = element('div');
+        felder['pdf-layout-ladefehler'].hidden = true;
+        // Reiter und Karten der Einstellungen, für zeigeEinstellungsgruppe.
+        const reiter = ['vermieter', 'abrechnung', 'sicherung'].map(g => {
+            const knopf = element('button');
+            knopf.dataset.gruppe = g;
+            if (g === 'abrechnung') knopf.classList.add('active');
+            return knopf;
+        });
+        const karten = ['vermieter', 'abrechnung', 'sicherung'].map(g => {
+            const karte = element('div');
+            karte.dataset.gruppe = g;
+            if (g !== 'abrechnung') karte.classList.add('gruppe-aus');
+            return karte;
+        });
+        const dokument = {
+            getElementById: id => felder[id] || (felder[id] = element('div')),
+            createElement: element,
+            querySelectorAll: sel => (sel.includes('.dashboard-card') ? karten : reiter),
+        };
+        // Reihenfolge von Rückfragen, Anfragen und Seitenwechseln (Abmelden fragt vor dem POST).
+        const ablauf = [];
+        const fenster = {
+            location: { pathname: '/', search: '', assign: ziel => ablauf.push('wechsel ' + ziel) },
+        };
+        const holen = (url, opt = {}) => {
+            aufrufe.push({ url, methode: opt.method || 'GET', koerper: opt.body });
+            ablauf.push((opt.method || 'GET') + ' ' + url);
+            const [status, daten] = antworten.shift() || [200, {}];
+            if (status === NETZ_WEG) return Promise.reject(new TypeError('Failed to fetch'));
+            const json = daten === OHNE_JSON
+                ? () => Promise.reject(new SyntaxError('Unexpected token < in JSON'))
+                : () => Promise.resolve(daten);
+            return Promise.resolve({ ok: status < 400, status, json, blob: () => Promise.resolve({ art: 'pdf' }) });
+        };
+        const helfer = echt ? echteHelfer : {
+            serverFehler: async a => { const d = await a.json(); const f = new Error(d.error || 'Server'); f.vomServer = !!d.error; return f; },
+            meldungZu: (e, ersatz) => (e && e.vomServer ? e.message : ersatz),
+        };
+        const tabs = [];
+        const fns = new Function('document', 'fetch', 'showError', 'showSuccess', 'serverFehler', 'meldungZu',
+            'frage', 'huelle', 'ladeKostenarten', 'ladeZugriffsschluessel', 'wechsleZuTab', 'startwahlServer', 'window',
+            quelltext + '; return { ladePdfLayout, pdfLayoutHinweisLaden, pdfLayoutSpeichern,'
+            + ' pdfLayoutStandard, pdfLayoutVorschau, zeigeEinstellungsgruppe, zeigeServerKarte,'
+            + ' pdfLayoutVorDemVerlassen, abmelden, stand: () => pdfLayoutStand };')(
+            dokument, holen, m => fehlerMeldungen.push(m), m => erfolge.push(m),
+            helfer.serverFehler, helfer.meldungZu, async (...f) => { fragen.push(f); ablauf.push('frage'); return ja; },
+            { blobOeffnen: async (blob, name) => { geoeffnet.push({ blob, name }); }, kann: () => false },
+            () => {}, () => {}, t => tabs.push(t), () => { throw new Error('Startwahl ist zu'); }, fenster);
+        const zeilen = () => felder['pdf-layout-liste'].kinder;
+        const reihenfolge = () => zeilen().map(z => z.teile['.pdf-layout-titel'].textContent);
+        const aktiveGruppe = () => reiter.filter(k => k.klassen.has('active')).map(k => k.dataset.gruppe).join(',');
+        return { fns, felder, aufrufe, fehlerMeldungen, erfolge, geoeffnet, fragen, zeilen, reihenfolge, aktiveGruppe,
+            tabs, stand: fns.stand, fenster, ablauf, dokument };
+    };
+    const ruhe = () => new Promise(r => setTimeout(r, 0));
+    const titel = id => katalog.find(b => b.block === id).titel;
+
+    // 1. Die Karte steht unter Einstellungen → Abrechnung.
+    const karteAnfang = html.indexOf('id="pdf-layout-karte"');
+    // Bis zum Ende der Karte (dahinter beginnt die Kontoverwaltung).
+    const karteEnde = html.indexOf('<!-- NK-127 (E-1)', karteAnfang);
+    const karte = karteAnfang < 0 || karteEnde < 0 ? '' : html.slice(karteAnfang, karteEnde);
+    pruefe('PDF-Aufbau: Reiter „Abrechnung“ und die Karte in dieser Gruppe der Einstellungen',
+        /<button type="button" class="filter-pill" role="tab" data-gruppe="abrechnung"/.test(html)
+        && /<div data-gruppe="abrechnung" class="dashboard-card glass-panel" id="pdf-layout-karte">/.test(html)
+        && karteAnfang > html.indexOf('id="tab-settings"')
+        && /if \(gruppe === 'abrechnung'\) ladePdfLayout\(\);/.test(funktion('zeigeEinstellungsgruppe')));
+    pruefe('PDF-Aufbau: Liste, GiroCode-Auswahl und die drei Knöpfe stehen in der Karte',
+        /<ol class="pdf-layout-liste" id="pdf-layout-liste"/.test(karte)
+        && /<select id="pdf-layout-girocode"><\/select>/.test(karte)
+        && /onclick="pdfLayoutSpeichern\(\)">Speichern<\/button>/.test(karte)
+        && /onclick="pdfLayoutVorschau\(\)">[\s\S]*?Vorschau ansehen<\/button>/.test(karte)
+        && /onclick="pdfLayoutStandard\(\)">Aufbau zurücksetzen<\/button>/.test(karte)
+        && !karte.includes('wiederherstellen')
+        && /id="pdf-layout-eigen" role="status" hidden>Eigenes PDF-Layout aktiv</.test(karte));
+    const dialog = html.slice(html.indexOf('id="billing-selection-modal"'), html.indexOf('id="billing-selection-body"'));
+    pruefe('PDF-Aufbau: der Dialog „Abrechnung erstellen“ hat den Hinweis, zunächst verborgen',
+        /id="billing-pdf-layout-hinweis" role="status" hidden>/.test(dialog) && dialog.includes('Eigenes PDF-Layout aktiv'));
+    const freiDialog = html.slice(html.indexOf('id="billing-frei-modal"'), html.indexOf('id="frei-mieter"'));
+    pruefe('PDF-Aufbau: auch der Dialog „Abrechnung frei erstellen“ hat den Hinweis, zunächst verborgen',
+        /id="frei-pdf-layout-hinweis" role="status" hidden>/.test(freiDialog) && freiDialog.includes('Eigenes PDF-Layout aktiv')
+        && /pdfLayoutHinweisLaden\(\);/.test(funktion('openFreieAbrechnung')));
+    pruefe('PDF-Aufbau: die Karte hat Pflichterklärung, Ansage für Bildschirmleser und eine Ladefehler-Meldung',
+        /<span id="pdf-layout-pflicht-text">[^<]+<\/span>/.test(karte)
+        && /<p class="sr-only" id="pdf-layout-ansage" aria-live="polite"><\/p>/.test(karte)
+        && /id="pdf-layout-ladefehler" role="alert" hidden>[\s\S]*?onclick="ladePdfLayout\(\)">Aktualisieren<\/button>/.test(karte));
+
+    // 2. Laden: Standard, ohne Hinweis; Deckblatt fest, Pflicht nicht abschaltbar.
+    const a = lauf([[200, antwort(standardIds, false)]]);
+    await a.fns.ladePdfLayout();
+    const z = a.zeilen();
+    const haken = i => z[i].teile['.pdf-layout-haken'];
+    pruefe('PDF-Aufbau: Laden fragt GET /api/einstellungen/pdf-layout und zeigt jede Zeile mit Titel',
+        a.aufrufe.length === 1 && a.aufrufe[0].url === '/api/einstellungen/pdf-layout' && a.aufrufe[0].methode === 'GET'
+        && JSON.stringify(a.reihenfolge()) === JSON.stringify(standardIds.map(titel)));
+    pruefe('PDF-Aufbau: im Standard bleiben beide Hinweise zu',
+        a.felder['pdf-layout-eigen'].hidden === true && a.felder['billing-pdf-layout-hinweis'].hidden === true);
+    const belegIndex = standardIds.indexOf('belegliste');
+    pruefe('PDF-Aufbau: Pflichtteile sind nicht abschaltbar, Belegliste schon',
+        katalog.every((b, i) => haken(i).disabled === b.pflicht) && haken(belegIndex).disabled === false);
+    pruefe('PDF-Aufbau: das Deckblatt lässt sich weder ziehen noch verschieben, der zweite Teil nicht davor',
+        z[0].draggable === false && z[0].knoepfe['-1'].disabled && z[0].knoepfe['1'].disabled
+        && z[1].knoepfe['-1'].disabled && !z[1].knoepfe['1'].disabled && z[1].draggable === true);
+    pruefe('PDF-Aufbau: die Pfeile tragen ein aria-label mit dem Titel',
+        z[1].knoepfe['-1'].attribute['aria-label'] === `${titel(standardIds[1])} nach oben schieben`
+        && z[1].knoepfe['1'].attribute['aria-label'] === `${titel(standardIds[1])} nach unten schieben`);
+    const beschrieben = i => (z[i].teile['.pdf-layout-haken'].attribute['aria-describedby'] || '').split(' ');
+    pruefe('PDF-Aufbau: bei Pflichtteilen verweist das Kästchen per aria-describedby auf Marke und Erklärung',
+        katalog.every((b, i) => (b.pflicht
+            ? beschrieben(i).includes('pdf-layout-pflicht-text')
+                && beschrieben(i).includes(z[i].teile['.pdf-layout-marke'].id)
+                && !!z[i].teile['.pdf-layout-marke'].id
+            : !('aria-describedby' in z[i].teile['.pdf-layout-haken'].attribute))
+            // Die Marke ist nur Text; eine Beschreibung an ihr liest niemand vor.
+            && !('aria-describedby' in z[i].teile['.pdf-layout-marke'].attribute))
+        && new Set(katalog.map((b, i) => z[i].teile['.pdf-layout-marke'].id)).size === katalog.length);
+
+    // 3. Pfeil nach unten: der Teil wandert, der Fokus bleibt bei ihm, die neue Stelle wird angesagt.
+    z[1].knoepfe['1'].onclick();
+    const nachPfeil = a.zeilen();
+    pruefe('PDF-Aufbau: der Pfeil nach unten tauscht mit dem nächsten Teil, der Fokus folgt',
+        a.reihenfolge()[2] === titel(standardIds[1]) && a.reihenfolge()[1] === titel(standardIds[2])
+        && fokussiert === nachPfeil[2].knoepfe['1']);
+    pruefe('PDF-Aufbau: nach dem Pfeil sagt die Live-Region die neue Stelle an',
+        a.felder['pdf-layout-ansage'].textContent
+            === `${titel(standardIds[1])} steht jetzt an Stelle 3 von ${standardIds.length}.`);
+
+    // 4. Ziehen: die letzte Zeile auf Platz 2; auf das Deckblatt geht nichts.
+    const daten = {};
+    const transfer = { setData: (t, w) => { daten[t] = w; }, getData: t => daten[t] };
+    const ereignis = { preventDefault() {}, dataTransfer: transfer };
+    const letzte = nachPfeil.length - 1;
+    const letzterTitel = a.reihenfolge()[letzte];
+    nachPfeil[letzte].hoerer.dragstart(ereignis);
+    nachPfeil[1].hoerer.drop(ereignis);
+    const nachZiehen = a.reihenfolge();
+    a.zeilen()[3].hoerer.dragstart(ereignis);
+    a.zeilen()[0].hoerer.drop(ereignis);
+    pruefe('PDF-Aufbau: Ziehen legt den Teil an die Zielstelle, das Deckblatt bleibt vorn',
+        nachZiehen[1] === letzterTitel && JSON.stringify(a.reihenfolge()) === JSON.stringify(nachZiehen)
+        && a.reihenfolge()[0] === titel('deckblatt'));
+
+    // 5. Belegliste aus, GiroCode aufs Deckblatt, Speichern per PUT.
+    const gesendet = standardIds.map(id => ({ block: id, an: id !== 'belegliste' }));
+    const gespeichert = antwort(standardIds, true, 'deckblatt');
+    gespeichert.layout.bloecke = gesendet;
+    const speichern = lauf([[200, antwort(standardIds, false)], [200, gespeichert]]);
+    await speichern.fns.ladePdfLayout();
+    const belegHaken = speichern.zeilen()[belegIndex].teile['.pdf-layout-haken'];
+    belegHaken.checked = false;
+    belegHaken.onchange();
+    speichern.felder['pdf-layout-girocode'].value = 'deckblatt';
+    speichern.felder['pdf-layout-girocode'].onchange();
+    await speichern.fns.pdfLayoutSpeichern();
+    const put = speichern.aufrufe[1] || {};
+    const erwartet = JSON.stringify({ bloecke: gesendet, girocode: 'deckblatt' });
+    pruefe('PDF-Aufbau: Speichern schickt PUT mit Reihenfolge, An/Aus und GiroCode-Ort',
+        put.url === '/api/einstellungen/pdf-layout' && put.methode === 'PUT' && put.koerper === erwartet
+        && speichern.erfolge.length === 1 && speichern.fehlerMeldungen.length === 0);
+    pruefe('PDF-Aufbau: nach dem Speichern eines eigenen Layouts sind beide Hinweise zu sehen',
+        speichern.felder['pdf-layout-eigen'].hidden === false
+        && speichern.felder['billing-pdf-layout-hinweis'].hidden === false);
+
+    // 6. Fehler des Servers erscheinen wörtlich.
+    const fehlerLauf = lauf([[200, antwort(standardIds, false)], [400, { error: 'Unbekannter Block „probe“.' }]]);
+    await fehlerLauf.fns.ladePdfLayout();
+    await fehlerLauf.fns.pdfLayoutSpeichern();
+    pruefe('PDF-Aufbau: eine Meldung des Servers beim Speichern erscheint wörtlich',
+        fehlerLauf.fehlerMeldungen.length === 1 && fehlerLauf.fehlerMeldungen[0] === 'Unbekannter Block „probe“.');
+
+    // 7. Ein unbekannter Block kommt nur als Text in die Seite.
+    const fremd = '<img src=x onerror=alert(1)>';
+    const fremdLauf = lauf([[200, antwort([...standardIds, fremd], true)]]);
+    await fremdLauf.fns.ladePdfLayout();
+    pruefe('PDF-Aufbau: ein unbekannter Blockname steht als Text in der Liste, ohne HTML',
+        fremdLauf.reihenfolge().includes(fremd) && fremdLauf.fehlerMeldungen.length === 0);
+
+    // 8. Aufbau zurücksetzen: erst die Rückfrage, dann DELETE.
+    const nein = lauf([[200, antwort(standardIds, true)]], false);
+    await nein.fns.ladePdfLayout();
+    await nein.fns.pdfLayoutStandard();
+    const ja = lauf([[200, antwort(standardIds, true)], [200, antwort(standardIds, false)]]);
+    await ja.fns.ladePdfLayout();
+    await ja.fns.pdfLayoutStandard();
+    pruefe('PDF-Aufbau: Aufbau zurücksetzen fragt nach, schickt dann DELETE und schließt den Hinweis',
+        nein.aufrufe.length === 1 && ja.aufrufe.length === 2 && ja.aufrufe[1].methode === 'DELETE'
+        && ja.aufrufe[1].url === '/api/einstellungen/pdf-layout' && ja.felder['pdf-layout-eigen'].hidden === true
+        && nein.fragen.length === 1 && nein.fragen[0][1] === 'Aufbau zurücksetzen');
+    pruefe('PDF-Aufbau: die Rückfrage zu „Aufbau zurücksetzen“ hat den roten Knopf (gefahr) wie andere zerstörende Rückfragen',
+        nein.fragen[0][2] === true && nein.fragen[0][3] === 'Aufbau zurücksetzen?');
+
+    // 8a. Ungespeicherte Änderungen: beim Verlassen der Gruppe fragen, nie still verwerfen.
+    const ohneAenderung = lauf([[200, antwort(standardIds, false)]], false);
+    await ohneAenderung.fns.ladePdfLayout();
+    ohneAenderung.fns.zeigeEinstellungsgruppe('vermieter');
+    pruefe('PDF-Aufbau: ohne Änderung wechselt die Gruppe sofort und ohne Rückfrage',
+        ohneAenderung.fragen.length === 0 && ohneAenderung.aktiveGruppe() === 'vermieter');
+    const bleiben = lauf([[200, antwort(standardIds, false)]], false);
+    await bleiben.fns.ladePdfLayout();
+    const bleibHaken = bleiben.zeilen()[belegIndex].teile['.pdf-layout-haken'];
+    bleibHaken.checked = false;
+    bleibHaken.onchange();
+    bleiben.fns.zeigeEinstellungsgruppe('vermieter');
+    await ruhe();
+    const nachAbbruch = bleiben.stand();
+    pruefe('PDF-Aufbau: Abbrechen bei der Rückfrage lässt die Gruppe „Abrechnung“ stehen und behält die Änderung',
+        bleiben.fragen.length === 1 && bleiben.fragen[0][1] === 'Verwerfen' && bleiben.aktiveGruppe() === 'abrechnung'
+        && nachAbbruch && nachAbbruch.bloecke[belegIndex].an === false);
+    bleiben.fns.zeigeEinstellungsgruppe('abrechnung');
+    await ruhe();
+    pruefe('PDF-Aufbau: erneutes Öffnen der Gruppe lädt nicht neu und überschreibt die Änderung nicht',
+        bleiben.aufrufe.length === 1 && bleiben.stand().bloecke[belegIndex].an === false
+        && bleiben.zeilen()[belegIndex].teile['.pdf-layout-haken'].checked === false);
+    const verwerfen = lauf([[200, antwort(standardIds, false)], [200, antwort(standardIds, false)]], true);
+    await verwerfen.fns.ladePdfLayout();
+    const wegHaken = verwerfen.zeilen()[belegIndex].teile['.pdf-layout-haken'];
+    wegHaken.checked = false;
+    wegHaken.onchange();
+    verwerfen.fns.zeigeEinstellungsgruppe('vermieter');
+    await ruhe();
+    const nachVerwerfen = verwerfen.aktiveGruppe();
+    verwerfen.fns.zeigeEinstellungsgruppe('abrechnung');
+    await ruhe();
+    pruefe('PDF-Aufbau: „Verwerfen“ wechselt die Gruppe, beim Wiederkommen gilt der gespeicherte Stand',
+        verwerfen.fragen.length === 1 && nachVerwerfen === 'vermieter' && verwerfen.aufrufe.length === 2
+        && verwerfen.stand().bloecke[belegIndex].an === true);
+
+    // 8c. Neuladen oder Schließen der Seite: der Browser fragt nur bei ungespeicherten Änderungen.
+    const seiteVerlassen = l => {
+        const e = { abgewehrt: false, returnValue: undefined, preventDefault() { e.abgewehrt = true; } };
+        l.fns.pdfLayoutVorDemVerlassen(e);
+        return e;
+    };
+    const unload = lauf([[200, antwort(standardIds, false)]]);
+    const vorDemLaden = seiteVerlassen(unload);
+    await unload.fns.ladePdfLayout();
+    const ohneAenderungUnload = seiteVerlassen(unload);
+    const unloadHaken = unload.zeilen()[belegIndex].teile['.pdf-layout-haken'];
+    unloadHaken.checked = false;
+    unloadHaken.onchange();
+    const mitAenderungUnload = seiteVerlassen(unload);
+    pruefe('PDF-Aufbau: beim Verlassen der Seite fragt der Browser nur bei ungespeicherten Änderungen',
+        !vorDemLaden.abgewehrt && !ohneAenderungUnload.abgewehrt
+        && mitAenderungUnload.abgewehrt && mitAenderungUnload.returnValue === '');
+
+    // 8e. Seitenwechsel, die die App selbst auslöst, hält der Browser nicht mit „Seite verlassen?“ auf.
+    const mitAenderung = async (ja = true) => {
+        const l = lauf([[200, antwort(standardIds, false)], [200, {}]], ja);
+        await l.fns.ladePdfLayout();
+        const h = l.zeilen()[belegIndex].teile['.pdf-layout-haken'];
+        h.checked = false;
+        h.onchange();
+        return l;
+    };
+    const abmeldenNein = await mitAenderung(false);
+    await abmeldenNein.fns.abmelden();
+    pruefe('PDF-Aufbau: Abmelden mit ungespeichertem Aufbau fragt vorher; „Abbrechen“ meldet nicht ab',
+        abmeldenNein.fragen.length === 1 && abmeldenNein.fragen[0][1] === 'Verwerfen' && abmeldenNein.fragen[0][2] === true
+        && !abmeldenNein.aufrufe.some(a => a.url === '/logout')
+        && !abmeldenNein.ablauf.some(s => s.startsWith('wechsel ')));
+    const abmeldenJa = await mitAenderung(true);
+    await abmeldenJa.fns.abmelden();
+    pruefe('PDF-Aufbau: Abmelden fragt vor dem POST /logout, danach hält der Browser den Wechsel nicht auf',
+        JSON.stringify(abmeldenJa.ablauf.slice(1)) === JSON.stringify(['frage', 'POST /logout', 'wechsel /login?abgemeldet=1'])
+        && !seiteVerlassen(abmeldenJa).abgewehrt);
+    const abmeldenOhne = lauf([[200, antwort(standardIds, false)], [200, {}]]);
+    await abmeldenOhne.fns.ladePdfLayout();
+    await abmeldenOhne.fns.abmelden();
+    pruefe('PDF-Aufbau: Abmelden ohne Änderung fragt nicht',
+        abmeldenOhne.fragen.length === 0
+        && JSON.stringify(abmeldenOhne.ablauf.slice(1)) === JSON.stringify(['POST /logout', 'wechsel /login?abgemeldet=1']));
+    const leerlauf = await mitAenderung();
+    leerlauf.fenster.nkLetzteAnfrage = 0;
+    new Function('document', 'window', 'entwurfSichern',
+        'let letzteBedienung = 0; let leerlaufStill = false; const leerlaufMs = 1000; const LEERLAUF_WARNUNG_MS = 1;\n'
+        + funktion('leerlaufPruefen') + '\nreturn leerlaufPruefen;')(leerlauf.dokument, leerlauf.fenster, () => {})();
+    pruefe('PDF-Aufbau: die Leerlauf-Abmeldung mit ungespeichertem Aufbau löst kein „Seite verlassen?“ aus',
+        leerlauf.ablauf.some(s => s.startsWith('wechsel /login')) && !seiteVerlassen(leerlauf).abgewehrt);
+    const sperre = await mitAenderung();
+    const huellQuelle = appQuelle.match(/\(function \(\) \{\n    const echtesFetch[\s\S]*?\n\}\)\(\);/);
+    if (!huellQuelle) throw new Error('fetch-Umhüllung nicht gefunden');
+    sperre.fenster.fetch = () => Promise.resolve({
+        status: 401, clone: () => ({ json: () => Promise.resolve({ code: 'auth_required' }) }),
+    });
+    new Function('window', huellQuelle[0])(sperre.fenster);
+    await sperre.fenster.fetch('/api/probe');
+    pruefe('PDF-Aufbau: die Umleitung bei 401 mit ungespeichertem Aufbau löst kein „Seite verlassen?“ aus',
+        sperre.ablauf.some(s => s.startsWith('wechsel /login')) && !seiteVerlassen(sperre).abgewehrt);
+
+    // 8d. Weg zur Serverkarte mit ungespeichertem Aufbau: erst die Antwort, dann Scrollen und Fokus.
+    const serverWeg = async ja => {
+        const l = lauf([[200, antwort(standardIds, false)]], ja);
+        await l.fns.ladePdfLayout();
+        const h = l.zeilen()[belegIndex].teile['.pdf-layout-haken'];
+        h.checked = false;
+        h.onchange();
+        fokussiert = null; fokusOptionen = null; gescrollt = null;
+        l.fns.zeigeServerKarte();
+        const sofort = [fokussiert, gescrollt];
+        await ruhe();
+        return { l, sofort, fokus: fokussiert, optionen: fokusOptionen, scroll: gescrollt };
+    };
+    const serverNein = await serverWeg(false);
+    pruefe('PDF-Aufbau: „Abbrechen“ auf dem Weg zur Serverkarte lässt Gruppe und Fokus, scrollt nicht',
+        serverNein.l.fragen.length === 1 && serverNein.l.aktiveGruppe() === 'abrechnung'
+        && serverNein.fokus === null && serverNein.scroll === null
+        && serverNein.l.stand().bloecke[belegIndex].an === false);
+    const serverJa = await serverWeg(true);
+    pruefe('PDF-Aufbau: nach „Verwerfen“ zeigt der Weg die Serverkarte oben und legt den Fokus ins Adressfeld',
+        serverJa.sofort[0] === null && serverJa.sofort[1] === null
+        && serverJa.l.aktiveGruppe() === 'sicherung' && serverJa.scroll === serverJa.l.felder['server-karte']
+        && serverJa.fokus === serverJa.l.felder['server-adresse']
+        && !!serverJa.optionen && serverJa.optionen.preventScroll === true);
+    const serverOhne = lauf([[200, antwort(standardIds, false)]]);
+    await serverOhne.fns.ladePdfLayout();
+    fokussiert = null; gescrollt = null;
+    serverOhne.fns.zeigeServerKarte();
+    pruefe('PDF-Aufbau: ohne Änderung führt der Weg zur Serverkarte sofort und ohne Rückfrage',
+        serverOhne.fragen.length === 0 && serverOhne.aktiveGruppe() === 'sicherung'
+        && fokussiert === serverOhne.felder['server-adresse'] && gescrollt === serverOhne.felder['server-karte']
+        && JSON.stringify(serverOhne.tabs) === JSON.stringify(['settings']));
+
+    // 8b. Server antwortet 500 ohne JSON, Netz weg, Notseite statt JSON: verständliche Meldung, kein Hängen.
+    // Die Karte sagt den Fehler an (role="alert"); eine zweite Meldung unten rechts gibt es nicht.
+    const kartenText = l => l.felder['pdf-layout-ladefehler-text'].textContent;
+    const laden500 = lauf([[500, OHNE_JSON]], true, true);
+    await laden500.fns.ladePdfLayout();
+    pruefe('PDF-Aufbau: 500 ohne JSON beim Laden nennt den Server in der Karte und meldet sich nur dort',
+        laden500.fehlerMeldungen.length === 0 && kartenText(laden500) === ladeText.PDF_LAYOUT_SERVERFEHLER
+        && /Server/.test(kartenText(laden500))
+        && laden500.felder['pdf-layout-ladefehler'].hidden === false && laden500.zeilen().length === 0);
+    const laden500Text = lauf([[500, { error: 'Die Datenbank ist gesperrt.' }]], true, true);
+    await laden500Text.fns.ladePdfLayout();
+    pruefe('PDF-Aufbau: eine Meldung des Servers beim Laden steht wörtlich in der Karte',
+        laden500Text.fehlerMeldungen.length === 0 && kartenText(laden500Text) === 'Die Datenbank ist gesperrt.');
+    const netzWeg = lauf([[NETZ_WEG], [200, antwort(standardIds, false)]], true, true);
+    await netzWeg.fns.ladePdfLayout();
+    const netzMeldung = netzWeg.felder['pdf-layout-ladefehler'].hidden;
+    const netzText = kartenText(netzWeg);
+    await netzWeg.fns.ladePdfLayout();
+    pruefe('PDF-Aufbau: ohne Netz nennt die Karte die Verbindung; erneutes Laden räumt die Meldung weg',
+        netzMeldung === false && netzText === ladeText.PDF_LAYOUT_LADEFEHLER && /Verbindung/.test(netzText)
+        && netzWeg.fehlerMeldungen.length === 0
+        && netzWeg.felder['pdf-layout-ladefehler'].hidden === true && netzWeg.zeilen().length === standardIds.length);
+    // Zweimal derselbe Fehler: während des zweiten Ladens ist die Meldung verborgen,
+    // danach erscheint sie neu und role="alert" sagt sie wieder an.
+    const zweimal = lauf([[NETZ_WEG], [NETZ_WEG]], true, true);
+    await zweimal.fns.ladePdfLayout();
+    const ersterFehler = zweimal.felder['pdf-layout-ladefehler'].hidden;
+    const zweitesLaden = zweimal.fns.ladePdfLayout();
+    const waehrendLaden = zweimal.felder['pdf-layout-ladefehler'].hidden;
+    await zweitesLaden;
+    pruefe('PDF-Aufbau: ein zweiter gleicher Ladefehler nach „Aktualisieren“ erscheint neu (vorher verborgen)',
+        ersterFehler === false && waehrendLaden === true
+        && zweimal.felder['pdf-layout-ladefehler'].hidden === false
+        && kartenText(zweimal) === ladeText.PDF_LAYOUT_LADEFEHLER && zweimal.fehlerMeldungen.length === 0);
+    const notseite = lauf([[200, OHNE_JSON]], true, true);
+    await notseite.fns.ladePdfLayout();
+    pruefe('PDF-Aufbau: eine Antwort ohne JSON trotz 200 gilt als Ladefehler',
+        kartenText(notseite) === ladeText.PDF_LAYOUT_LADEFEHLER && notseite.fehlerMeldungen.length === 0
+        && notseite.felder['pdf-layout-ladefehler'].hidden === false);
+    const ladeKarte = karte.match(/id="pdf-layout-ladefehler" role="alert" hidden>\s*<p class="karten-text" id="pdf-layout-ladefehler-text">([^<]*)<\/p>/);
+    pruefe('PDF-Aufbau: der Vorgabetext der Ladefehler-Meldung in index.html ist der Text für Verbindungsfehler',
+        !!ladeKarte && ladeKarte[1] === ladeText.PDF_LAYOUT_LADEFEHLER);
+    await laden500.fns.pdfLayoutSpeichern();
+    await laden500.fns.pdfLayoutVorschau();
+    pruefe('PDF-Aufbau: Speichern und Vorschau ohne geladenen Aufbau melden sich, statt stumm zu bleiben',
+        laden500.fehlerMeldungen.length === 2 && laden500.aufrufe.length === 1
+        && laden500.fehlerMeldungen.every(m => m === laden500.fehlerMeldungen[0] && /nicht geladen/.test(m)));
+    const fehler500 = lauf([[200, antwort(standardIds, false)], [500, OHNE_JSON], [500, OHNE_JSON], [500, OHNE_JSON]],
+        true, true);
+    await fehler500.fns.ladePdfLayout();
+    await fehler500.fns.pdfLayoutSpeichern();
+    await fehler500.fns.pdfLayoutVorschau();
+    await fehler500.fns.pdfLayoutStandard();
+    pruefe('PDF-Aufbau: 500 ohne JSON bei Speichern, Vorschau und Zurücksetzen zeigt je einen Ersatztext',
+        JSON.stringify(fehler500.fehlerMeldungen) === JSON.stringify([
+            'Der PDF-Aufbau konnte nicht gespeichert werden.', 'Die Vorschau konnte nicht erstellt werden.',
+            'Der PDF-Aufbau konnte nicht zurückgesetzt werden.'])
+        && fehler500.geoeffnet.length === 0 && fehler500.felder['btn-pdf-layout-vorschau'].disabled === false
+        && fehler500.zeilen().length === standardIds.length);
+    const hinweisZu = l => ['billing-pdf-layout-hinweis', 'frei-pdf-layout-hinweis'].forEach(id => {
+        l.felder[id] = element('p');
+        l.felder[id].hidden = true;
+    });
+    const hinweis500 = lauf([[500, OHNE_JSON]], true, true);
+    hinweisZu(hinweis500);
+    await hinweis500.fns.pdfLayoutHinweisLaden();
+    const hinweisNetz = lauf([[NETZ_WEG]], true, true);
+    hinweisZu(hinweisNetz);
+    await hinweisNetz.fns.pdfLayoutHinweisLaden();
+    pruefe('PDF-Aufbau: der Hinweis in den Abrechnungsdialogen bleibt bei Fehlern still und zu',
+        hinweis500.fehlerMeldungen.length === 0 && hinweisNetz.fehlerMeldungen.length === 0
+        && [hinweis500, hinweisNetz].every(l => l.felder['billing-pdf-layout-hinweis'].hidden === true
+            && l.felder['frei-pdf-layout-hinweis'].hidden === true));
+
+    // 9. Vorschau: POST …/vorschau mit dem ungespeicherten Stand, Öffnen über die Hülle.
+    const vorschau = lauf([[200, antwort(standardIds, false)], [200, {}]]);
+    await vorschau.fns.ladePdfLayout();
+    await vorschau.fns.pdfLayoutVorschau();
+    const post = vorschau.aufrufe[1] || {};
+    pruefe('PDF-Aufbau: Vorschau schickt POST …/vorschau und öffnet die PDF über die Hülle',
+        post.url === '/api/einstellungen/pdf-layout/vorschau' && post.methode === 'POST'
+        && post.koerper === JSON.stringify({ bloecke: standardIds.map(id => ({ block: id, an: true })), girocode: 'zahlung' })
+        && vorschau.geoeffnet.length === 1 && vorschau.geoeffnet[0].name === 'Layout-Vorschau.pdf'
+        && vorschau.felder['btn-pdf-layout-vorschau'].disabled === false);
+    const vorschauFehler = lauf([[200, antwort(standardIds, false)], [400, { error: 'Der Block „Übersicht“ steht doppelt im Layout.' }]]);
+    await vorschauFehler.fns.ladePdfLayout();
+    await vorschauFehler.fns.pdfLayoutVorschau();
+    pruefe('PDF-Aufbau: bei einem Fehler der Vorschau öffnet sich nichts, die Meldung erscheint',
+        vorschauFehler.geoeffnet.length === 0
+        && vorschauFehler.fehlerMeldungen[0] === 'Der Block „Übersicht“ steht doppelt im Layout.');
+
+    // 10. Der Dialog „Abrechnung erstellen“ fragt nur den Hinweis ab.
+    const hinweis = lauf([[200, antwort(standardIds, true)]]);
+    await hinweis.fns.pdfLayoutHinweisLaden();
+    pruefe('PDF-Aufbau: der Dialog zeigt „Eigenes PDF-Layout aktiv“, wenn eins gespeichert ist',
+        hinweis.felder['billing-pdf-layout-hinweis'].hidden === false && hinweis.fehlerMeldungen.length === 0);
+    pruefe('PDF-Aufbau: auch der Dialog „Abrechnung frei erstellen“ zeigt den Hinweis',
+        hinweis.felder['frei-pdf-layout-hinweis'].hidden === false);
+}
+
+// Issue #78: Bearbeiten einer Rechnung hing ihren Beleg still auf eine fremde
+// PDF um. Eine Datei aus einem früheren Dialog blieb im Dateifeld liegen,
+// weder Öffnen noch Verwerfen leerte es. Die Belegauswahl kennt nur
+// Sammelbelege, beim Einzelbeleg blieb sie leer, und Speichern schickte die
+// liegengebliebene Datei mit. Der Wächter fährt die Schritte 1 bis 4 aus dem
+// Issue mit den echten Funktionen aus app.js nach.
+async function belegUmhaengenPruefen() {
+    const quelle = name => {
+        const m = appQuelle.match(new RegExp(`(?:async )?function ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n\\}`));
+        if (!m) throw new Error(`${name} nicht gefunden`);
+        return m[0];
+    };
+    // defineProperties statt Object.assign: Getter und Setter bleiben welche.
+    const element = (mehr = {}) => Object.defineProperties({
+        value: '', textContent: '', hidden: false, required: false, disabled: false, checked: false,
+        style: {}, dataset: {}, parentElement: null,
+        classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+        replaceChildren() {}, insertAdjacentHTML() {}, append() {}, setAttribute() {},
+        querySelector: () => element(), closest: () => null,
+    }, Object.getOwnPropertyDescriptors(mehr));
+    // Ein <select> wie im Browser: ein Wert ohne passende Option wird ''.
+    const auswahl = () => {
+        let html = '';
+        let wert = '';
+        return element({
+            get innerHTML() { return html; },
+            set innerHTML(h) { html = h; wert = ''; },
+            insertAdjacentHTML(_ort, h) { html += h; },
+            replaceChildren() { html = ''; wert = ''; },
+            get value() { return wert; },
+            set value(v) {
+                const da = [...html.matchAll(/value="([^"]*)"/g)].map(t => t[1]);
+                wert = da.includes(String(v)) ? String(v) : '';
+            },
+        });
+    };
+    // Ein Dateifeld wie im Browser: value = '' leert die gewählten Dateien.
+    const dateiFeld = () => {
+        let dateien = [];
+        return element({
+            get files() { return dateien; },
+            set files(f) { dateien = [...f]; },
+            get value() { return dateien.length ? `C:\\fakepath\\${dateien[0].name}` : ''; },
+            set value(v) { if (v === '') dateien = []; },
+        });
+    };
+    const felder = {};
+    for (const id of ['invoice-category', 'invoice-property', 'invoice-provider', 'invoice-document-id']) {
+        felder[id] = auswahl();
+    }
+    felder['invoice-file'] = dateiFeld();
+    const dokument = {
+        getElementById: id => (felder[id] = felder[id] || element()),
+        querySelector: () => element(),
+        body: element(),
+    };
+    const gesendet = [];
+    class FormDataAttrappe {
+        constructor() { this.teile = []; }
+        append(k, v) { this.teile.push([k, v]); }
+        has(k) { return this.teile.some(t => t[0] === k); }
+        get(k) { const t = this.teile.find(e => e[0] === k); return t ? t[1] : null; }
+    }
+    const belegA = { name: 'beleg-a.pdf' };
+    const dateiB = { name: 'beleg-b.pdf' };
+    const dateiC = { name: 'beleg-c.pdf' };
+    const rechnungen = [
+        { id: 1, category_id: 3, property_id: 2, provider_id: 4, amount: 80, invoice_number: 'S-1',
+          start_date: '2024-01-01', end_date: '2024-12-31', invoice_document_id: 11,
+          document_path: 'Testhaus/beleg-a.pdf', filename: belegA.name },
+        { id: 2, category_id: 3, property_id: 2, provider_id: 4, amount: 50, invoice_number: 'S-2',
+          start_date: '2024-01-01', end_date: '2024-12-31', invoice_document_id: 12,
+          document_path: 'Testhaus/sammel.pdf', filename: 'sammel.pdf', document_pages: '2' },
+        { id: 3, category_id: 3, property_id: 2, provider_id: 4, amount: 20, invoice_number: 'S-3',
+          start_date: '2024-01-01', end_date: '2024-12-31', invoice_document_id: null,
+          document_path: null, filename: null },
+    ];
+    const fns = new Function('document', 'categories', 'properties', 'providers', 'currentDocuments', 'invoices',
+        'escapeHtml', 'zaehlerArtName', 'anbieterHinweisAktualisieren', 'populateInvoiceApartments',
+        'populateInvoiceHeizung', 'toggleInvoiceHeizkosten', 'toggleInvoiceDescription', 'belegDatumAnbieten',
+        'FormData', 'fetch', 'showError', 'showSuccess', 'serverFehler', 'meldungZu',
+        'closeAddInvoiceModal', 'fetchInvoices',
+        'let neueDatei = null, neueDateiAdresse = "", eingangRechnung = null, kostenAnsicht = "alle";\n'
+        + quelle('openAddInvoiceModal') + quelle('toggleInvoiceFileUpload') + quelle('verwirfNeueDatei')
+        + quelle('saveInvoice')
+        + '; return { openAddInvoiceModal, verwirfNeueDatei, saveInvoice,'
+        + ' setzeNeueDatei: d => { neueDatei = d; eingangRechnung = "neu"; } };')(
+        dokument, [{ id: 3, name: 'Schornsteinreinigung' }], [{ id: 2, name: 'Testhaus' }],
+        [{ id: 4, name: 'Kehrbezirk Probe' }],
+        [{ id: 12, description: 'Sammelbeleg', property_name: 'Testhaus' }], rechnungen,
+        s => String(s), n => n, () => {}, () => {}, async () => {}, () => {}, () => {}, () => {},
+        FormDataAttrappe,
+        async (url, opt) => { gesendet.push({ url, methode: opt.method, daten: opt.body }); return { ok: true, json: async () => ({ id: 1 }) }; },
+        m => { throw new Error('showError: ' + m); }, () => {}, async r => r, (e, t) => t, () => {}, () => {});
+    const spalte = element();
+    const datei = felder['invoice-file'];
+    const hinweis = () => felder['invoice-beleg-vorhanden'] || element({ hidden: true });
+
+    // Schritt 1+2: B liegt im Dateifeld, „Datei verwerfen“ leert es mit.
+    fns.setzeNeueDatei(dateiB);
+    datei.files = [dateiB];
+    fns.verwirfNeueDatei();
+    pruefe('Issue #78: „Datei verwerfen“ leert auch das Dateifeld des Rechnungsdialogs',
+        datei.files.length === 0);
+
+    // Schritt 3: R1 (Einzelbeleg A) öffnen, während B noch im Feld liegt.
+    datei.files = [dateiB];
+    await fns.openAddInvoiceModal(1, spalte);
+    pruefe('Issue #78: Bearbeiten leert das Dateifeld beim Öffnen', datei.files.length === 0);
+    pruefe('Issue #78: der Dialog zeigt den vorhandenen Einzelbeleg und dass er bleibt',
+        hinweis().hidden === false && hinweis().textContent.includes(belegA.name)
+        && /bleibt/.test(hinweis().textContent));
+
+    // Schritt 4: speichern schickt keine Datei, der Beleg bleibt.
+    gesendet.length = 0;
+    await fns.saveInvoice();
+    const ohne = gesendet[0] || { daten: new FormDataAttrappe() };
+    pruefe('Issue #78: Speichern ohne neue Datei schickt keine Datei mit',
+        ohne.methode === 'PUT' && ohne.url === '/api/invoices/1'
+        && !ohne.daten.has('file') && !ohne.daten.has('beleg_ersetzen'));
+
+    // Bewusst ersetzen: wer im offenen Dialog eine Datei wählt, ersetzt ausdrücklich.
+    await fns.openAddInvoiceModal(1, spalte);
+    datei.files = [dateiC];
+    gesendet.length = 0;
+    await fns.saveInvoice();
+    const mit = gesendet[0] || { daten: new FormDataAttrappe() };
+    pruefe('Issue #78: eine bewusst gewählte Datei ersetzt den Beleg ausdrücklich',
+        mit.daten.get('file') === dateiC && String(mit.daten.get('beleg_ersetzen')) === 'true');
+
+    // Sammelbeleg: die Auswahl zeigt ihn, kein Hinweis auf einen Einzelbeleg.
+    datei.files = [dateiB];
+    await fns.openAddInvoiceModal(2, spalte);
+    pruefe('Issue #78: am Sammelbeleg steht die Auswahl, das Dateifeld ist leer',
+        felder['invoice-document-id'].value === '12' && datei.files.length === 0 && hinweis().hidden === true);
+
+    // Rechnung ohne Beleg und neue Rechnung: leeres Feld, kein Hinweis.
+    datei.files = [dateiB];
+    await fns.openAddInvoiceModal(3, spalte);
+    pruefe('Issue #78: ohne Beleg kein Hinweis, das Dateifeld ist leer',
+        datei.files.length === 0 && hinweis().hidden === true);
+    datei.files = [dateiB];
+    await fns.openAddInvoiceModal(null, spalte);
+    pruefe('Issue #78: auch eine neue Rechnung beginnt mit leerem Dateifeld',
+        datei.files.length === 0 && hinweis().hidden === true);
+}
+
 (async () => {
     // NK-201/NK-204/NK-118/NK-216/NK-217/NK-226/NK-227/NK-230/NK-258/NK-261/
     // NK-262/NK-263/NK-267/NK-265 und Phase 54 (eigene Kostenarten): jede
@@ -2570,6 +3238,8 @@ async function zugriffsschluesselPruefen() {
         ['zeitleisteBelegPruefen', 'Phase 67: Beleg-Link in der Zeitleiste'],
         ['anschriftenPruefen', 'Phase 58: Anschriften-Prüfung'],
         ['zugriffsschluesselPruefen', 'Zugriffsschlüssel-Prüfung'],
+        ['pdfLayoutPruefen', 'PDF-Aufbau-Prüfung'],
+        ['belegUmhaengenPruefen', 'Issue #78: Beleg-Umhängen-Prüfung'],
     ];
     for (const [name, label] of schritte) {
         try {

@@ -423,8 +423,8 @@
                 <div class="section-header">
                     <div>
                         <h2>Einstellungen</h2>
-                        <p class="section-untertitel">Vermieter und Anbieter, Kostenarten, Datensicherung,
-                            Konto, Updates und Datenschutz</p>
+                        <p class="section-untertitel">Vermieter und Anbieter, Kostenarten, Abrechnung,
+                            Datensicherung, Konto, Updates und Datenschutz</p>
                     </div>
                 </div>
 
@@ -436,6 +436,8 @@
                         onclick="zeigeEinstellungsgruppe('vermieter')"><i class="ph ph-identification-card" aria-hidden="true"></i> Vermieter &amp; Anbieter</button>
                     <button type="button" class="filter-pill" role="tab" data-gruppe="kostenarten"
                         onclick="zeigeEinstellungsgruppe('kostenarten')"><i class="ph ph-list-numbers" aria-hidden="true"></i> Kostenarten</button>
+                    <button type="button" class="filter-pill" role="tab" data-gruppe="abrechnung"
+                        onclick="zeigeEinstellungsgruppe('abrechnung')"><i class="ph ph-file-text" aria-hidden="true"></i> Abrechnung</button>
                     <button type="button" class="filter-pill" role="tab" data-gruppe="sicherung"
                         onclick="zeigeEinstellungsgruppe('sicherung')"><i class="ph ph-hard-drives" aria-hidden="true"></i> Datensicherung</button>
                     <button type="button" class="filter-pill" role="tab" data-gruppe="konto"
@@ -532,6 +534,47 @@
                                 </thead>
                                 <tbody id="kategorien-liste"></tbody>
                             </table>
+                        </div>
+                    </div>
+
+                    <!-- PDF-Aufbau: welche Teile die Abrechnungs-PDF hat, in welcher
+                         Reihenfolge, und wo der GiroCode steht (pdf_layout.py).
+                         Die Liste füllt ladePdfLayout() in app.js. -->
+                    <div data-gruppe="abrechnung" class="dashboard-card glass-panel" id="pdf-layout-karte">
+                        <div class="karten-kopf">
+                            <h3>PDF-Aufbau <button type="button" class="begriff-hilfe" aria-label="Begriff erklären" data-begriff="pdfaufbau"><i class="ph ph-question" aria-hidden="true"></i></button></h3>
+                            <span class="karten-kopf-hinweis" id="pdf-layout-eigen" role="status" hidden>Eigenes PDF-Layout aktiv</span>
+                        </div>
+                        <p class="karten-text">
+                            Welche Teile die Abrechnung enthält und in welcher Reihenfolge sie stehen.
+                            Ziehen Sie einen Teil mit der Maus an seinen Platz oder nehmen Sie die Pfeile.
+                            <span id="pdf-layout-pflicht-text">Pflichtteile lassen sich nicht ausschalten, das Deckblatt steht immer vorn.</span>
+                            Der Aufbau gilt für neue Abrechnungen; festgesetzte behalten ihren.
+                        </p>
+                        <div class="pdf-layout-ladefehler" id="pdf-layout-ladefehler" role="alert" hidden>
+                            <p class="karten-text" id="pdf-layout-ladefehler-text">Der PDF-Aufbau konnte nicht geladen werden. Prüfen Sie die Verbindung und versuchen Sie es noch einmal.</p>
+                            <button class="btn-secondary" type="button" onclick="ladePdfLayout()">Aktualisieren</button>
+                        </div>
+                        <ol class="pdf-layout-liste" id="pdf-layout-liste" aria-label="Teile der Abrechnung in ihrer Reihenfolge"></ol>
+                        <p class="sr-only" id="pdf-layout-ansage" aria-live="polite"></p>
+                        <template id="pdf-layout-vorlage">
+                            <li class="pdf-layout-zeile">
+                                <i class="ph ph-dots-six-vertical pdf-layout-griff" aria-hidden="true"></i>
+                                <label class="pdf-layout-name"><input type="checkbox" class="pdf-layout-haken"> <span class="pdf-layout-titel"></span></label>
+                                <span class="pdf-layout-marke" hidden></span>
+                                <button type="button" class="btn-icon pdf-layout-hoch" aria-label="Nach oben schieben"><i class="ph ph-arrow-up" aria-hidden="true"></i></button>
+                                <button type="button" class="btn-icon pdf-layout-runter" aria-label="Nach unten schieben"><i class="ph ph-arrow-down" aria-hidden="true"></i></button>
+                            </li>
+                        </template>
+                        <div class="form-group">
+                            <label for="pdf-layout-girocode">Ort des GiroCodes <button type="button" class="begriff-hilfe" aria-label="Begriff erklären" data-begriff="girocode"><i class="ph ph-question" aria-hidden="true"></i></button></label>
+                            <select id="pdf-layout-girocode"></select>
+                            <small class="feld-hilfe">Ohne Name und IBAN unter Vermieterdaten fällt der GiroCode weg.</small>
+                        </div>
+                        <div class="knopf-zeile">
+                            <button class="btn-primary" type="button" onclick="pdfLayoutSpeichern()">Speichern</button>
+                            <button class="btn-secondary" type="button" id="btn-pdf-layout-vorschau" onclick="pdfLayoutVorschau()"><i class="ph ph-eye" aria-hidden="true"></i> Vorschau ansehen</button>
+                            <button class="btn-secondary" type="button" onclick="pdfLayoutStandard()">Aufbau zurücksetzen</button>
                         </div>
                     </div>
 
@@ -2814,6 +2857,7 @@
                                 <span id="invoice-file-name">Datei auswählen …</span>
                             </label>
                         </div>
+                        <small class="feld-hilfe" id="invoice-beleg-vorhanden" hidden></small>
                     </div>
 
                     <div class="form-group" id="group-invoice-pages" style="display: none;">
@@ -2840,6 +2884,9 @@
                         class="ph ph-x"></i></button>
             </div>
             <div class="modal-body rollbereich">
+                <p class="karten-text pdf-layout-hinweis" id="billing-pdf-layout-hinweis" role="status" hidden>
+                    <i class="ph ph-info" aria-hidden="true"></i> Eigenes PDF-Layout aktiv: Die Abrechnung entsteht
+                    im Aufbau, den Sie unter Einstellungen → Abrechnung gespeichert haben.</p>
                 <!-- Abrechnungszeitraum frei wählbar, vorbelegt aus den Kategorien (NK-119) -->
                 <div class="zeitraum-felder">
                     <div class="form-group feld-breit feld-min">
@@ -2904,6 +2951,9 @@
                         class="ph ph-x"></i></button>
             </div>
             <div class="modal-body">
+                <p class="karten-text pdf-layout-hinweis" id="frei-pdf-layout-hinweis" role="status" hidden>
+                    <i class="ph ph-info" aria-hidden="true"></i> Eigenes PDF-Layout aktiv: Die Abrechnung entsteht
+                    im Aufbau, den Sie unter Einstellungen → Abrechnung gespeichert haben.</p>
                 <div class="form-group">
                     <label for="frei-mieter">Mieter</label>
                     <select id="frei-mieter" class="form-control"></select>

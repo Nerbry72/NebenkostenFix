@@ -1,7 +1,8 @@
 """Das Layout der Abrechnungs-PDF ist einstellbar: Blöcke, Reihenfolge, GiroCode.
 
-Vorbereitung eines PDF-Layout-Editors, Schritt 2a (Server, ohne
-Oberfläche). Geprüft wird:
+Diese Datei prüft die Serverseite des PDF-Aufbaus (``nebenkostenfix/pdf_layout.py``
+und die Routen unter ``/api/einstellungen/pdf-layout``); die Oberfläche dazu
+prüfen ``tests/test_pdf_layout_oberflaeche.py`` und der Rauchtest. Geprüft wird:
 
 * die Einstellung ``pdf_layout`` mit Werkseinstellung, und dass sie bei
   Sicherung und Umzug mitwandert;
@@ -130,6 +131,39 @@ def test_pruefen_nimmt_ein_gueltiges_layout_an():
                     'heizung_co2', 'ausweis_35a', 'uebersicht', 'verbrauchsnachweise',
                     aus=('uebersicht', 'ausweis_35a'), girocode='deckblatt')
     assert pdf_layout.pruefen(daten) == daten
+
+
+def test_unbekannter_blockname_wird_in_der_meldung_gekuerzt():
+    """Die Meldung landet in der Oberfläche; ein Blockname aus vielen
+    tausend Zeichen darf sie nicht aufblähen. Nach 50 Zeichen ist Schluss."""
+    name = 'x' * 49 + 'ENDE' + 'y' * 5000
+    with pytest.raises(pdf_layout.LayoutFehler) as fehler:
+        pdf_layout.pruefen(_layout(*STANDARDLAYOUT, name))
+    meldung = str(fehler.value)
+    assert 'x' * 49 + 'E…' in meldung
+    assert 'ENDE' not in meldung
+    assert len(meldung) < 80
+
+
+def test_unbekannter_girocode_ort_wird_in_der_meldung_gekuerzt():
+    with pytest.raises(pdf_layout.LayoutFehler) as fehler:
+        pdf_layout.pruefen(_layout(*STANDARDLAYOUT, girocode='z' * 5000))
+    meldung = str(fehler.value)
+    assert 'z' * 51 not in meldung and 'z' * 50 + '…' in meldung
+    assert len(meldung) < 140
+
+
+def test_kurzer_unbekannter_blockname_bleibt_ganz():
+    with pytest.raises(pdf_layout.LayoutFehler) as fehler:
+        pdf_layout.pruefen(_layout(*STANDARDLAYOUT, 'werbung'))
+    assert str(fehler.value) == 'Unbekannter Block „werbung“.'
+
+
+def test_put_mit_langem_blocknamen_meldet_kurz(auth_client, eigener_ordner):
+    antwort = auth_client.put('/api/einstellungen/pdf-layout',
+                              json=_layout(*STANDARDLAYOUT, 'q' * 10000))
+    assert antwort.status_code == 400
+    assert len(antwort.get_json()['error']) < 80
 
 
 # --- Tolerantes Laden ----------------------------------------------------
