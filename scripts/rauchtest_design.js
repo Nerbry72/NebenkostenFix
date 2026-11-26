@@ -3060,12 +3060,12 @@ async function pdfLayoutPruefen() {
         hinweis.felder['frei-pdf-layout-hinweis'].hidden === false);
 }
 
-// Issue #78: Bearbeiten einer Rechnung hing ihren Beleg still auf eine fremde
+// Beleg-Erhalt: Bearbeiten einer Rechnung hing ihren Beleg still auf eine fremde
 // PDF um. Eine Datei aus einem früheren Dialog blieb im Dateifeld liegen,
 // weder Öffnen noch Verwerfen leerte es. Die Belegauswahl kennt nur
 // Sammelbelege, beim Einzelbeleg blieb sie leer, und Speichern schickte die
 // liegengebliebene Datei mit. Der Wächter fährt die Schritte 1 bis 4 aus dem
-// Issue mit den echten Funktionen aus app.js nach.
+// Befund mit den echten Funktionen aus app.js nach.
 async function belegUmhaengenPruefen() {
     const quelle = name => {
         const m = appQuelle.match(new RegExp(`(?:async )?function ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n\\}`));
@@ -3147,7 +3147,7 @@ async function belegUmhaengenPruefen() {
         + quelle('saveInvoice')
         + '; return { openAddInvoiceModal, verwirfNeueDatei, saveInvoice,'
         + ' setzeNeueDatei: d => { neueDatei = d; eingangRechnung = "neu"; } };')(
-        dokument, [{ id: 3, name: 'Schornsteinreinigung' }], [{ id: 2, name: 'Testhaus' }],
+        dokument, [{ id: 3, name: 'Wartung' }], [{ id: 2, name: 'Testhaus' }],
         [{ id: 4, name: 'Kehrbezirk Probe' }],
         [{ id: 12, description: 'Sammelbeleg', property_name: 'Testhaus' }], rechnungen,
         s => String(s), n => n, () => {}, () => {}, async () => {}, () => {}, () => {}, () => {},
@@ -3162,14 +3162,14 @@ async function belegUmhaengenPruefen() {
     fns.setzeNeueDatei(dateiB);
     datei.files = [dateiB];
     fns.verwirfNeueDatei();
-    pruefe('Issue #78: „Datei verwerfen“ leert auch das Dateifeld des Rechnungsdialogs',
+    pruefe('Beleg-Erhalt: „Datei verwerfen“ leert auch das Dateifeld des Rechnungsdialogs',
         datei.files.length === 0);
 
     // Schritt 3: R1 (Einzelbeleg A) öffnen, während B noch im Feld liegt.
     datei.files = [dateiB];
     await fns.openAddInvoiceModal(1, spalte);
-    pruefe('Issue #78: Bearbeiten leert das Dateifeld beim Öffnen', datei.files.length === 0);
-    pruefe('Issue #78: der Dialog zeigt den vorhandenen Einzelbeleg und dass er bleibt',
+    pruefe('Beleg-Erhalt: Bearbeiten leert das Dateifeld beim Öffnen', datei.files.length === 0);
+    pruefe('Beleg-Erhalt: der Dialog zeigt den vorhandenen Einzelbeleg und dass er bleibt',
         hinweis().hidden === false && hinweis().textContent.includes(belegA.name)
         && /bleibt/.test(hinweis().textContent));
 
@@ -3177,7 +3177,7 @@ async function belegUmhaengenPruefen() {
     gesendet.length = 0;
     await fns.saveInvoice();
     const ohne = gesendet[0] || { daten: new FormDataAttrappe() };
-    pruefe('Issue #78: Speichern ohne neue Datei schickt keine Datei mit',
+    pruefe('Beleg-Erhalt: Speichern ohne neue Datei schickt keine Datei mit',
         ohne.methode === 'PUT' && ohne.url === '/api/invoices/1'
         && !ohne.daten.has('file') && !ohne.daten.has('beleg_ersetzen'));
 
@@ -3187,23 +3187,23 @@ async function belegUmhaengenPruefen() {
     gesendet.length = 0;
     await fns.saveInvoice();
     const mit = gesendet[0] || { daten: new FormDataAttrappe() };
-    pruefe('Issue #78: eine bewusst gewählte Datei ersetzt den Beleg ausdrücklich',
+    pruefe('Beleg-Erhalt: eine bewusst gewählte Datei ersetzt den Beleg ausdrücklich',
         mit.daten.get('file') === dateiC && String(mit.daten.get('beleg_ersetzen')) === 'true');
 
     // Sammelbeleg: die Auswahl zeigt ihn, kein Hinweis auf einen Einzelbeleg.
     datei.files = [dateiB];
     await fns.openAddInvoiceModal(2, spalte);
-    pruefe('Issue #78: am Sammelbeleg steht die Auswahl, das Dateifeld ist leer',
+    pruefe('Beleg-Erhalt: am Sammelbeleg steht die Auswahl, das Dateifeld ist leer',
         felder['invoice-document-id'].value === '12' && datei.files.length === 0 && hinweis().hidden === true);
 
     // Rechnung ohne Beleg und neue Rechnung: leeres Feld, kein Hinweis.
     datei.files = [dateiB];
     await fns.openAddInvoiceModal(3, spalte);
-    pruefe('Issue #78: ohne Beleg kein Hinweis, das Dateifeld ist leer',
+    pruefe('Beleg-Erhalt: ohne Beleg kein Hinweis, das Dateifeld ist leer',
         datei.files.length === 0 && hinweis().hidden === true);
     datei.files = [dateiB];
     await fns.openAddInvoiceModal(null, spalte);
-    pruefe('Issue #78: auch eine neue Rechnung beginnt mit leerem Dateifeld',
+    pruefe('Beleg-Erhalt: auch eine neue Rechnung beginnt mit leerem Dateifeld',
         datei.files.length === 0 && hinweis().hidden === true);
 }
 
@@ -3239,7 +3239,7 @@ async function belegUmhaengenPruefen() {
         ['anschriftenPruefen', 'Phase 58: Anschriften-Prüfung'],
         ['zugriffsschluesselPruefen', 'Zugriffsschlüssel-Prüfung'],
         ['pdfLayoutPruefen', 'PDF-Aufbau-Prüfung'],
-        ['belegUmhaengenPruefen', 'Issue #78: Beleg-Umhängen-Prüfung'],
+        ['belegUmhaengenPruefen', 'Beleg-Erhalt: Beleg-Umhängen-Prüfung'],
     ];
     for (const [name, label] of schritte) {
         try {

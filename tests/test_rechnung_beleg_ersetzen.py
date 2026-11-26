@@ -1,4 +1,4 @@
-"""Issue #78: Bearbeiten einer Rechnung hängt ihren Beleg nicht still um.
+"""Beleg-Erhalt: Bearbeiten einer Rechnung hängt ihren Beleg nicht still um.
 
 Befund: Im Dialog „Rechnung bearbeiten“ blieb eine Datei aus einem früheren
 Dialog im Dateifeld liegen. ``saveInvoice`` schickte sie mit, und
@@ -7,7 +7,7 @@ und hängte die Rechnung darauf um. Die alte Verknüpfung war weg, die
 Rechnung zeigte eine fremde PDF.
 
 Die Oberfläche leert das Dateifeld jetzt beim Öffnen und Verwerfen (Wächter
-im Rauchtest ``scripts/rauchtest_design.js``, „Issue #78“). Der Server
+im Rauchtest ``scripts/rauchtest_design.js``, „Beleg-Erhalt“). Der Server
 sichert zusätzlich ab: Hat die Rechnung schon einen Beleg, ersetzt eine
 mitgeschickte Datei ihn nur, wenn die Anfrage ``beleg_ersetzen`` setzt.
 Ohne Beleg hängt eine Datei wie bisher ohne Rückfrage an.
@@ -29,7 +29,7 @@ PDF_B = b'%PDF-1.4\n%synthetisch B\n2 0 obj\n<</B 1>>\nendobj\n%%EOF\n'
 
 def _stamm():
     haus = f.house('Testhaus Belegtausch')
-    kat = f.category('Schornsteinfeger')
+    kat = f.category('Wartung')
     db.session.commit()
     return haus, kat
 
@@ -57,7 +57,7 @@ def _inhalt(app_ctx, dokument_id):
 
 
 def test_mitgeschickte_datei_haengt_den_einzelbeleg_nicht_still_um(app_ctx, auth_client):
-    """Schritte 4 bis 6 aus Issue #78: eine liegengebliebene Datei B kommt
+    """Schritte 4 bis 6 aus dem Befund: eine liegengebliebene Datei B kommt
     beim Speichern von R1 mit. R1 bleibt bei A; B wird danach regulär als
     R2 erfasst, und es gibt genau zwei Belege."""
     haus, kat = _stamm()

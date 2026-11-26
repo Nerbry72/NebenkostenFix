@@ -5783,7 +5783,7 @@ async function openAddInvoiceModal(editInvoiceId = null, spalte = null) {
     document.getElementById('invoice-id').value = editInvoiceId || '';
     const fileInput = document.getElementById('invoice-file');
     const fileNameSpan = document.getElementById('invoice-file-name');
-    // Issue #78: eine Datei aus einem früheren Dialog darf nicht mitwandern,
+    // Beleg-Erhalt: eine Datei aus einem früheren Dialog darf nicht mitwandern,
     // Speichern hinge die Rechnung sonst still auf sie um.
     fileInput.value = '';
     const belegHinweis = document.getElementById('invoice-beleg-vorhanden');
@@ -5825,7 +5825,7 @@ async function openAddInvoiceModal(editInvoiceId = null, spalte = null) {
             populateInvoiceApartments();
             document.getElementById('invoice-apartment').value = i.apartment_id || '';
             document.querySelector('#invoice-modal h2').textContent = 'Rechnung bearbeiten';
-            // Issue #78: die Auswahl kennt nur Sammelbelege. Einen eigenen
+            // Beleg-Erhalt: die Auswahl kennt nur Sammelbelege. Einen eigenen
             // Beleg der Rechnung nennt der Hinweis, er bleibt beim Speichern.
             const eigenerBeleg = !docSelect.value && i.document_path;
             if (eigenerBeleg) {
@@ -6333,7 +6333,7 @@ function verwirfNeueDatei() {
     neueDatei = null;
     neueDateiAdresse = '';
     if (eingangRechnung === 'neu') eingangRechnung = null;
-    // Issue #78: die Datei liegt auch im Dateifeld des Dialogs, dort mit weg.
+    // Beleg-Erhalt: die Datei liegt auch im Dateifeld des Dialogs, dort mit weg.
     document.getElementById('invoice-file').value = '';
 }
 
@@ -6549,7 +6549,7 @@ async function saveInvoice() {
         formData.append('invoice_document_id', docId);
     } else if (fileInput.files.length > 0) {
         formData.append('file', fileInput.files[0]);
-        // Issue #78: das Feld ist beim Öffnen leer, eine Datei darin hat der
+        // Beleg-Erhalt: das Feld ist beim Öffnen leer, eine Datei darin hat der
         // Nutzer hier gewählt. Nur dann ersetzt der Server einen Beleg.
         if (invId) formData.append('beleg_ersetzen', 'true');
     }

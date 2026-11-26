@@ -3069,7 +3069,7 @@ def update_invoice(id):
         invoice.document_path = None
     else:
         file = eingabe.datei('file')
-        # Issue #78: Eine Datei ersetzt einen vorhandenen Beleg nur, wenn die
+        # Beleg-Erhalt: Eine Datei ersetzt einen vorhandenen Beleg nur, wenn die
         # Oberfläche das ausdrücklich sagt. Sonst hing eine im Dialog
         # liegengebliebene Datei die Rechnung still auf eine fremde PDF um.
         if (file and (invoice.invoice_document_id or invoice.document_path)
