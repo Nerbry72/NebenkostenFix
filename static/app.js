@@ -21,6 +21,8 @@
         leitetSchonUm = true;
         // NK-162: eine offene Eingabe überlebt die Abmeldung.
         if (window.entwurfSichern) window.entwurfSichern();
+        // Ohne Sitzung gibt es kein „Bleiben“: der Browser soll nicht nachfragen.
+        window.nkSeiteVerlassenGewollt = true;
         const ziel = window.location.pathname + window.location.search;
         window.location.assign('/login?next=' + encodeURIComponent(ziel));
     }
@@ -187,6 +189,14 @@ function initThema() {
 }
 
 async function abmelden() {
+    // Ungespeicherter PDF-Aufbau: erst die eigene Rückfrage, dann abmelden.
+    // Danach fragt der Browser nicht noch einmal (nkSeiteVerlassenGewollt).
+    if (pdfLayoutGeaendert()) {
+        const ja = await frage('Ihre Änderungen am PDF-Aufbau sind noch nicht gespeichert. Trotzdem verwerfen und abmelden?',
+            'Verwerfen', true, 'Änderungen verwerfen?');
+        if (!ja) return;
+    }
+    window.nkSeiteVerlassenGewollt = true;
     try {
         // Accept ausdruecklich setzen. Ohne den Kopf schickt der Browser
         // Accept: */*, der Server sieht keinen Wunsch und leitet auf die
@@ -491,6 +501,24 @@ const huelle = {
         } catch (e) {
             showError(meldungZu(e, 'Die Datei konnte nicht geöffnet werden.'));
         }
+    },
+
+    // Eine PDF ansehen, die erst per POST entsteht (Vorschau des PDF-Aufbaus).
+    // Blockiert der Browser das neue Fenster, wird die Datei gespeichert.
+    async blobOeffnen(blob, dateiname) {
+        if (this.aktiv()) {
+            await window.pywebview.api.oeffnen(dateiname, await this._base64(blob), null);
+            return;
+        }
+        const adresse = URL.createObjectURL(blob);
+        const fenster = window.open(adresse, '_blank');
+        if (!fenster) {
+            URL.revokeObjectURL(adresse);
+            await this.blobSpeichern(blob, dateiname);
+            return;
+        }
+        fenster.opener = null;
+        setTimeout(() => URL.revokeObjectURL(adresse), 60000);
     },
 
     drucken() {
@@ -1816,6 +1844,8 @@ function leerlaufPruefen() {
     const rest = leerlaufMs - still;
     if (rest <= 0) {
         entwurfSichern();
+        // Am unbeaufsichtigten Rechner darf kein „Seite verlassen?“ die Abmeldung aufhalten.
+        window.nkSeiteVerlassenGewollt = true;
         window.location.assign('/login?next=' + encodeURIComponent(window.location.pathname));
         return;
     }
@@ -2733,10 +2763,16 @@ async function deleteTenant(id) {
 // NK-156 (K8): Einstellungen in Gruppen. Eine eigene Klasse statt
 // ``hidden``, damit die Gruppe nie eine Karte zeigt, die aus anderem Grund
 // verborgen ist (Gefahrenzone nur im Entwicklungsstapel).
-const EINSTELLUNGS_GRUPPEN = ['vermieter', 'kostenarten', 'sicherung', 'konto', 'updates', 'datenschutz'];
+const EINSTELLUNGS_GRUPPEN = ['vermieter', 'kostenarten', 'abrechnung', 'sicherung', 'konto', 'updates', 'datenschutz'];
 
 function zeigeEinstellungsgruppe(gruppe) {
     if (!EINSTELLUNGS_GRUPPEN.includes(gruppe)) gruppe = 'vermieter';
+    // Ungespeicherter PDF-Aufbau: erst fragen. Bei „Abbrechen“ bleibt die
+    // Gruppe „Abrechnung“ samt Änderungen stehen.
+    // Dann liefert die Funktion das Versprechen der Rückfrage (true = gewechselt).
+    if (gruppe !== 'abrechnung' && pdfLayoutGeaendert()) {
+        return pdfLayoutVerlassen(gruppe);
+    }
     document.querySelectorAll('#tab-settings .dashboard-card[data-gruppe]').forEach(karte => {
         karte.classList.toggle('gruppe-aus', karte.dataset.gruppe !== gruppe);
     });
@@ -2754,6 +2790,8 @@ function zeigeEinstellungsgruppe(gruppe) {
     if (gruppe === 'kostenarten') ladeKostenarten();
     if (gruppe === 'konto') ladeZugriffsschluessel();
     if (gruppe === 'konto') ladeGeraete();
+    if (gruppe === 'abrechnung') ladePdfLayout();
+    return true;
 }
 window.zeigeEinstellungsgruppe = zeigeEinstellungsgruppe;
 
@@ -2764,6 +2802,283 @@ function gemerkteEinstellungsgruppe() {
         return 'vermieter';
     }
 }
+
+// PDF-Aufbau (Einstellungen → Abrechnung): Reihenfolge, An/Aus und Ort des
+// GiroCodes der Abrechnungs-PDF. Der Server prüft (pdf_layout.pruefen) und
+// meldet Fehler auf Deutsch. Blocknamen und Titel kommen vom Server und gehen
+// nur als textContent in die Seite, nie als HTML.
+const PDF_LAYOUT_ADRESSE = '/api/einstellungen/pdf-layout';
+let pdfLayoutStand = null;
+
+function pdfLayoutAusAntwort(daten) {
+    const katalog = {};
+    (daten.bloecke || []).forEach(b => { katalog[b.block] = b; });
+    const bloecke = daten.layout.bloecke.map(e => ({ block: e.block, an: e.an }));
+    const girocode = daten.layout.girocode;
+    return {
+        katalog,
+        orte: daten.girocode_orte || [],
+        bloecke,
+        girocode,
+        eigen: !daten.ist_standard,
+        // Stand des Servers in der Form von pdfLayoutDaten, für pdfLayoutGeaendert.
+        gespeichert: JSON.stringify({ bloecke: bloecke.map(e => ({ block: e.block, an: e.an })), girocode }),
+    };
+}
+
+// Weicht die Liste vom zuletzt geladenen oder gespeicherten Stand ab?
+function pdfLayoutGeaendert() {
+    return !!pdfLayoutStand && JSON.stringify(pdfLayoutDaten()) !== pdfLayoutStand.gespeichert;
+}
+
+// Die Gruppe „Abrechnung“ mit ungespeicherten Änderungen verlassen: nur nach
+// Rückfrage. „Verwerfen“ vergisst den Stand, beim nächsten Öffnen gilt wieder
+// der gespeicherte; „Abbrechen“ lässt Gruppe und Änderungen, wie sie sind.
+async function pdfLayoutVerlassen(gruppe) {
+    const ja = await frage('Ihre Änderungen am PDF-Aufbau sind noch nicht gespeichert. Trotzdem verwerfen?',
+        'Verwerfen', true, 'Änderungen verwerfen?');
+    if (!ja) return false;
+    pdfLayoutStand = null;
+    return zeigeEinstellungsgruppe(gruppe);
+}
+
+// Neuladen oder Schließen der Seite mit ungespeichertem PDF-Aufbau: Der
+// Browser fragt mit seiner eigenen Rückfrage nach; ohne Änderung bleibt er still.
+// Wechsel, die die App selbst auslöst (Abmelden, Leerlauf, 401), setzen vorher
+// window.nkSeiteVerlassenGewollt und gehen ohne diese Rückfrage durch.
+function pdfLayoutVorDemVerlassen(ereignis) {
+    if (window.nkSeiteVerlassenGewollt) return;
+    if (!pdfLayoutGeaendert()) return;
+    ereignis.preventDefault();
+    ereignis.returnValue = '';
+}
+window.addEventListener('beforeunload', pdfLayoutVorDemVerlassen);
+
+// Der Eintrag wandert von ``von`` nach ``nach``. Ein fester Block (das
+// Deckblatt) bleibt an seinem Platz; ein Zug, der ihn verdrängen würde,
+// gibt null zurück, ebenso ein Zug ins Leere.
+function pdfLayoutZiehen(bloecke, katalog, von, nach) {
+    if (!Number.isInteger(von) || !Number.isInteger(nach) || von === nach) return null;
+    if (von < 0 || nach < 0 || von >= bloecke.length || nach >= bloecke.length) return null;
+    const neu = bloecke.slice();
+    const [eintrag] = neu.splice(von, 1);
+    neu.splice(nach, 0, eintrag);
+    for (let i = 0; i < bloecke.length; i++) {
+        const info = katalog[bloecke[i].block];
+        if (info && info.fest && neu[i] !== bloecke[i]) return null;
+    }
+    return neu;
+}
+
+function pdfLayoutTitel(katalog, block) {
+    const info = katalog[block];
+    return info && info.titel ? String(info.titel) : String(block);
+}
+
+function pdfLayoutHinweisZeigen(eigen) {
+    ['pdf-layout-eigen', 'billing-pdf-layout-hinweis', 'frei-pdf-layout-hinweis'].forEach(id => {
+        const feld = document.getElementById(id);
+        if (feld) feld.hidden = !eigen;
+    });
+}
+
+const PDF_LAYOUT_NICHT_GELADEN = 'Der PDF-Aufbau ist nicht geladen. Laden Sie ihn mit „Aktualisieren“ neu.';
+const PDF_LAYOUT_LADEFEHLER = 'Der PDF-Aufbau konnte nicht geladen werden. Prüfen Sie die Verbindung und versuchen Sie es noch einmal.';
+const PDF_LAYOUT_SERVERFEHLER = 'Der PDF-Aufbau konnte nicht geladen werden, weil auf dem Server ein Fehler aufgetreten ist. Versuchen Sie es mit „Aktualisieren“ noch einmal.';
+
+async function ladePdfLayout() {
+    // Ungespeicherte Änderungen überschreibt das Laden nie; verworfen werden
+    // sie nur nach Rückfrage (pdfLayoutVerlassen).
+    if (pdfLayoutGeaendert()) {
+        pdfLayoutZeichnen();
+        return;
+    }
+    // Während des Ladens verborgen: scheitert es wieder mit demselben Text,
+    // erscheint die Meldung neu und role="alert" sagt sie wieder an.
+    document.getElementById('pdf-layout-ladefehler').hidden = true;
+    let status = 0;
+    try {
+        const antwort = await fetch(PDF_LAYOUT_ADRESSE);
+        status = antwort.status;
+        if (!antwort.ok) throw await serverFehler(antwort);
+        pdfLayoutStand = pdfLayoutAusAntwort(await antwort.json());
+        pdfLayoutZeichnen();
+    } catch (e) {
+        // Auch eine Notseite ohne JSON oder ein abgerissenes Netz enden hier:
+        // die Liste bleibt leer, die Karte sagt warum und bietet „Aktualisieren“.
+        // Nur die Karte sagt den Fehler an (role="alert"), keine zweite Meldung
+        // unten rechts, sonst hört ein Bildschirmleser ihn doppelt.
+        pdfLayoutStand = null;
+        document.getElementById('pdf-layout-liste').replaceChildren();
+        document.getElementById('pdf-layout-ladefehler-text').textContent =
+            meldungZu(e, status >= 500 ? PDF_LAYOUT_SERVERFEHLER : PDF_LAYOUT_LADEFEHLER);
+        document.getElementById('pdf-layout-ladefehler').hidden = false;
+    }
+}
+window.ladePdfLayout = ladePdfLayout;
+
+// Für die Dialoge „Abrechnung erstellen“ und „Abrechnung frei erstellen“:
+// nur der Hinweis, still bei Fehlern.
+async function pdfLayoutHinweisLaden() {
+    try {
+        const antwort = await fetch(PDF_LAYOUT_ADRESSE);
+        if (!antwort.ok) return;
+        const daten = await antwort.json();
+        pdfLayoutHinweisZeigen(!daten.ist_standard);
+    } catch (e) {
+        // ohne Antwort bleibt der Hinweis zu; die Abrechnung entsteht trotzdem
+    }
+}
+
+function pdfLayoutKnopf(knopf, beschriftung, index, richtung) {
+    knopf.setAttribute('aria-label', beschriftung);
+    knopf.disabled = !pdfLayoutZiehen(pdfLayoutStand.bloecke, pdfLayoutStand.katalog, index, index + richtung);
+    knopf.onclick = () => pdfLayoutSchieben(index, index + richtung, richtung);
+    return knopf;
+}
+
+// Jede Zeile ist eine Kopie der Vorlage aus index.html (Kästchen im Hausmuster).
+function pdfLayoutZeile(eintrag, index) {
+    const info = pdfLayoutStand.katalog[eintrag.block] || {};
+    const titel = pdfLayoutTitel(pdfLayoutStand.katalog, eintrag.block);
+    const zeile = document.getElementById('pdf-layout-vorlage').content.firstElementChild.cloneNode(true);
+    zeile.draggable = !info.fest;
+    if (info.fest) zeile.querySelector('.pdf-layout-griff').className = 'ph ph-lock-simple pdf-layout-griff';
+    const haken = zeile.querySelector('.pdf-layout-haken');
+    haken.checked = !!eintrag.an;
+    haken.disabled = !!info.pflicht;
+    haken.onchange = () => { eintrag.an = haken.checked; };
+    zeile.querySelector('.pdf-layout-titel').textContent = titel;
+    const marke = zeile.querySelector('.pdf-layout-marke');
+    marke.hidden = !info.pflicht;
+    marke.textContent = info.fest ? 'Pflicht, steht vorn' : 'Pflicht';
+    marke.id = `pdf-layout-marke-${index}`;
+    // Bildschirmleser hören beim Kästchen eines Pflichtteils Marke und Erklärung.
+    if (info.pflicht) haken.setAttribute('aria-describedby', `${marke.id} pdf-layout-pflicht-text`);
+    const hoch = pdfLayoutKnopf(zeile.querySelector('.pdf-layout-hoch'), `${titel} nach oben schieben`, index, -1);
+    const runter = pdfLayoutKnopf(zeile.querySelector('.pdf-layout-runter'), `${titel} nach unten schieben`, index, 1);
+    zeile.knoepfe = { '-1': hoch, '1': runter };
+    // Ziehen und Ablegen mit der Maus; die Pfeile sind der Weg per Tastatur.
+    zeile.addEventListener('dragstart', ereignis => {
+        ereignis.dataTransfer.setData('text/plain', String(index));
+        ereignis.dataTransfer.effectAllowed = 'move';
+        zeile.classList.add('wird-gezogen');
+    });
+    zeile.addEventListener('dragend', () => zeile.classList.remove('wird-gezogen'));
+    zeile.addEventListener('dragover', ereignis => {
+        ereignis.preventDefault();
+        ereignis.dataTransfer.dropEffect = 'move';
+    });
+    zeile.addEventListener('drop', ereignis => {
+        ereignis.preventDefault();
+        pdfLayoutSchieben(Number(ereignis.dataTransfer.getData('text/plain')), index);
+    });
+    return zeile;
+}
+
+function pdfLayoutZeichnen(fokus) {
+    if (!pdfLayoutStand) return;
+    document.getElementById('pdf-layout-ladefehler').hidden = true;
+    pdfLayoutHinweisZeigen(pdfLayoutStand.eigen);
+    const zeilen = pdfLayoutStand.bloecke.map((eintrag, index) => pdfLayoutZeile(eintrag, index));
+    document.getElementById('pdf-layout-liste').replaceChildren(...zeilen);
+    const auswahl = document.getElementById('pdf-layout-girocode');
+    auswahl.replaceChildren(...pdfLayoutStand.orte.map(o => {
+        const option = document.createElement('option');
+        option.value = o.ort;
+        option.textContent = o.titel;
+        return option;
+    }));
+    auswahl.value = pdfLayoutStand.girocode;
+    auswahl.onchange = () => { pdfLayoutStand.girocode = auswahl.value; };
+    // Nach einem Pfeil bleibt der Fokus beim verschobenen Block.
+    if (fokus && zeilen[fokus.index]) {
+        const knoepfe = zeilen[fokus.index].knoepfe;
+        const knopf = knoepfe[String(fokus.richtung)];
+        (knopf.disabled ? knoepfe[String(-fokus.richtung)] : knopf).focus();
+    }
+}
+
+function pdfLayoutSchieben(von, nach, richtung) {
+    if (!pdfLayoutStand) return false;
+    const neu = pdfLayoutZiehen(pdfLayoutStand.bloecke, pdfLayoutStand.katalog, von, nach);
+    if (!neu) return false;
+    pdfLayoutStand.bloecke = neu;
+    pdfLayoutZeichnen(richtung ? { index: nach, richtung } : null);
+    // Der Fokus bleibt auf dem Pfeil; die neue Stelle sagt die Live-Region an.
+    const titel = pdfLayoutTitel(pdfLayoutStand.katalog, neu[nach].block);
+    document.getElementById('pdf-layout-ansage').textContent =
+        `${titel} steht jetzt an Stelle ${nach + 1} von ${neu.length}.`;
+    return true;
+}
+
+function pdfLayoutDaten() {
+    return {
+        bloecke: pdfLayoutStand.bloecke.map(e => ({ block: e.block, an: e.an })),
+        girocode: pdfLayoutStand.girocode,
+    };
+}
+
+async function pdfLayoutSpeichern() {
+    if (!pdfLayoutStand) {
+        showError(PDF_LAYOUT_NICHT_GELADEN);
+        return;
+    }
+    try {
+        const antwort = await fetch(PDF_LAYOUT_ADRESSE, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(pdfLayoutDaten()),
+        });
+        if (!antwort.ok) throw await serverFehler(antwort);
+        pdfLayoutStand = pdfLayoutAusAntwort(await antwort.json());
+        pdfLayoutZeichnen();
+        showSuccess('PDF-Aufbau gespeichert.');
+    } catch (e) {
+        showError(meldungZu(e, 'Der PDF-Aufbau konnte nicht gespeichert werden.'));
+    }
+}
+window.pdfLayoutSpeichern = pdfLayoutSpeichern;
+
+async function pdfLayoutStandard() {
+    if (!await frage('Ihr eigener PDF-Aufbau wird verworfen. Neue Abrechnungen entstehen wieder im Standardaufbau.',
+        'Aufbau zurücksetzen', true, 'Aufbau zurücksetzen?')) return;
+    try {
+        const antwort = await fetch(PDF_LAYOUT_ADRESSE, { method: 'DELETE' });
+        if (!antwort.ok) throw await serverFehler(antwort);
+        pdfLayoutStand = pdfLayoutAusAntwort(await antwort.json());
+        pdfLayoutZeichnen();
+        showSuccess('Der Standardaufbau gilt wieder.');
+    } catch (e) {
+        showError(meldungZu(e, 'Der PDF-Aufbau konnte nicht zurückgesetzt werden.'));
+    }
+}
+window.pdfLayoutStandard = pdfLayoutStandard;
+
+// Die Vorschau zeigt den Stand der Liste, auch ungespeichert, mit erfundenen
+// Beispieldaten; der Server legt nichts ab.
+async function pdfLayoutVorschau() {
+    if (!pdfLayoutStand) {
+        showError(PDF_LAYOUT_NICHT_GELADEN);
+        return;
+    }
+    const knopf = document.getElementById('btn-pdf-layout-vorschau');
+    if (knopf) knopf.disabled = true;
+    try {
+        const antwort = await fetch(PDF_LAYOUT_ADRESSE + '/vorschau', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(pdfLayoutDaten()),
+        });
+        if (!antwort.ok) throw await serverFehler(antwort);
+        await huelle.blobOeffnen(await antwort.blob(), 'Layout-Vorschau.pdf');
+    } catch (e) {
+        showError(meldungZu(e, 'Die Vorschau konnte nicht erstellt werden.'));
+    } finally {
+        if (knopf) knopf.disabled = false;
+    }
+}
+window.pdfLayoutVorschau = pdfLayoutVorschau;
 
 // NK-174, NK-175: erst der Haftungshinweis (einmal je Fassung), danach die
 // Suche beim Start. Die Suche ist still: kein Netz, kein Fenster.
@@ -5468,7 +5783,12 @@ async function openAddInvoiceModal(editInvoiceId = null, spalte = null) {
     document.getElementById('invoice-id').value = editInvoiceId || '';
     const fileInput = document.getElementById('invoice-file');
     const fileNameSpan = document.getElementById('invoice-file-name');
-    
+    // Beleg-Erhalt: eine Datei aus einem früheren Dialog darf nicht mitwandern,
+    // Speichern hinge die Rechnung sonst still auf sie um.
+    fileInput.value = '';
+    const belegHinweis = document.getElementById('invoice-beleg-vorhanden');
+    belegHinweis.hidden = true;
+
     if (editInvoiceId) {
         const i = invoices.find(inv => inv.id === editInvoiceId);
         if (i) {
@@ -5505,7 +5825,15 @@ async function openAddInvoiceModal(editInvoiceId = null, spalte = null) {
             populateInvoiceApartments();
             document.getElementById('invoice-apartment').value = i.apartment_id || '';
             document.querySelector('#invoice-modal h2').textContent = 'Rechnung bearbeiten';
-            fileNameSpan.textContent = 'Neuen Beleg hochladen (optional)';
+            // Beleg-Erhalt: die Auswahl kennt nur Sammelbelege. Einen eigenen
+            // Beleg der Rechnung nennt der Hinweis, er bleibt beim Speichern.
+            const eigenerBeleg = !docSelect.value && i.document_path;
+            if (eigenerBeleg) {
+                const name = i.filename || String(i.document_path).split('/').pop();
+                belegHinweis.textContent = `Vorhandener Beleg: ${name}. Er bleibt erhalten, solange Sie keine neue Datei wählen.`;
+                belegHinweis.hidden = false;
+            }
+            fileNameSpan.textContent = eigenerBeleg ? 'Beleg durch neue Datei ersetzen (optional)' : 'Neuen Beleg hochladen (optional)';
             fileInput.required = false;
         }
     } else {
@@ -6005,6 +6333,8 @@ function verwirfNeueDatei() {
     neueDatei = null;
     neueDateiAdresse = '';
     if (eingangRechnung === 'neu') eingangRechnung = null;
+    // Beleg-Erhalt: die Datei liegt auch im Dateifeld des Dialogs, dort mit weg.
+    document.getElementById('invoice-file').value = '';
 }
 
 // „Beleg hochladen“ links: Datei zeigen, rechts gleich als Rechnung erfassen.
@@ -6219,8 +6549,11 @@ async function saveInvoice() {
         formData.append('invoice_document_id', docId);
     } else if (fileInput.files.length > 0) {
         formData.append('file', fileInput.files[0]);
+        // Beleg-Erhalt: das Feld ist beim Öffnen leer, eine Datei darin hat der
+        // Nutzer hier gewählt. Nur dann ersetzt der Server einen Beleg.
+        if (invId) formData.append('beleg_ersetzen', 'true');
     }
-    
+
     const btn = document.getElementById('btn-save-invoice');
     btn.disabled = true;
     btn.textContent = 'Speichert...';
@@ -6925,13 +7258,24 @@ function zeigeServerKarte() {
         return;
     }
     wechsleZuTab('settings');
-    zeigeEinstellungsgruppe('sicherung');
-    const verbunden = huelle.kann('lokal_arbeiten');
-    const karte = document.getElementById(verbunden ? 'server-verbunden-karte' : 'server-karte');
-    if (!karte) return;
-    karte.style.display = '';
-    karte.scrollIntoView({ block: 'start' });
-    document.getElementById(verbunden ? 'btn-lokal-arbeiten' : 'server-adresse').focus();
+    const zurKarte = () => {
+        const verbunden = huelle.kann('lokal_arbeiten');
+        const karte = document.getElementById(verbunden ? 'server-verbunden-karte' : 'server-karte');
+        if (!karte) return;
+        karte.style.display = '';
+        karte.scrollIntoView({ block: 'start' });
+        // Der Fokus scrollt nicht noch einmal; die Karte bleibt oben stehen.
+        document.getElementById(verbunden ? 'btn-lokal-arbeiten' : 'server-adresse').focus({ preventScroll: true });
+    };
+    // Mit ungespeichertem PDF-Aufbau fragt der Gruppenwechsel erst nach. Bis
+    // zur Antwort steht die Gruppe „Sicherung“ nicht da: kein Scrollen, kein
+    // Fokus in eine verborgene Karte; bei „Abbrechen“ bleibt alles, wie es war.
+    const rueckfrage = zeigeEinstellungsgruppe('sicherung');
+    if (rueckfrage instanceof Promise) {
+        rueckfrage.then(gewechselt => { if (gewechselt) zurKarte(); });
+        return;
+    }
+    zurKarte();
 }
 window.zeigeServerKarte = zeigeServerKarte;
 
@@ -8941,6 +9285,7 @@ function openFreieAbrechnung() {
     auswahl.onchange = vorschlagen;
     vorschlagen();
 
+    pdfLayoutHinweisLaden();
     document.getElementById('billing-frei-modal').classList.add('active');
 }
 
@@ -8972,6 +9317,7 @@ function pruefeAbrechnungszeitraum(beginn, ende) {
 
 function openBillingSelectionModal(suggestion) {
     currentBillingSelection = suggestion;
+    pdfLayoutHinweisLaden();
     const modal = document.getElementById('billing-selection-modal');
     const body = document.getElementById('billing-selection-body');
     

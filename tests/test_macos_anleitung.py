@@ -142,6 +142,19 @@ def test_servermodus_mit_den_texten_der_oberflaeche():
     assert 'Bevor es losgeht' not in abschnitt   # dort gibt es keinen Server-Knopf mehr
 
 
+def test_servermodus_mit_angemeldet_bleiben():
+    """Die Mac-App bringt den Schlüsselbund mit: Mit dem Häkchen fragt sie nicht
+    mehr bei jedem Start. Nach einer neuen Version fragt macOS einmal nach dem
+    Schlüsselbund (Handtest 25.11.2026)."""
+    abschnitt = ' '.join(_abschnitt('## 9. Mit einem Server verbinden').split())
+    feld = ' '.join(auth.BLEIBEN_FELD.split())
+    quelle = Path(desktop.__file__).read_text(encoding='utf-8')
+    assert 'Das fragt die App bei jedem Start.' not in abschnitt
+    assert 'Angemeldet bleiben' in feld and '**Angemeldet bleiben**' in abschnitt
+    assert '**Immer erlauben**' in abschnitt and 'Passwort' in abschnitt
+    assert "MenuAction('Abmelden'" in quelle and '„Ablage“ → „Abmelden“' in abschnitt
+
+
 def test_erster_start_endet_bei_der_startwahl():
     """#45: Ohne Objekte fragt die App zuerst, wo die Daten liegen sollen.
     Wer keinen Server hat, soll nicht raten müssen."""
