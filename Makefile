@@ -70,7 +70,7 @@ kern:
 	  tests/test_abrechnungstabelle.py \
 	  tests/test_heizung_kostenarten.py tests/test_zaehlerwechsel.py \
 	  tests/test_nacht_nachfolger_stand_vor_einbau.py \
-	  tests/test_gutschrift_umlage.py \
+	  tests/test_gutschrift_umlage.py tests/test_prozent_umlage.py tests/test_heizkosten_prozent.py \
 	  tests/test_pdf_standardlayout.py tests/test_pdf_layout.py \
 	  tests/test_pdf_layout_schnappschuss.py \
 	  tests/test_rechnung_beleg_ersetzen.py \

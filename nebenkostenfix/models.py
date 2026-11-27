@@ -230,6 +230,9 @@ class TenantCostProfile(db.Model):
     # (NK-096). Die Bedingung unten wird daraus erzeugt, damit eine sechste Art
     # nicht an zwei Stellen nachgetragen werden muss.
     billing_type = db.Column(db.String(50), nullable=False, default=VORGABE)
+    percentage = db.Column(db.Numeric(5, 2), nullable=True)
+    heizkostenv_bestaetigt = db.Column(
+        db.Boolean, nullable=False, default=False, server_default=sa.false())
 
     # CHECK seit NK-096 (Revision b4e7f2a91c65). Geprueft wird schon an der
     # Eingabe (validation.kostenprofile) und im Rechenkern -- aber eine Regel
@@ -239,6 +242,11 @@ class TenantCostProfile(db.Model):
         db.CheckConstraint(
             'billing_type IN (%s)' % ', '.join("'%s'" % a for a in sorted(GUELTIG)),
             name='ck_tenant_cost_profiles_billing_type'),
+        db.CheckConstraint(
+            "(billing_type = 'prozent' AND percentage IS NOT NULL "
+            "AND percentage BETWEEN 0 AND 100) OR "
+            "(billing_type <> 'prozent' AND percentage IS NULL)",
+            name='ck_tenant_cost_profiles_percentage'),
     )
 
 class CostCategory(db.Model):

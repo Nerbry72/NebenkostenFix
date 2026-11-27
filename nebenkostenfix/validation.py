@@ -516,9 +516,27 @@ def kostenprofile(rohdaten, kostenart_namen=None) -> dict:
     roh = zahlenschluessel(rohdaten, 'Kostenprofile')
     namen = kostenart_namen or {}
     geprueft = {}
-    for nummer, art in roh.items():
+    from nebenkostenfix.prozent import pruefe_prozent
+
+    for nummer, eintrag in roh.items():
+        art = eintrag.get('billing_type') if isinstance(eintrag, dict) else eintrag
         try:
-            geprueft[nummer] = pruefe_art(art, kostenart=namen.get(nummer))
+            art = pruefe_art(art, kostenart=namen.get(nummer))
+            if art == 'prozent':
+                try:
+                    prozent = pruefe_prozent(eintrag.get('percentage') if isinstance(eintrag, dict) else None)
+                except ValueError as fehler:
+                    raise EingabeFehler(str(fehler), feld=f'kostenart_{nummer}') from None
+                geprueft[nummer] = {'billing_type': art, 'percentage': prozent}
+                if 'heizkostenv_bestaetigt' in eintrag:
+                    bestaetigt = eintrag['heizkostenv_bestaetigt']
+                    if not isinstance(bestaetigt, bool):
+                        raise EingabeFehler(
+                            'Die Bestätigung zur Heizkostenverordnung muss ausdrücklich '
+                            'als Ja oder Nein angegeben werden.', feld=f'kostenart_{nummer}')
+                    geprueft[nummer]['heizkostenv_bestaetigt'] = bestaetigt
+            else:
+                geprueft[nummer] = art
         except AbrechnungsartFehler as fehler:
             raise EingabeFehler(str(fehler), feld=f'kostenart_{nummer}') from None
     return geprueft

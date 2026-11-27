@@ -475,6 +475,12 @@ class Vorgang:
     wohnungen: tuple = ()
     mieter_der_immobilie: tuple = ()
     profile: Mapping[int, str] = field(default_factory=dict)
+    prozentanteile: Mapping[int, Decimal] = field(default_factory=dict)
+    # Für Summenprüfung und Restanteil braucht die Umlage auch die Profile
+    # der Nachbarn, einschließlich Vor- und Nachmietern.
+    profile_der_immobilie: Mapping[int, Mapping[int, str]] = field(default_factory=dict)
+    prozentanteile_der_immobilie: Mapping[int, Mapping[int, Decimal]] = field(default_factory=dict)
+    heizkostenv_bestaetigungen: frozenset[tuple[int, int]] = frozenset()
     rechnungen: tuple = ()
     zaehler: tuple = ()
     zahlungen: tuple = ()
@@ -678,7 +684,12 @@ def pruefe_heizkosten_zuordnung(vorgang: Vorgang) -> list:
             betrag=euro_text(posten.betrag),
             beginn=posten.beginn.strftime('%d.%m.%Y'),
             ende=posten.ende.strftime('%d.%m.%Y'),
-            anzahl=len(vorgang.wohnungen)))
+            verteilung=(
+                'Sie wird nach dem im Kostenprofil vereinbarten Prozentsatz verteilt. '
+                'Beachten Sie § 2 HeizkostenV.'
+                if abrechnungsart_von(vorgang.profile, posten.kategorie) == 'prozent'
+                else f'Sie wird deshalb nach Wohnfläche auf alle {len(vorgang.wohnungen)} '
+                     'Wohnungen des Objekts verteilt.')))
     return offen
 
 
@@ -1083,8 +1094,7 @@ HINWEIS_ALLGEMEIN_NEGATIV = (
 HINWEIS_HEIZKOSTEN_OHNE_ZUORDNUNG = (
     "W-HEIZKOSTEN-OHNE-ZUORDNUNG · Die Heizkostenrechnung „{kategorie}“ "
     "über {betrag} ({beginn} – {ende}) ist weder einer Wohnung noch einer "
-    "Heizungsanlage zugeordnet. Sie wird deshalb nach Wohnfläche auf alle "
-    "{anzahl} Wohnungen des Objekts verteilt. Rechnet Ihr Messdienst je "
+    "Heizungsanlage zugeordnet. {verteilung} Rechnet Ihr Messdienst je "
     "Wohnung ab, ordnen Sie die Rechnung der Wohnung zu — dann geht der "
     "Betrag ungeteilt an deren Mieter. Versorgt die Anlage wirklich alle "
     "Wohnungen, legen Sie eine Heizungsanlage an, damit nach § 7 und § 8 "
@@ -1576,6 +1586,89 @@ def _leerstandsbilanz(vorgang: Vorgang, von: date, bis: date, nur=None) -> list:
         if w.ist_aktiv and (nur is None or w.id in nur)
     ]
     return leerstandsbilanzen(einheiten, von, bis)
+
+
+def _vermieterprozentanteil(vorgang, rechnung, von, bis):
+    """Nicht vergebene Prozentanteile, taggenau einschließlich Leerstand."""
+    # Anlagenrechnungen folgen der Heizkostenverteilung, nicht den
+    # Prozentprofilen. Bei „ignoriert“ bleiben sie in der allgemeinen
+    # Schleife, erzeugen aber auch dort keinen Prozentrest.
+    if any(a.id == rechnung.heizungsanlage_id for a in vorgang.heizungsanlagen):
+        return None
+
+    from nebenkostenfix.prozent import pruefe_prozent, summenabschnitte
+
+    kat = rechnung.kategorie
+    profile = dict(vorgang.profile_der_immobilie)
+    profile[vorgang.mieter.id] = vorgang.profile
+    prozente = dict(vorgang.prozentanteile_der_immobilie)
+    prozente[vorgang.mieter.id] = vorgang.prozentanteile
+    # Vergangene Prozentprofile sollen eine spätere Umstellung der
+    # Kostenart nicht blockieren. Entscheidend ist die Rechnungsperiode.
+    prozentmieter = [m for m in vorgang.mieter_der_immobilie
+                    if profile.get(m.id, {}).get(kat.id) == 'prozent'
+                    and m.einzug < rechnung.ende_grenze
+                    and (m.auszug is None or m.auszug > rechnung.beginn)]
+    if not prozentmieter:
+        return None
+    anteile = []
+    andere_umlage = []
+    for mieter in vorgang.mieter_der_immobilie:
+        art = profile.get(mieter.id, {}).get(kat.id)
+        if art == 'prozent':
+            if (betrkv.ist_heizkosten(kat.name, kat.betrkv_nr)
+                    and mieter.einzug < bis and (mieter.auszug is None or mieter.auszug > von)
+                    and (mieter.id, kat.id) not in vorgang.heizkostenv_bestaetigungen):
+                raise BillingDataError(
+                    f'Kostenart „{kat.name}“: Für „{mieter.name}“ fehlt die ausdrückliche '
+                    'Bestätigung zum Hinweis auf § 2 HeizkostenV im Kostenprofil.')
+            try:
+                wert = pruefe_prozent(prozente.get(mieter.id, {}).get(kat.id))
+            except ValueError as fehler:
+                raise BillingDataError(f'Kostenart „{kat.name}“: {fehler}') from None
+            anteile.append((mieter.einzug, mieter.auszug, wert))
+        elif (vorgang.profile_der_immobilie and art != 'ignoriert'
+              and mieter.einzug < bis and (mieter.auszug is None or mieter.auszug > von)):
+            andere_umlage.append((mieter.einzug, mieter.auszug, dec(1)))
+            if any(max(mieter.einzug, p.einzug, von)
+                   < min(mieter.auszug or bis, p.auszug or bis, bis)
+                   for p in prozentmieter):
+                raise BillingDataError(
+                    f'Kostenart „{kat.name}“: Prozentumlage und andere Umlagearten '
+                    'sind im selben Zeitraum gemischt. Bitte für alle beteiligten '
+                    'Mietparteien Prozentsätze hinterlegen oder die Kostenart ignorieren.')
+    resttage = NULL
+    for start, ende, summe in summenabschnitte(anteile, von, bis):
+        if summe > 100:
+            raise BillingDataError(
+                f'Kostenart „{kat.name}“: Ab {start:%d.%m.%Y} sind '
+                f'{zahl_text(summe)} % vergeben; erlaubt sind höchstens 100 %.')
+        resttage += dec(tage(start, ende)) * (dec(100) - summe) / dec(100)
+    # Außerhalb der Prozentumlage bleibt der bisherige Verteilerschlüssel
+    # zuständig. Vor- und Nachmieter dürfen verschiedene Arten verwenden,
+    # solange sich ihre Zeiträume nicht überschneiden.
+    for start, ende, anzahl in summenabschnitte(andere_umlage, von, bis):
+        if anzahl:
+            resttage -= dec(tage(start, ende))
+    betrag = runde(rechnung.betrag * resttage / dec(tage(rechnung.beginn, rechnung.ende_grenze)))
+    if not betrag:
+        return None
+    return {
+        'category': kat.name,
+        'invoice_id': rechnung.id,
+        'invoice_number': rechnung.nummer,
+        'rechnungsdatum': rechnungsdatum_angabe(rechnung.rechnungsdatum),
+        'period': f"{von:%d.%m.%Y} - {bis - timedelta(days=1):%d.%m.%Y}",
+        'prorated_amount': runde(rechnung.betrag * dec(tage(von, bis))
+                                 / dec(tage(rechnung.beginn, rechnung.ende_grenze))),
+        'leerstand_amount': NULL,
+        'eigennutzung_amount': NULL,
+        'prozent_amount': betrag,
+        'amount': betrag,
+        'units': [],
+        'description': VERMIETERANTEIL_VORSATZ +
+            'Rest der vereinbarten Prozentanteile einschließlich Leerstand',
+    }
 
 
 def _vermieteranteil(vorgang, kategorie_name, rechnung, anteiliger_betrag,
@@ -3170,6 +3263,11 @@ def rechne(vorgang: Vorgang) -> dict:
         # rechnungen ueber den hundertprozentigen Betrag.
         rechenweg: list = []
 
+        if not inv.wohnung_id:
+            prozentrest = _vermieterprozentanteil(vorgang, inv, overlap_von, overlap_bis)
+            if prozentrest:
+                vermieter_positionen.append(prozentrest)
+
         if inv.wohnung_id:
             # F-123: was die Wohnung verbraucht, waehrend niemand dort wohnt,
             # zahlt kein Mieter. Es bleibt beim Vermieter und steht, wie jeder
@@ -3314,6 +3412,20 @@ def rechne(vorgang: Vorgang) -> dict:
                 property_sqm, overlap_von, overlap_bis)
             if anteil:
                 vermieter_positionen.append(anteil)
+
+        elif billing_type == 'prozent':
+            from nebenkostenfix.prozent import pruefe_prozent
+
+            try:
+                prozent = pruefe_prozent(vorgang.prozentanteile.get(cat.id))
+            except ValueError as fehler:
+                raise BillingDataError(f'Kostenart „{cat.name}“: {fehler}') from None
+            tenant_cost = prorated_invoice_amount * prozent / Decimal(100)
+            description = f"Umlage nach vereinbartem Prozentsatz ({zahl_text(prozent)} %)"
+            rechenweg.extend(rechenweg_rechnungsbetrag(
+                inv.betrag, overlap_days, invoice_days, prorated_invoice_amount))
+            rechenweg.append(Schritt(
+                f"vereinbarter Anteil {zahl_text(prozent)} %", dec(tenant_cost)))
 
         elif billing_type == 'personen':
             # R-NUM-04: verteilt wird nach Personentagen, nicht nach der Zahl
@@ -3627,7 +3739,7 @@ def rechne(vorgang: Vorgang) -> dict:
                     'description': description,
                     'cost': runde(tenant_cost)
                 })
-            elif billing_type == 'qm':
+            elif billing_type in ('qm', 'prozent'):
                 sub_items.append({
                     'type': 'allgemein',
                     'description': description,
@@ -3704,6 +3816,7 @@ def rechne(vorgang: Vorgang) -> dict:
                 'prorated_amount': runde(prorated_invoice_amount),
                 'billing_type': billing_type,
                 'description': description,
+                'percentage': vorgang.prozentanteile.get(cat.id) if billing_type == 'prozent' else None,
                 'tenant_cost': runde(tenant_cost),
                 'overlap_days': overlap_days,
                 'invoice_days': invoice_days,
@@ -3834,6 +3947,7 @@ def rechne(vorgang: Vorgang) -> dict:
             'positions': vermieter_positionen,
             'leerstand_amount': summe(p['leerstand_amount'] for p in vermieter_positionen),
             'eigennutzung_amount': summe(p['eigennutzung_amount'] for p in vermieter_positionen),
+            'prozent_amount': summe(p.get('prozent_amount', NULL) for p in vermieter_positionen),
             'total_amount': summe(p['amount'] for p in vermieter_positionen),
         },
         # Der Ausweis des § 7 CO2KostAufG (NK-053): Emission, Einstufung,

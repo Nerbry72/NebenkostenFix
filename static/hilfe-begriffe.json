@@ -47,7 +47,7 @@
  {
   "schluessel": "kostenprofil",
   "begriff": "Kostenprofil",
-  "satz": "Für jeden Mieter und jede Kostenart die Angabe, wie seine Wohnung beteiligt ist: nach Wohnfläche, nach Personen, nach eigenem Zähler oder gar nicht."
+  "satz": "Für jeden Mieter und jede Kostenart die Angabe, wie seine Wohnung beteiligt ist: nach Wohnfläche, nach Personen, nach vereinbartem Prozentsatz, nach eigenem Zähler oder gar nicht."
  },
  {
   "schluessel": "leerstand",
@@ -77,7 +77,7 @@
  {
   "schluessel": "umlageschluessel",
   "begriff": "Umlageschlüssel",
-  "satz": "Die Regel, nach der eine Rechnung auf die Wohnungen verteilt wird: nach Wohnfläche, nach Personen oder nach dem Verbrauch laut Zähler."
+  "satz": "Die Regel, nach der eine Rechnung auf die Wohnungen verteilt wird: nach Wohnfläche, nach Personen, nach vereinbartem Prozentsatz oder nach dem Verbrauch laut Zähler."
  },
  {
   "schluessel": "unterzaehler",

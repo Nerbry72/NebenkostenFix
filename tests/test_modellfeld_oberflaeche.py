@@ -94,6 +94,8 @@ OBERFLAECHE = {
         'tenant_id': '/profiles`',
         'category_id': 'profile-cat-',
         'billing_type': 'profile-cat-',
+        'percentage': 'profile-percentage-',
+        'heizkostenv_bestaetigt': 'profile-heizkostenv-',
     },
     'CostInvoice': {
         'category_id': 'id="invoice-category"',

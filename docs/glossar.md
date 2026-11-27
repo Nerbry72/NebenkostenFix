@@ -20,7 +20,7 @@ der Test bricht `make check` ab, wenn er zurückkehrt.
 | **Immobilie** | Das Gebäude oder Grundstück, dessen Kosten umgelegt werden. Umlagemasse und Gesamtfläche gehören zur Immobilie. | „Objekt“, „Haus“, „Liegenschaft“ |
 | **Wohnung** | Eine vermietbare Einheit einer Immobilie. Auch Garagen oder Gewerbeeinheiten sind Wohnungen im Sinne der Oberfläche (Nutzungsart unterscheidet sie). | „Einheit“, „Objekt“, „Unit“ |
 | **Mieter** | Das Mietverhältnis: eine Person oder ein Haushalt in einer Wohnung mit Ein- und Auszug. | „Profil“, „Kunde“, „Mietpartei“ |
-| **Kostenprofil** | Die Umlagearten einer Wohnung: für jede Kostenart, wie ihr Anteil verteilt wird (nach Fläche, nach Personen, direkt zugewiesen, nur Allgemeinanteil, ignoriert). | „Abrechnungsprofil“, „Profile“ |
+| **Kostenprofil** | Die Umlagearten einer Wohnung: für jede Kostenart, wie ihr Anteil verteilt wird (nach Fläche, nach Personen, nach vereinbartem Prozentsatz, direkt zugewiesen, nur Allgemeinanteil, ignoriert). | „Abrechnungsprofil“, „Profile“ |
 | **Anbieter** | Wer eine Rechnung ausstellt (Stadtwerke, Müllabfuhr, Schornsteinfeger). | „Lieferant“, „Vendor“, „Gläubiger“ |
 | **Rechnung** | Ein Kostenposten, der umgelegt wird: Betrag, Zeitraum, Kostenart, optional Anbieter und Beleg. | „Kostenpunkt“, „Kostenposition“, „Posten“ |
 | **Beleg** | Das Dokument zu einer Rechnung: PDF, Foto oder Scan. | „Dokument“, „Datei“, „Anhang“ |
@@ -39,16 +39,37 @@ der Test bricht `make check` ab, wenn er zurückkehrt.
 
 ## 2. Die Umlagearten (Auswahlliste Kostenprofil)
 
-Die fünf Arten tragen genau die Beschriftungen aus `abrechnungsart.ARTEN`; Oberfläche und
+Die sechs Arten tragen genau die Beschriftungen aus `abrechnungsart.ARTEN`; Oberfläche und
 Rechenkern dürfen nicht auseinanderlaufen:
 
 | Wert | Beschriftung (wortgleich `abrechnungsart.ARTEN`) |
 |---|---|
 | `qm` | Umlage nach Wohnfläche |
 | `personen` | Umlage nach Personen |
+| `prozent` | Umlage nach Prozentsatz |
 | `direkt` | Nach Verbrauch (eigener Zähler) |
 | `nur_allgemein` | Nur Anteil am Allgemeinverbrauch |
 | `ignoriert` | Wird diesem Mieter nicht berechnet |
+
+Bei `prozent` wird im Kostenprofil jeder Mietpartei je Kostenart ihr vereinbarter
+Anteil von 0 bis 100 % mit höchstens zwei Nachkommastellen eingetragen. Für zwei
+Parteien beispielsweise 30 % und 70 %. Die Anteile werden nicht automatisch
+auf 100 % umgerechnet. Während der Eingabe zeigt die App die Summe je Kostenart
+und Mietzeitraum an. Mehr als 100 % können nicht gespeichert werden.
+Der nicht verteilte Rest wird einschließlich Leerstand als Vermieteranteil
+auf der Abrechnung ausgewiesen. Für dieselbe Kostenart dürfen im selben
+Zeitraum Prozentumlage und andere Umlagearten nicht gemischt abgerechnet werden;
+nicht beteiligte Mietparteien können die Kostenart ignorieren.
+Zeitanteile werden wie bei der Wohnflächenumlage berücksichtigt. Direkt einer
+Wohnung zugewiesene Rechnungen bleiben vollständig dieser Wohnung zugeordnet.
+
+Bei Heizung, Warmwasser und verbundenen Anlagen wird das Prozentfeld erst
+nach ausdrücklicher Bestätigung des Hinweises zu § 2 HeizkostenV freigeschaltet.
+Die Bestätigung wird je Mietpartei und Kostenart gespeichert. Sie bestätigt,
+dass der Nutzer den Hinweis gelesen und die Zulässigkeit für seinen Fall
+geprüft hat; sie ersetzt keine rechtliche Voraussetzung. Vorhandene Profile
+werden nicht automatisch als bestätigt übernommen. Beim Wechsel zu einer
+anderen Umlageart wird die Bestätigung zurückgesetzt.
 
 Auf dem Abrechnungsblatt heißt die Zeile einer direkt zugewiesenen Rechnung
 „Direkt zugewiesen (100 % der Rechnung für diese Wohnung)“ — sie behauptet keine
@@ -195,13 +216,13 @@ oder ein Pflichtbegriff in der Oberfläche kein „?“ hat.
 | hausgeldabrechnung | Hausgeldabrechnung | Die Abrechnung, die Sie als Eigentümer einer Wohnung von der Hausverwaltung bekommen. Daraus dürfen nur die Betriebskosten an den Mieter weiter; Verwaltung, Rücklage und Instandsetzung bleiben bei Ihnen (§ 1 Abs. 2 BetrKV). |
 | waermemengenzaehler | Wärmemengenzähler | Ein Zähler, der Kilowattstunden Wärme misst statt Kubikmeter. Bei einer Wärmepumpe darf damit auch das Warmwasser erfasst werden (§ 9 Abs. 2 Satz 1 HeizkostenV); tragen Sie beim Zähler dann „kWh“ als Maßeinheit ein. |
 | kaltmiete | Kaltmiete-Soll | Die vereinbarte Kaltmiete mit ihrem Stichtagsverlauf; das Modal stellt sie den erfassten Mietzahlungen je Monat gegenüber. Gezählt wird nur, was als Zahlung vom Typ „Miete" erfasst ist — kein Kontoabgleich. Künftige Stufen sind als geplant markiert. |
-| kostenprofil | Kostenprofil | Für jeden Mieter und jede Kostenart die Angabe, wie seine Wohnung beteiligt ist: nach Wohnfläche, nach Personen, nach eigenem Zähler oder gar nicht. |
+| kostenprofil | Kostenprofil | Für jeden Mieter und jede Kostenart die Angabe, wie seine Wohnung beteiligt ist: nach Wohnfläche, nach Personen, nach vereinbartem Prozentsatz, nach eigenem Zähler oder gar nicht. |
 | leerstand | Leerstand | Zeiten, in denen eine Wohnung nicht vermietet war; ihren Anteil an den Kosten tragen Sie als Vermieter, nicht die übrigen Mieter. |
 | nachzahlung | Nachzahlung | Waren die Kosten höher als die Vorauszahlungen, zahlt der Mieter den Unterschied nach. |
 | pdfaufbau | PDF-Aufbau | Welche Teile die Abrechnungs-PDF enthält und in welcher Reihenfolge; Deckblatt, Kostenaufstellung, Heizkosten mit CO2-Aufteilung und Zahlungshinweis sind Pflicht, die übrigen Teile dürfen Sie ausschalten. |
 | sammelrechnung | Sammelrechnung | Ein Dokument des Anbieters, aus dem Sie mehrere einzelne Rechnungen erfassen, etwa die Jahresabrechnung der Stadtwerke für Wasser und Abwasser. |
 | umlagefaehig | umlagefähig | Kosten, die Sie nach § 2 Betriebskostenverordnung auf den Mieter umlegen dürfen, wenn der Mietvertrag es vorsieht; Reparaturen, Verwaltung und Rücklagen gehören nicht dazu. |
-| umlageschluessel | Umlageschlüssel | Die Regel, nach der eine Rechnung auf die Wohnungen verteilt wird: nach Wohnfläche, nach Personen oder nach dem Verbrauch laut Zähler. |
+| umlageschluessel | Umlageschlüssel | Die Regel, nach der eine Rechnung auf die Wohnungen verteilt wird: nach Wohnfläche, nach Personen, nach vereinbartem Prozentsatz oder nach dem Verbrauch laut Zähler. |
 | unterzaehler | Unterzähler | Ein eigener Zähler in einer Wohnung, der misst, was diese Wohnung vom Verbrauch des ganzen Hauses selbst verbraucht hat. |
 | vorauszahlung | Vorauszahlung | Der Betrag, den der Mieter jeden Monat zusätzlich zur Miete auf die Nebenkosten zahlt; die Abrechnung stellt ihn den tatsächlichen Kosten gegenüber. |
 | wohnflaeche | Wohnfläche | Die Fläche der Wohnung in m² laut Mietvertrag; nach ihr werden die meisten Kosten verteilt. |

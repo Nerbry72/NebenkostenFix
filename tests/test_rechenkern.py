@@ -142,7 +142,7 @@ def test_kern_importiert_kein_orm():
         # Die eigenen Bausteine haengen selbst an nichts als der
         # Standardbibliothek -- sie duerfen mit herein, ein ORM nicht.
         'abrechnungsart', 'betrkv', 'co2', 'geld', 'haushalt', 'heizung', 'leerstand',
-        'lohnausweis', 'nutzung', 'zeitraum',
+        'lohnausweis', 'nutzung', 'prozent', 'zeitraum',
     }, (
         f'Der Rechenkern zieht fremde Module herein: {importiert}'
     )

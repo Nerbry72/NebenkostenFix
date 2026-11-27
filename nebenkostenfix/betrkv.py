@@ -60,6 +60,7 @@ __all__ = [
     'zuordnung',
     'nummernvorschlag',
     'GESPERRT',
+    'ist_heizkosten',
     'ist_niederschlag',
     'katalogeintrag',
     'einheit',
@@ -296,6 +297,11 @@ def _vergleichsform(name: str) -> str:
 #: und HeizkostenV. Eine zweite Kostenart unter diesen Nummern würde den
 #: Heizkern umgehen.
 GESPERRT = frozenset((NR_HEIZUNG, NR_WARMWASSER, NR_VERBUNDENE_ANLAGE))
+
+
+def ist_heizkosten(name, nummer=None) -> bool:
+    """Heizung, Warmwasser oder verbundene Anlage; Nummer vor Altbestandsname."""
+    return (nummer if nummer is not None else zuordnung(name)) in GESPERRT
 
 #: Stichwörter für den Nummernvorschlag im Formular (Phase 54). Die Liste
 #: liegt an diesem einen Ort neben dem Katalog und schlägt nur vor: sie

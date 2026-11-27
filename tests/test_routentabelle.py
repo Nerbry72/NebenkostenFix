@@ -152,6 +152,7 @@ ROUTEN_INVENTAR = frozenset({
     'export_tenant',
     'beispielimmobilie_route',
     'get_tenant_profiles',
+    'get_tenant_percentage_totals',
     'get_tenants',
     'get_vermieterdaten',
     'get_zeitraumvorschlag',

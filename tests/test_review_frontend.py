@@ -52,6 +52,41 @@ def _node(code: str, tz: str | None = None):
 
 
 @braucht_node
+def test_datenqualitaet_zeigt_prozentprofile_mit_satz_und_farbe():
+    farben = QUELLE[QUELLE.index('const DIAGRAMM_FARBE ='):]
+    farben = farben[:farben.index('\n};') + 3]
+    code = farben + r'''
+class Element {
+    constructor(tag) { this.tag = tag; this.children = []; this.style = {}; this.textContent = ''; }
+    appendChild(child) { this.children.push(child); }
+    replaceChildren() { this.children = []; }
+}
+const grid = new Element('grid');
+const document = {
+    getElementById: () => grid,
+    createElement: tag => new Element(tag),
+    createTextNode: text => Object.assign(new Element('text'), {textContent: text})
+};
+const tenants = [{id: 1, name: 'Mieter', apartment_id: 1, move_in_date: '2025-01-01'}];
+const allApartments = [{id: 1, property_id: 1}];
+const fetch = async url => ({json: async () => url === '/api/categories'
+    ? [{id: 1, name: 'Müll'}, {id: 2, name: 'Steuer'}, {id: 3, name: 'Entfällt'}, {id: 4, name: 'Null'}]
+    : {1: {billing_type: 'prozent', percentage: '30.25'}, 2: 'qm',
+       3: {billing_type: 'ignoriert'}, 4: {billing_type: 'prozent', percentage: '0.00'}}});
+''' + _funktionsrumpf('renderTenantOverview') + r'''
+renderTenantOverview(1).then(() => {
+    const alle = element => [element, ...element.children.flatMap(alle)];
+    const pillen = alle(grid).filter(e => e.tag === 'span' && e.textContent.includes(':'));
+    console.log(JSON.stringify(pillen.map(e => ({text: e.textContent, style: e.style.cssText}))));
+});
+'''
+    pillen = _node(code)
+    assert [p['text'] for p in pillen] == [
+        'Müll: nach Prozentsatz · 30,25 %', 'Steuer: nach m²', 'Null: nach Prozentsatz · 0 %']
+    assert '#2E7D6B' in pillen[0]['style']
+
+
+@braucht_node
 def test_hausfilter_schneller_wechsel_letzte_wahl_gewinnt():
     """Haus 1 antwortet langsam, Haus 2 schnell: am Ende gilt Haus 2."""
     code = (

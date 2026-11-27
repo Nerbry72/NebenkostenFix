@@ -2079,7 +2079,7 @@
                     Legen Sie je Kostenart den Umlageschlüssel <button type="button" class="begriff-hilfe" aria-label="Begriff erklären" data-begriff="umlageschluessel"><i class="ph ph-question" aria-hidden="true"></i></button> fest: wie dieser Mieter an
                     der Kostenart beteiligt ist.
                 </p>
-                <form id="cost-profile-form">
+                <form id="cost-profile-form" onsubmit="event.preventDefault(); saveCostProfile()">
                     <input type="hidden" id="profile-tenant-id">
                     <div id="cost-profile-categories" style="display: flex; flex-direction: column; gap: 16px;">
                         <!-- Injected via JS -->

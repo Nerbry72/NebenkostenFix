@@ -570,10 +570,12 @@ class PDFGenerator:
                 zeilen.append((bezeichnung, pdf_stil.geld(p.get('amount')),
                                False, None))
             anteil = landlord_share or {}
+            prozentrest = (f", Prozentrest {pdf_stil.geld(anteil['prozent_amount'])}"
+                           if anteil.get('prozent_amount') else '')
             zeilen.append((
                 f"Insgesamt beim Vermieter (Leerstand "
                 f"{pdf_stil.geld(anteil.get('leerstand_amount'))}, "
-                f"Eigennutzung {pdf_stil.geld(anteil.get('eigennutzung_amount'))})",
+                f"Eigennutzung {pdf_stil.geld(anteil.get('eigennutzung_amount'))}{prozentrest})",
                 pdf_stil.geld(anteil.get('total_amount')), True, None))
             elemente.append(pdf_stil.summenblock(
                 zeilen, self.stil, saetze, breite=pdf_stil.SATZBREITE,

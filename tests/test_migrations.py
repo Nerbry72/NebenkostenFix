@@ -53,7 +53,8 @@ BASISREVISION = "63738d5329b4"
 # ``db48fb4e8716`` legt die Tabelle ``api_schluessel`` an (Zugriffsschluessel).
 # #52: ``fc8938938dce`` legt ``geraete``, ``geraete_ersetzt`` und
 # ``geraete_codes`` an (angemeldet bleiben in der Desktop-App).
-KOPFREVISION = "fc8938938dce"
+# Danach Prozentumlage und ausdrückliche Bestätigung zu § 2 HeizkostenV.
+KOPFREVISION = "c2e7b9a41d06"
 
 
 def _umgebung(dbdatei: Path, tmp_path: Path) -> dict:
@@ -3007,6 +3008,79 @@ def test_eine_sicherung_von_vor_den_schluesseln_laesst_sich_einspielen(tmp_path)
     assert ergebnis["haeuser"] == ["Musterhaus"]
 
 
+def test_prozentmigration_erhaelt_profile_und_prueft_anteile(tmp_path):
+    datei = tmp_path / 'prozent.db'
+    stand = _lauf('''
+import json
+import app as anwendung
+from flask_migrate import downgrade, upgrade
+from sqlalchemy import text
+from nebenkostenfix.models import db
+with anwendung.app.app_context():
+    downgrade(revision="db48fb4e8716")
+    db.session.execute(text("INSERT INTO tenant_cost_profiles (tenant_id, category_id, billing_type) VALUES (1, 1, 'personen')"))
+    db.session.commit()
+    upgrade()
+    zeile = db.session.execute(text("SELECT billing_type, percentage FROM tenant_cost_profiles")).one()
+    print(json.dumps(list(zeile)))
+''', datei, tmp_path)
+    assert stand == ['personen', None]
+
+    import sqlite3
+    import pytest
+    with sqlite3.connect(datei) as verbindung:
+        for art, prozent in [('prozent', None), ('prozent', -1),
+                             ('prozent', 101), ('qm', 30)]:
+            with pytest.raises(sqlite3.IntegrityError):
+                verbindung.execute(
+                    'INSERT INTO tenant_cost_profiles '
+                    '(tenant_id, category_id, billing_type, percentage) VALUES (1, 1, ?, ?)',
+                    (art, prozent))
+        verbindung.execute(
+            "INSERT INTO tenant_cost_profiles (tenant_id, category_id, billing_type, percentage) "
+            "VALUES (1, 1, 'prozent', 30.25)")
+        verbindung.commit()
+    # Rückbau darf eine aktive Vereinbarung nicht in eine andere Umlage umdeuten.
+    ergebnis = subprocess.run(
+        [sys.executable, '-c', '''
+import app as anwendung
+from flask_migrate import downgrade
+with anwendung.app.app_context():
+    downgrade(revision="db48fb4e8716")
+'''], cwd=WURZEL, env=_umgebung(datei, tmp_path),
+        capture_output=True, text=True, timeout=180)
+    assert ergebnis.returncode != 0
+    assert 'prozentualen Kostenprofile' in ergebnis.stderr
+    with sqlite3.connect(datei) as verbindung:
+        assert verbindung.execute(
+            "SELECT percentage FROM tenant_cost_profiles WHERE billing_type = 'prozent'"
+        ).fetchone() == (30.25,)
+
+
+def test_heizkostenv_bestaetigung_migriert_ohne_stillschweigende_zustimmung(tmp_path):
+    stand = _lauf('''
+import json
+import app as anwendung
+from flask_migrate import downgrade, upgrade
+from sqlalchemy import text
+from nebenkostenfix.models import db
+with anwendung.app.app_context():
+    downgrade(revision="a6d8f1c3b902")
+    db.session.execute(text("INSERT INTO tenant_cost_profiles (tenant_id, category_id, billing_type, percentage) VALUES (1, 1, 'prozent', 30.25), (2, 1, 'qm', NULL)"))
+    db.session.commit()
+    upgrade()
+    vorher = [list(r) for r in db.session.execute(text("SELECT billing_type, percentage, heizkostenv_bestaetigt FROM tenant_cost_profiles ORDER BY id"))]
+    db.session.execute(text("UPDATE tenant_cost_profiles SET heizkostenv_bestaetigt = 1 WHERE billing_type = 'prozent'"))
+    db.session.commit()
+    downgrade(revision="a6d8f1c3b902")
+    upgrade()
+    nachher = [list(r) for r in db.session.execute(text("SELECT billing_type, percentage, heizkostenv_bestaetigt FROM tenant_cost_profiles ORDER BY id"))]
+    print(json.dumps({'vorher': vorher, 'nachher': nachher}))
+''', tmp_path / 'heizkostenv.db', tmp_path)
+    erwartet = [['prozent', 30.25, 0], ['qm', None, 0]]
+    assert stand == {'vorher': erwartet, 'nachher': erwartet}
+
+
 # ---------------------------------------------------------------------------
 # #52: ``fc8938938dce`` legt die Tabellen der angemeldeten Geraete an
 
@@ -3108,3 +3182,69 @@ def test_die_geraetewanderung_laesst_sich_zurueckdrehen(tmp_path):
     assert stand["sequenz_zurueck"] is None
     assert stand["bestand"] == ["vermieter", "Tabelle"]
     assert stand["stand_zurueck"] == "db48fb4e8716"
+
+
+def test_sicherung_vor_prozentumlage_wird_auf_neuen_kopf_aktualisiert(tmp_path):
+    """Eine echte 0.21-Sicherung erhält Profile und durchläuft beide eigenen Schritte."""
+    stand = _lauf('''
+import json, os
+from datetime import date
+from pathlib import Path
+from sqlalchemy import inspect, text
+from flask_migrate import downgrade, upgrade
+import app as anwendung
+from nebenkostenfix import backup
+from nebenkostenfix.models import Apartment, CostCategory, Geraet, Property, Tenant, User, db
+
+with anwendung.app.app_context():
+    downgrade(revision="fc8938938dce")
+    haus = Property(name="Altbau", is_standalone=False)
+    nutzer = User(username="verwalter", password_hash="kein-echter-hash")
+    db.session.add_all([haus, nutzer])
+    db.session.flush()
+    wohnung = Apartment(property_id=haus.id, name="Wohnung A", sqm=60)
+    db.session.add(wohnung)
+    db.session.flush()
+    mieter = Tenant(apartment_id=wohnung.id, name="Altpartei", move_in_date=date(2024, 1, 1))
+    db.session.add(mieter)
+    db.session.flush()
+    kat = CostCategory.query.filter_by(betrkv_nr=1).first()
+    db.session.execute(text(
+        "INSERT INTO tenant_cost_profiles (tenant_id, category_id, billing_type)"
+        " VALUES (:mieter, :kat, 'personen')"), {"mieter": mieter.id, "kat": kat.id})
+    db.session.add(Geraet(user_id=nutzer.id, name="Notebook", hash="a" * 64))
+    db.session.commit()
+    archiv = backup.sicherung_erstellen(anwendung.app, Path(os.environ["DATA_DIR"]) / "sicherungen")
+
+    upgrade()
+    geraete_nach_upgrade = Geraet.query.count()
+    db.session.execute(text(
+        "UPDATE tenant_cost_profiles SET billing_type = 'prozent', percentage = 30.25"))
+    db.session.add(Property(name="Nach dem Update", is_standalone=False))
+    db.session.commit()
+
+    bericht = backup.sicherung_einspielen(anwendung.app, archiv)
+    revision = db.session.execute(text("SELECT version_num FROM alembic_version")).scalar()
+    profile = [list(r) for r in db.session.execute(text(
+        "SELECT billing_type, percentage, heizkostenv_bestaetigt FROM tenant_cost_profiles"))]
+    haeuser = [p.name for p in Property.query.all()]
+    mieter = [t.name for t in Tenant.query.all()]
+    konten = [u.username for u in User.query.all()]
+    tabellen = inspect(db.engine).get_table_names()
+    geraete_nach_einspielen = Geraet.query.count()
+
+print(json.dumps({"bericht": bericht, "revision": revision, "profile": profile,
+    "haeuser": haeuser, "mieter": mieter, "konten": konten, "tabellen": tabellen,
+    "geraete_nach_upgrade": geraete_nach_upgrade,
+    "geraete_nach_einspielen": geraete_nach_einspielen}))
+''', tmp_path / 'vor-prozent.db', tmp_path)
+    assert stand['bericht']['alembic_revision'] == 'fc8938938dce'
+    assert stand['bericht']['schemastand_nachher'] == stand['revision'] == KOPFREVISION
+    assert stand['profile'] == [['personen', None, 0]]
+    assert stand['haeuser'] == ['Altbau']
+    assert stand['mieter'] == ['Altpartei']
+    assert stand['konten'] == ['verwalter']
+    assert {'geraete', 'geraete_ersetzt', 'geraete_codes'} <= set(stand['tabellen'])
+    assert stand['geraete_nach_upgrade'] == 1
+    # Das Einspielen meldet Geräte gemäß der Sicherheitsregel von 0.21 ab.
+    assert stand['geraete_nach_einspielen'] == 0
