@@ -15,6 +15,11 @@
   "satz": "Ihre Abrechnung heißt die Kostenart anders als der Katalog? Legen Sie sie unter ihrem eigenen Namen an und wählen die Nummer aus § 2 BetrKV, zum Beispiel „Hauswart\" unter Nr. 14. Die Nummer entscheidet, wie gerechnet wird."
  },
  {
+  "schluessel": "girocode",
+  "begriff": "GiroCode",
+  "satz": "Ein QR-Code auf der Abrechnung, den der Mieter mit seiner Banking-App scannt, um die Nachzahlung mit Ihrer IBAN und dem Betrag zu überweisen; ohne Name und IBAN unter Vermieterdaten fällt er weg."
+ },
+ {
   "schluessel": "guthaben",
   "begriff": "Guthaben",
   "satz": "Hat der Mieter mehr vorausgezahlt, als an Kosten angefallen ist, bekommt er den Unterschied zurück."
@@ -53,6 +58,11 @@
   "schluessel": "nachzahlung",
   "begriff": "Nachzahlung",
   "satz": "Waren die Kosten höher als die Vorauszahlungen, zahlt der Mieter den Unterschied nach."
+ },
+ {
+  "schluessel": "pdfaufbau",
+  "begriff": "PDF-Aufbau",
+  "satz": "Welche Teile die Abrechnungs-PDF enthält und in welcher Reihenfolge; Deckblatt, Kostenaufstellung, Heizkosten mit CO2-Aufteilung und Zahlungshinweis sind Pflicht, die übrigen Teile dürfen Sie ausschalten."
  },
  {
   "schluessel": "sammelrechnung",

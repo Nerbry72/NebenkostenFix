@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from io import BytesIO
 # Bandit-Ausnahme: maskiert Text fuer reportlab, parst kein XML
 from xml.sax.saxutils import escape  # nosec B406
@@ -25,12 +25,12 @@ from nebenkostenfix import marke
 from nebenkostenfix.abrechnung_version import SOFTWARE_VERSION, REGEL_VERSION
 
 
-#: Die Blöcke der Abrechnungs-PDF in ihrer Standardreihenfolge (F1-01),
-#: festgelegt in ``pdf_layout.BLOECKE``. ``generate()`` geht die
-#: eingeschalteten Blöcke des Layouts durch; je ID liefert
-#: ``PDFGenerator._block_<id>`` die Flowables. Der GiroCode ist ein
-#: Unterblock: im Standard von ``zahlung`` (Zahlungssatz und Kasten bleiben
-#: ein ``KeepTogether``, NK-270), wahlweise auf dem Deckblatt oder aus.
+#: Die Blöcke der Abrechnungs-PDF in ihrer Standardreihenfolge, festgelegt
+#: in ``pdf_layout.BLOECKE``. ``generate()`` geht die eingeschalteten
+#: Blöcke des Layouts durch; je ID liefert ``PDFGenerator._block_<id>``
+#: die Flowables. Der GiroCode ist ein Unterblock: im Standard von
+#: ``zahlung`` (Zahlungssatz und Kasten bleiben zusammen auf einer Seite),
+#: wahlweise auf dem Deckblatt oder aus.
 #: ``verbrauchsnachweise`` gibt es nur in der ausführlichen Fassung.
 STANDARDLAYOUT = pdf_layout.STANDARDLAYOUT
 
@@ -52,6 +52,18 @@ class _Inhalt:
     vermieter_adresse: str
     #: Wo der GiroCode steht: ``zahlung``, ``deckblatt`` oder ``aus``.
     girocode: str = pdf_layout.GIROCODE_STANDARD
+    #: Die eingeschalteten Blöcke in der Folge des Blatts; ein Block, der auf
+    #: andere verweist, liest hier, wo sie stehen.
+    folge: tuple = STANDARDLAYOUT
+    #: Der Block beginnt auf einer frischen Seite: Der vorige endete mit
+    #: einem Umbruch (Deckblatt, Übersicht) oder er ist der erste.
+    seitenanfang: bool = False
+
+    def steht_danach(self, block: str, bezug: str) -> bool:
+        """Ob ``bezug`` im Blatt hinter ``block`` steht."""
+        if block not in self.folge or bezug not in self.folge:
+            return False
+        return self.folge.index(bezug) > self.folge.index(block)
 
 
 def vermieter_anschrift() -> str:
@@ -608,10 +620,13 @@ class PDFGenerator:
                  vorbehalt=None, ausweis_35a=None, layout=None):
         """Die Abrechnungs-PDF: die eingeschalteten Blöcke des Layouts hintereinander.
 
-        F1-01: Jeder Block ist eine eigene Methode ``_block_<id>``, die ihre
+        Jeder Block ist eine eigene Methode ``_block_<id>``, die ihre
         Flowables liefert; hier wird nur noch die Liste durchgegangen. Ein
         Block, der nichts zu zeigen hat (kein Heizungsteil, kein § 35a, die
-        einfache Fassung ohne Nachweise), liefert eine leere Liste.
+        einfache Fassung ohne Nachweise), liefert eine leere Liste. Jeder
+        Block erfährt, wo die anderen stehen und ob er auf einer frischen
+        Seite beginnt -- so stimmt ein Verweis wie „auf den folgenden
+        Seiten“ auch, wenn der Vermieter die Reihenfolge ändert.
 
         ``layout`` ist ein Layout im Format von ``pdf_layout``; ohne Angabe
         gilt der Standard, und das Blatt bleibt, wie es war. Es wird
@@ -637,11 +652,13 @@ class PDFGenerator:
             vermieter=vermieter_ausweis()[0],
             vermieter_adresse=vermieter_anschrift(),
             girocode=layout['girocode'],
+            folge=tuple(pdf_layout.aktive_bloecke(layout)),
         )
         bloecke = self._bloecke()
         elements = []
-        for block in pdf_layout.aktive_bloecke(layout):
-            elements.extend(bloecke[block](inhalt))
+        for block in inhalt.folge:
+            seitenanfang = not elements or isinstance(elements[-1], PageBreak)
+            elements.extend(bloecke[block](replace(inhalt, seitenanfang=seitenanfang)))
 
         doc.build(elements, onFirstPage=_fuss_zeichnen, onLaterPages=_fuss_zeichnen)
 
@@ -707,6 +724,7 @@ class PDFGenerator:
             vermieter_name=inhalt.vermieter,
             vermieter_anschrift=inhalt.vermieter_adresse,
             mieter_anschrift=self.tenant_anschrift,
+            aufstellung_folgt=inhalt.steht_danach('uebersicht', 'kostenaufstellung'),
         )
 
     def _block_kostenaufstellung(self, inhalt):
@@ -1074,8 +1092,8 @@ class PDFGenerator:
     def _block_zahlung(self, inhalt):
         """Zahlungssatz und Rückfragen, darin der GiroCode -- als ein Block.
 
-        NK-270: Satz und Kasten bleiben zusammen; passt der Block nicht
-        mehr, rueckt er als Ganzes auf die naechste Seite.
+        Satz und Kasten bleiben zusammen; passt der Block nicht mehr,
+        rückt er als Ganzes auf die nächste Seite.
         """
         elements = [Spacer(1, 40)]
         # NK-248: die hinterlegte IBAN steht im Satz. NK-264: ich/wir nach
@@ -1110,17 +1128,21 @@ class PDFGenerator:
 
         Davor steht der Verweis „auf den folgenden Seiten“ -- er gehört zu
         diesem Block, denn er erscheint genau dann, wenn der Block erscheint.
+        Beginnt der Block ohnehin auf einer frischen Seite (etwa direkt nach
+        dem Deckblatt), entfallen Verweis und Umbruch: Der Verweis stünde
+        sonst allein auf einer Seite und zeigte auf die nächste.
         """
         line_items = inhalt.line_items
         elements = []
         # NK-245: ohne Zaehlerzeile kein leerer Nachweisteil samt Umbruch.
         if self.detailliert and any(item.get('meter_details') for item in line_items):
-            # Der Verweis klebte am GiroCode-Kasten darüber.
-            elements.append(Spacer(1, pdf_stil.M))
-            elements.append(Paragraph(
-                '<i>Detaillierte Verbrauchsnachweise auf den folgenden Seiten</i>',
-                self.styles['HeaderNormal']))
-            elements.append(PageBreak())
+            if not inhalt.seitenanfang:
+                # Der Verweis klebte am GiroCode-Kasten darüber.
+                elements.append(Spacer(1, pdf_stil.M))
+                elements.append(Paragraph(
+                    '<i>Detaillierte Verbrauchsnachweise auf den folgenden Seiten</i>',
+                    self.styles['HeaderNormal']))
+                elements.append(PageBreak())
         
             # ----------------------------------------------------
             # PAGE 2+: Detailed Consumption Breakdown

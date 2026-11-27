@@ -976,15 +976,21 @@ def _anwendung_uebernehmen(ordner: Path, werte) -> list[str]:
     # Nur bekannte Schluessel mit dem erwarteten Typ; ein ``None`` beim
     # Hinweis heisst „nie bestaetigt“ und ueberschreibt nichts. Der Schalter
     # ``ohne_anmeldung`` (NK-197) gilt nur mit bool; fehlt er (alte Pakete),
-    # bleibt der Wert am Ziel unverändert. Das PDF-Layout kommt nur als
-    # Objekt und wird tolerant geladen -- ein Paket aus einer neueren
-    # Fassung mit unbekannten Blöcken bricht das Einspielen nicht ab.
+    # bleibt der Wert am Ziel unverändert. Das PDF-Layout kommt als Objekt
+    # und wird tolerant geladen -- ein Paket aus einer neueren Fassung mit
+    # unbekannten Blöcken bricht das Einspielen nicht ab. ``None`` beim
+    # Layout heißt „Standardaufbau“: Jedes Paket seit dem einstellbaren
+    # Aufbau nennt den Schlüssel, und eine Quelle im Standard schreibt
+    # ``None``. Das Einspielen ersetzt, also setzt es auch hier zurück; ein
+    # eigenes Layout am Ziel bliebe sonst stehen, obwohl die Sicherung
+    # etwas anderes sagt. Fehlt der Schlüssel (älteres Paket) oder ist der
+    # Wert weder Objekt noch None, bleibt das vorhandene Layout.
     werte = {k: v for k, v in werte.items()
              if (k == 'haftung' and isinstance(v, dict))
              or (k == 'updates_automatisch' and isinstance(v, bool))
              or (k == 'ohne_anmeldung' and isinstance(v, bool))
-             or (k == 'pdf_layout' and isinstance(v, dict))}
-    if 'pdf_layout' in werte:
+             or (k == 'pdf_layout' and (v is None or isinstance(v, dict)))}
+    if werte.get('pdf_layout') is not None:
         from nebenkostenfix import pdf_layout
         werte['pdf_layout'] = pdf_layout.laden(werte['pdf_layout'])
     if werte:

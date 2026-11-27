@@ -77,7 +77,9 @@ fragt, ob er die vorhandene App ersetzen soll. Klicken Sie auf **Ersetzen**.
 ![Frage des Finders: Soll das vorhandene „NebenkostenFix“ ersetzt werden?, mit den Knöpfen „Beide behalten“, „Stoppen“ und „Ersetzen“](../bilder/mac-ersetzen.png)
 
 Weil jede Version eine neue, ungeprüfte Datei ist, fragt macOS beim nächsten Start wieder nach.
-Gehen Sie dann wie in Abschnitt 4 vor. Ihre Daten bleiben dabei erhalten.
+Gehen Sie dann wie in Abschnitt 4 vor. Ihre Daten bleiben dabei erhalten. Arbeiten Sie mit
+einem Server und „Angemeldet bleiben“, fragt macOS außerdem einmal nach Ihrem Schlüsselbund
+(siehe Abschnitt 9).
 
 ## 6. Wo Ihre Daten liegen
 
@@ -134,8 +136,19 @@ Wenn Ihr Server läuft:
    `http://diskstation:6060`. Schreiben Sie sie genau so ab, auch mit `http://` am Anfang.
 3. Setzen Sie den Haken bei „Ich habe verstanden, dass ich danach mit den Daten auf dem Server
    arbeite.“ und klicken Sie auf **Verbinden**. Die App startet neu.
-4. Melden Sie sich mit Ihrem Namen und Passwort für den Server an. Das fragt die App bei jedem
-   Start.
+4. Melden Sie sich mit Ihrem Namen und Passwort für den Server an. Setzen Sie dabei den Haken
+   bei **Angemeldet bleiben**, meldet sich die App beim nächsten Start selbst an. Ohne Haken
+   fragt sie bei jedem Start.
+
+**Nach einer neuen Version** fragt macOS einmal, ob NebenkostenFix auf Ihren Schlüsselbund
+zugreifen darf. Dort merkt sich die App, dass Sie angemeldet bleiben. Geben Sie das Passwort
+Ihres Macs ein und klicken Sie auf **Immer erlauben**. Bis zur nächsten Version fragt macOS dann
+nicht mehr. Klicken Sie stattdessen auf „Ablehnen“, fragt die App wieder nach Ihrem Passwort
+für den Server.
+
+Benutzen auch andere Ihren Mac, lassen Sie den Haken besser weg. Abmelden geht oben rechts in
+der App oder über das Menü „Ablage“ → „Abmelden“. Danach fragt die App beim nächsten Start
+wieder nach Ihrem Passwort.
 
 Oben im Fenster steht jetzt „verbunden mit …“. So sehen Sie immer, dass Sie mit den Daten auf
 dem Server arbeiten. Ihre Daten vom Mac kommen dabei nicht auf den Server.

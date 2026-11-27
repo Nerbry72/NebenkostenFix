@@ -25,12 +25,15 @@ Die Nebenkostenabrechnung für private Vermieter. Kostenlos, und Ihre Daten blei
 
 ## Neuerungen in dieser Version
 
-Version 0.21.0: Mit einem eigenen NebenkostenFix-Server bleibt die App auf Wunsch angemeldet, dazu mehrere Fehlerbehebungen.
+Version 0.22.0: Den Aufbau der Abrechnungs-PDF legen Sie jetzt selbst fest, dazu mehrere Fehlerbehebungen.
 
-- Neu: Ist die App mit Ihrem eigenen NebenkostenFix-Server verbunden, fragt sie mit „Angemeldet bleiben“ beim Start nicht mehr nach dem Passwort. Die angemeldeten Rechner stehen unter Einstellungen → Konto und lassen sich dort abmelden.
-- Behoben: Eine Zahlungsserie zum Monatsende bleibt nach dem Februar am Monatsende, und ein Enddatum vor dem ersten Zahlungstag erzeugt keinen Rückstand mehr.
-- Behoben: Ein geleertes Auszugsdatum wird entfernt, ein Auszug vor dem Einzug abgewiesen.
-- Behoben: Der Mieterimport nimmt keine Personenzahl mit Nachkommastelle mehr an, und ein ersetzter Mietvertrag bleibt nicht mehr als Datei liegen.
+- Neu: Unter Einstellungen → Abrechnung lassen sich optionale Teile der Abrechnungs-PDF weglassen und umsortieren, und der GiroCode steht beim Zahlungshinweis, auf dem Deckblatt oder gar nicht. Ohne eigene Wahl bleibt das PDF, wie es war.
+- Neu: Die Anmeldeseiten folgen dem dunklen Modus.
+- Behoben: Beim Bearbeiten einer Rechnung wird ihr Beleg nicht mehr still durch eine zuvor gewählte Datei ersetzt.
+- Behoben: Der Import von Zählerständen weist negative Stände und Ablesedaten in der Zukunft ab.
+- Behoben: Eine Zahlungsserie mit mehr als 120 Terminen bricht nicht mehr still ab, sondern wird am Enddatum abgewiesen.
+- Behoben: Der Pfeil der Auswahlfelder ist im dunklen Modus gut zu sehen.
+- Behoben: Am Zweitarifzähler nimmt die App keinen Stand ohne NT-Wert mehr an.
 
 ## Produktmerkmale
 

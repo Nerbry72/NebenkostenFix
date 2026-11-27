@@ -131,8 +131,9 @@ PYOBJC = {'pyobjc-core', 'pyobjc-framework-Cocoa', 'pyobjc-framework-Quartz',
 
 
 @pytest.mark.parametrize('plattform, erwartet', [
-    ('win32', {'waitress', 'pywebview', 'pyinstaller', 'keyring'}),    # #52: keyring nur unter Windows
-    ('darwin', {'waitress', 'pywebview', 'pyinstaller'} | PYOBJC),
+    # #52: keyring für „Angemeldet bleiben“ unter Windows und macOS, nicht unter Linux.
+    ('win32', {'waitress', 'pywebview', 'pyinstaller', 'keyring'}),
+    ('darwin', {'waitress', 'pywebview', 'pyinstaller', 'keyring'} | PYOBJC),
     ('linux', {'waitress'}),
 ])
 def test_desktop_abhaengigkeiten_je_system(plattform, erwartet):

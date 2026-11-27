@@ -36,6 +36,29 @@
     --knopf-hoehe: 44px;
 }
 
+/* Dunkelmodus wie in der App (Werte aus style.css), nur am Bildschirm: gedruckt wird
+   immer hell. Das Skript in auth.py setzt data-theme vor dem ersten Bild.
+   tests/test_anmeldeseiten_dunkel.py hält Farben und Aufbau gleich mit style.css. */
+@media screen {
+    :root[data-theme="dark"] {
+        color-scheme: dark;
+        --primary: #8E88F8;
+        --primary-hover: #AFAAFB;
+        --primary-text: #ABA6FB;
+        --primary-tint: #25244A;
+        --on-primary: #10111F;
+        --text-main: #ECECF4;
+        --text-muted: #A3A5BD;
+        --bg-color: #0F1020;
+        --surface: #171828;
+        --border-color: #26283D;
+        --control-border: #3A3C55;
+        --field-border: #7A7D9A;
+        --success-color: #5CC497;
+        --danger-color: #F08A82;
+    }
+}
+
 * { box-sizing: border-box; }
 
 /* Wie style.css (NK-156): hidden gewinnt gegen display einer Klasse. */

@@ -371,9 +371,10 @@ def test_rundlauf_ueber_die_api_ersetzt_alles(bestand, tmp_path, monkeypatch):
     bericht = antwort.get_json()
     assert bericht['anmelden'] is True
     assert bericht['belege'] == 1 and bericht['fehlende_verweise'] == []
+    # Das Paket nennt den Standardaufbau (None); auch er wird übernommen.
     assert bericht['zusatz'] == {'logo': True,
                                  'einstellungen': ['haftung', 'ohne_anmeldung',
-                                                   'updates_automatisch'],
+                                                   'pdf_layout', 'updates_automatisch'],
                                  'vermieter_festgeschrieben': ['name', 'iban']}
     assert Path(bericht['sicherheitskopie']).is_file()
     assert bericht['nicht_im_paket']

@@ -858,7 +858,10 @@ def schluesselbund_probe(bund: Schluesselbund | None = None) -> dict:
 
 
 def schluesselbund_bestanden(bericht: dict) -> bool:
-    # Auf main bringt nur das Windows-Paket keyring mit (requirements-desktop.txt).
+    # Windows- und Mac-Paket bringen keyring mit (requirements-desktop.txt). Unter
+    # macOS prüft der Selbsttest nur das Backend, ohne Durchlauf.
+    if sys.platform == 'darwin':
+        return bericht.get('schluesselbund') == 'Keyring'
     return sys.platform != 'win32' or (bericht.get('schluesselbund') == 'WinVaultKeyring'
                                        and bericht.get('schluesselbund_durchlauf') is True)
 

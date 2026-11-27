@@ -149,7 +149,7 @@ Jede Schaltfläche beginnt mit einem dieser Verben — das Objekt folgt:
 | **exportieren / herunterladen** | Daten oder Datei herausgeben | Daten exportieren, Beleg herunterladen |
 | **drucken** | Druckdialog aufrufen | Drucken |
 | **aktualisieren** | Ansicht neu laden | Aktualisieren |
-| **zurücksetzen** | Zustand zurückstellen (zerstörend; fragt nach) | Datenbank zurücksetzen |
+| **zurücksetzen** | Zustand zurückstellen (zerstörend; fragt nach) | Datenbank zurücksetzen, Aufbau zurücksetzen |
 | **öffnen** | Zu einem anderen Bereich springen (nicht erzeugen) | Immobilien öffnen, Rechnungen öffnen |
 | **ansehen** | Vorhandenes anzeigt bekommen (kein Neues entsteht) | Abrechnung ansehen, PDF ansehen (einfach), Beleg ansehen |
 | **abrechnen** | Abrechnungsvorgang starten | Offene Kosten abrechnen |
@@ -210,6 +210,7 @@ oder ein Pflichtbegriff in der Oberfläche kein „?“ hat.
 | abrechnungsfrist | Abrechnungsfrist | Die Abrechnung muss dem Mieter spätestens zwölf Monate nach Ende des Abrechnungszeitraums zugehen; danach können Sie keine Nachzahlung mehr verlangen, ein Guthaben müssen Sie trotzdem auszahlen (§ 556 Abs. 3 BGB). |
 | abrechnungszeitraum | Abrechnungszeitraum | Die Zeit, über die abgerechnet wird: höchstens zwölf Monate, meist ein Kalenderjahr; bei Ein- oder Auszug zählen nur die Monate, in denen der Mieter dort gewohnt hat. |
 | eigene-kostenarten | Eigene Kostenarten | Ihre Abrechnung heißt die Kostenart anders als der Katalog? Legen Sie sie unter ihrem eigenen Namen an und wählen die Nummer aus § 2 BetrKV, zum Beispiel „Hauswart" unter Nr. 14. Die Nummer entscheidet, wie gerechnet wird. |
+| girocode | GiroCode | Ein QR-Code auf der Abrechnung, den der Mieter mit seiner Banking-App scannt, um die Nachzahlung mit Ihrer IBAN und dem Betrag zu überweisen; ohne Name und IBAN unter Vermieterdaten fällt er weg. |
 | guthaben | Guthaben | Hat der Mieter mehr vorausgezahlt, als an Kosten angefallen ist, bekommt er den Unterschied zurück. |
 | hauptzaehler | Hauptzähler | Der Zähler des Versorgers für das ganze Haus; nach ihm stellt der Versorger seine Rechnung. |
 | hausgeldabrechnung | Hausgeldabrechnung | Die Abrechnung, die Sie als Eigentümer einer Wohnung von der Hausverwaltung bekommen. Daraus dürfen nur die Betriebskosten an den Mieter weiter; Verwaltung, Rücklage und Instandsetzung bleiben bei Ihnen (§ 1 Abs. 2 BetrKV). |
@@ -218,6 +219,7 @@ oder ein Pflichtbegriff in der Oberfläche kein „?“ hat.
 | kostenprofil | Kostenprofil | Für jeden Mieter und jede Kostenart die Angabe, wie seine Wohnung beteiligt ist: nach Wohnfläche, nach Personen, nach vereinbartem Prozentsatz, nach eigenem Zähler oder gar nicht. |
 | leerstand | Leerstand | Zeiten, in denen eine Wohnung nicht vermietet war; ihren Anteil an den Kosten tragen Sie als Vermieter, nicht die übrigen Mieter. |
 | nachzahlung | Nachzahlung | Waren die Kosten höher als die Vorauszahlungen, zahlt der Mieter den Unterschied nach. |
+| pdfaufbau | PDF-Aufbau | Welche Teile die Abrechnungs-PDF enthält und in welcher Reihenfolge; Deckblatt, Kostenaufstellung, Heizkosten mit CO2-Aufteilung und Zahlungshinweis sind Pflicht, die übrigen Teile dürfen Sie ausschalten. |
 | sammelrechnung | Sammelrechnung | Ein Dokument des Anbieters, aus dem Sie mehrere einzelne Rechnungen erfassen, etwa die Jahresabrechnung der Stadtwerke für Wasser und Abwasser. |
 | umlagefaehig | umlagefähig | Kosten, die Sie nach § 2 Betriebskostenverordnung auf den Mieter umlegen dürfen, wenn der Mietvertrag es vorsieht; Reparaturen, Verwaltung und Rücklagen gehören nicht dazu. |
 | umlageschluessel | Umlageschlüssel | Die Regel, nach der eine Rechnung auf die Wohnungen verteilt wird: nach Wohnfläche, nach Personen, nach vereinbartem Prozentsatz oder nach dem Verbrauch laut Zähler. |

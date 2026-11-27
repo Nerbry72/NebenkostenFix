@@ -114,21 +114,28 @@ Mit dem Häkchen **Angemeldet bleiben** auf der Anmeldeseite meldet sich die App
 und nach der Leerlauf-Grenze selbst an:
 
 - Das Häkchen gibt es nur in der App, nicht im Browser. Die App nennt sich dafür im
-  User-Agent (`NebenkostenFix-Desktop/<Version>`), aber nur, wenn sie die
-  Anmeldeinformationsverwaltung von Windows benutzen kann.
-- **Unter macOS fehlt „Angemeldet bleiben“:** Die Mac-App bringt den Schlüsselbund
-  (`keyring`) nicht mit. Dort fragt der Server nach dem Passwort wie im Browser.
-- Statt des Passworts bekommt die App ein Gerätetoken. Es liegt in der
+  User-Agent (`NebenkostenFix-Desktop/<Version>`), aber nur, wenn sie den Speicher des
+  Systems benutzen kann: unter Windows die Anmeldeinformationsverwaltung, unter macOS den
+  Schlüsselbund. Beide Pakete bringen dafür `keyring` mit.
+- Statt des Passworts bekommt die App ein Gerätetoken. Es liegt unter Windows in der
   Anmeldeinformationsverwaltung (Windows-Anmeldeinformationen → Generische
-  Anmeldeinformationen, Eintrag `NebenkostenFix`), nie in einer Datei, nie in einer Adresse
-  und nie in der Seite. Bei jedem Start tauscht die App es gegen ein neues. Taucht ein schon
+  Anmeldeinformationen, Eintrag `NebenkostenFix`), unter macOS im Schlüsselbund
+  „Anmeldung“ (Eintrag `NebenkostenFix`, Account ist die Adresse des Servers). Nie in einer
+  Datei, nie in einer Adresse und nie in der Seite. Bei jedem Start tauscht die App es gegen ein neues. Taucht ein schon
   ersetztes Token wieder auf, ist es kopiert worden: Der Server meldet den Rechner ab.
   Geht die Antwort auf diesen Tausch unterwegs verloren, hat der Server schon getauscht, die
   App aber noch das alte Token. Beim nächsten Versuch sieht das aus wie eine Kopie: Der
   Rechner ist abgemeldet, und die App fragt einmal nach dem Passwort. Das ist gewollt, im
   Zweifel lieber abmelden.
-- **Abmelden** oben rechts auf der Seite oder **Datei → Abmelden** löscht das Token.
-  Datei → Abmelden tut das auch, wenn der Server gerade nicht erreichbar ist. Auf dem Server
+- **Unter macOS nach einem Update:** Die Mac-App ist nur ad-hoc signiert. Der Schlüsselbund
+  gibt den Eintrag nur der Version frei, die ihn angelegt hat (die Freigabe hängt am
+  `cdhash`). Beim ersten Start einer neuen Version fragt macOS deshalb einmal nach dem
+  Passwort des Macs. **Immer erlauben** gibt den Eintrag der neuen Version frei, danach
+  fragt macOS nicht mehr. **Ablehnen** gilt als „kein Token“: Die App fragt nach dem
+  Passwort für den Server wie ohne Häkchen.
+- **Abmelden** oben rechts auf der Seite oder **Datei → Abmelden** (unter macOS
+  **Ablage → Abmelden**) löscht das Token. Das Menü tut das auch, wenn der Server gerade
+  nicht erreichbar ist. Auf dem Server
   verfällt das Gerät dann nach 30 Tagen, oder man meldet es in der Liste ab.
 - Die Liste steht in den Einstellungen unter Konto → **Angemeldete Geräte**. Nach 30 Tagen
   ohne Nutzung, nach einem Passwortwechsel und nach dem Einspielen einer Sicherung fragt
@@ -185,7 +192,8 @@ auch, wenn der Server nicht erreichbar ist.
   neben dem Pfad zum Datenordner (`[Daten] Ordner`) und den übrigen Geräteeinstellungen.
 - **Die Anmeldung am Server:** Cookies im WebView2-Profil
   `%LOCALAPPDATA%\NebenkostenFix\WebView2`. Mit „Angemeldet bleiben“ dazu das Gerätetoken
-  in der Anmeldeinformationsverwaltung von Windows, Eintrag `NebenkostenFix`.
+  in der Anmeldeinformationsverwaltung von Windows bzw. im Schlüsselbund von macOS, Eintrag
+  `NebenkostenFix`.
 - **Die Daten:** getrennt davon im Datenordner (Standard `Dokumente\NebenkostenFix`).
   Dort steht auch, ob der Hinweis „Bevor es losgeht“ bestätigt ist.
 
@@ -233,6 +241,11 @@ die Anmeldung zusätzlich den Ordner `WebView2`).
 - Unter Windows nicht von Hand geprüft (siehe Prüfliste unten).
 - „Angemeldet bleiben“ im Store-Paket (MSIX) ist nicht geprüft. Das Deinstallieren lässt den
   Eintrag in der Anmeldeinformationsverwaltung stehen; Datei → Abmelden vorher entfernt ihn.
+  Ebenso unter macOS: Wer die App in den Papierkorb legt, lässt den Eintrag im Schlüsselbund
+  stehen. Ablage → Abmelden vorher entfernt ihn.
+- Unter macOS ist „Ablehnen“ bei der Rückfrage zum Schlüsselbund nur durch die Tests
+  geprüft. Von Hand geprüft (25.11.2026): Anmelden mit Häkchen, Neustart, Update mit
+  „Immer erlauben“, Ablage → Abmelden.
 - Der Schalter „Updates automatisch“ aus den lokalen Einstellungen gilt im Servermodus
   nicht, weil der Datenordner zu bleibt. Die App sucht dort höchstens einmal in
   24 Stunden und fragt vor jeder Installation.

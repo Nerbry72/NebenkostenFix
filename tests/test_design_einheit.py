@@ -836,6 +836,37 @@ def test_dunkelmodus():
     assert 'diagramm.data.datasets.forEach' in anzeigen and 'map(tausch)' in anzeigen
 
 
+def _themen_tokens() -> tuple[dict, dict]:
+    """Alle Tokens aus :root und aus dem dunklen Block, roh als Text."""
+    # Bis zum Zeilenende: die data-URI trägt selbst ein „;“ (charset=UTF-8;).
+    muster = r'(--[\w-]+):\s*([^\n]+?);[ \t]*\n'
+    hell = dict(re.findall(muster, STIL[STIL.index(':root {'):].split('\n}\n')[0]))
+    dunkel = dict(re.findall(muster, _media('screen')))
+    return hell, {**hell, **dunkel}
+
+
+def test_auswahlpfeil_haelt_in_beiden_themen_den_kontrast():
+    # WCAG 1.4.11: Der Pfeil der Auswahlfelder ist ein Bedienelement und
+    # braucht 3 : 1 zum Feldgrund. Er lag als fester Farbwert (#5A5C72) im
+    # SVG und erreichte im Dunkelmodus auf --surface nur 2,7 : 1. Er hängt
+    # jetzt an einem Token, das der dunkle Block überschreibt; wir verlangen
+    # wie bei Schrift 4,5 : 1.
+    hell, dunkel = _themen_tokens()
+    wert = re.search(r'background-image:\s*([^\n]+?);[ \t]*\n',
+                     _regel(':where(select)')).group(1).strip()
+    for thema, werte in (('hell', hell), ('dunkel', dunkel)):
+        bild = wert
+        while (verweis := re.fullmatch(r'var\((--[\w-]+)\)', bild)):
+            bild = werte[verweis.group(1)].strip()
+        strich = re.search(r"stroke='%23([0-9A-Fa-f]{6})'", bild)
+        assert strich, (thema, bild)
+        pfeil = '#' + strich.group(1)
+        # Feldgrund, gefilterte Haus-Wahl im Kopf, gesperrtes Feld.
+        for grund in ('--surface', '--primary-tint', '--bg-color'):
+            kontrast = _kontrast_hex(pfeil, werte[grund].strip())
+            assert kontrast >= 4.5, (thema, pfeil, grund, round(kontrast, 2))
+
+
 def test_pdf_viewer_mit_zoom_und_seitenzahl():
     """Vorher fehlten Zoom und Seitenzahl, und das PDF
     füllte die Spaltenbreite, wirkte also stark herangezoomt. Die Leiste

@@ -29,6 +29,9 @@
     --divider: #ECEDF2;
     --control-border: #D4D5E0;
     --field-border: #82859C;
+    /* Pfeil der Auswahlfelder in der Farbe von --text-muted (eine data-URI
+       kann var() nicht lesen); hält 4,5 : 1 zum Feldgrund (WCAG 1.4.11). */
+    --select-pfeil: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235A5C72' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
 
     /* Indigo aus dem Logo */
     --primary: #4F46E5;
@@ -115,6 +118,7 @@
         --divider: #26283D;
         --control-border: #3A3C55;
         --field-border: #7A7D9A;
+        --select-pfeil: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23A3A5BD' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
         --primary: #8E88F8;
         --primary-hover: #AFAAFB;
         --primary-text: #ABA6FB;
@@ -979,7 +983,7 @@ kbd {
 
 /* Custom dropdown arrow for select */
 :where(select) {
-    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235A5C72' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-image: var(--select-pfeil);
     background-repeat: no-repeat;
     background-position: right var(--space-3) center;
     background-size: 16px;
@@ -2848,6 +2852,71 @@ a.btn-primary:hover {
     flex-wrap: wrap;
     align-items: center;
     gap: var(--space-2);
+}
+
+/* PDF-Aufbau (Einstellungen → Abrechnung): eine Zeile je Teil der PDF */
+.pdf-layout-liste {
+    list-style: none;
+    margin: 0 0 var(--space-4);
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.pdf-layout-zeile {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-hover);
+}
+
+.pdf-layout-zeile[draggable="true"] {
+    cursor: grab;
+}
+
+.pdf-layout-zeile.wird-gezogen {
+    opacity: 0.5;
+}
+
+.pdf-layout-zeile > i {
+    color: var(--text-muted);
+}
+
+.pdf-layout-name {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.pdf-layout-marke {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+/* Ladefehler in der Karte: die Liste bleibt leer, die Meldung sagt warum. */
+.pdf-layout-ladefehler {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin: 0 0 var(--space-4);
+    padding: var(--space-2) var(--space-3);
+    border-radius: 8px;
+    background: var(--warning-bg);
+    color: var(--warning-strong);
+}
+
+.pdf-layout-ladefehler > p {
+    flex: 1 1 240px;
+    margin: 0;
+    color: inherit;
 }
 
 /* Von–bis-Felder: Eingaben bündig, auch wenn ein Label den Begriff-Knopf trägt */
