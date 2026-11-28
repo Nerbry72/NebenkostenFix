@@ -25,15 +25,13 @@ Die Nebenkostenabrechnung für private Vermieter. Kostenlos, und Ihre Daten blei
 
 ## Neuerungen in dieser Version
 
-Version 0.22.0: Den Aufbau der Abrechnungs-PDF legen Sie jetzt selbst fest, dazu mehrere Fehlerbehebungen.
+Version 0.22.1: Fehlerbehebungen beim Tabellenimport, beim Zeitraumvorschlag und bei der Datensicherung. Die Rechenregeln sind unverändert.
 
-- Neu: Unter Einstellungen → Abrechnung lassen sich optionale Teile der Abrechnungs-PDF weglassen und umsortieren, und der GiroCode steht beim Zahlungshinweis, auf dem Deckblatt oder gar nicht. Ohne eigene Wahl bleibt das PDF, wie es war.
-- Neu: Die Anmeldeseiten folgen dem dunklen Modus.
-- Behoben: Beim Bearbeiten einer Rechnung wird ihr Beleg nicht mehr still durch eine zuvor gewählte Datei ersetzt.
-- Behoben: Der Import von Zählerständen weist negative Stände und Ablesedaten in der Zukunft ab.
-- Behoben: Eine Zahlungsserie mit mehr als 120 Terminen bricht nicht mehr still ab, sondern wird am Enddatum abgewiesen.
-- Behoben: Der Pfeil der Auswahlfelder ist im dunklen Modus gut zu sehen.
-- Behoben: Am Zweitarifzähler nimmt die App keinen Stand ohne NT-Wert mehr an.
+- Behoben: Der Tabellenimport liest „1,234.56“ als 1.234,56 € statt still als 1,23 € und weist Zahlen ab, die sich nicht eindeutig lesen lassen.
+- Behoben: Der Zeitraumvorschlag nennt Kostenarten aus dem Kostenprofil, für die im Zeitraum noch keine Rechnung erfasst ist.
+- Behoben: Eine fremde oder beschädigte Datei im Sicherungsordner legt die Liste der Sicherungen und die Erinnerung nicht mehr lahm.
+- Behoben: Ein Sicherungsordner mit „;“ im Namen bleibt in der Desktop-App freigegeben.
+- Behoben: Eine IBAN mit Ziffern aus einer anderen Schrift wird abgewiesen statt in den GiroCode übernommen.
 
 ## Produktmerkmale
 

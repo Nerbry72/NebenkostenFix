@@ -22,6 +22,13 @@ Die Regeln, in dieser Reihenfolge:
    Rechnung, im Zeitraum aber keine, sagt der Vorschlag es dazu. Er endet
    deshalb nicht früher: Ob die Rechnung noch kommt, weiß nur der Vermieter
    (auf 6061: der Schornsteinfeger von 2024).
+   **Kostenprofil** -- ebenso jede Kostenart, die ein Mieter des Hauses im
+   Zeitraum laut Kostenprofil umlegt, die aber keine Rechnung für das
+   ganze Haus oder diese Wohnung hat; alle zusammen in einem Grund, der sie
+   aufzählt. Vorjahr und Kostenprofil zusammen sind die Soll-Liste; „decken
+   den ganzen Zeitraum ab“ heißt es nur, wenn sie vollständig belegt ist.
+   Vorher zählte eine Kostenart ganz ohne Rechnung nicht als fehlend, denn
+   ``abdeckungsluecken`` meldet nur Kostenarten mit Rechnung.
 6. **Keine Rechnung** -- liegt für den Zeitraum gar keine Rechnung vor, gibt
    es keinen Vorschlag (F-126: eine leere Menge hat keine Lücke, und der
    Vorschlag sagte „decken den ganzen Zeitraum ab“).
@@ -155,6 +162,69 @@ def naechster_zeitraum(t) -> dict | None:
     return {'beginn': beginn, 'ziel': ziel, 'abgerechnet': abgerechnet, 'jahr': jahr}
 
 
+def im_profil_umgelegt(property_id: int, beginn: date, ende: date) -> list:
+    """Die Kostenarten, die ein Mieter des Hauses laut Kostenprofil umlegt.
+
+    Gezählt werden die Mieter, die zwischen ``beginn`` und ``ende`` dort
+    wohnen; ein längst ausgezogener bestimmt nicht, was heute fehlt. Ein
+    Profil auf „Wird diesem Mieter nicht berechnet“ (``ignoriert``) zählt
+    nicht. Ob die Kostenart den einen Mieter trifft, entscheidet danach
+    dessen eigenes Profil.
+    """
+    from nebenkostenfix.models import (Apartment, CostCategory, Tenant, TenantCostProfile,
+                                       db)
+
+    return (CostCategory.query
+            .join(TenantCostProfile, TenantCostProfile.category_id == CostCategory.id)
+            .join(Tenant, Tenant.id == TenantCostProfile.tenant_id)
+            .join(Apartment, Apartment.id == Tenant.apartment_id)
+            .filter(Apartment.property_id == property_id,
+                    TenantCostProfile.billing_type != 'ignoriert',
+                    Tenant.move_in_date <= ende,
+                    db.or_(Tenant.move_out_date.is_(None), Tenant.move_out_date >= beginn))
+            .distinct().all())
+
+
+def _aufzaehlung(namen: list) -> str:
+    """„A“, „B“ und „C“."""
+    gesetzt = [f'„{n}“' for n in namen]
+    return gesetzt[0] if len(gesetzt) == 1 else f'{", ".join(gesetzt[:-1])} und {gesetzt[-1]}'
+
+
+def _soll_hinweis(namen: list, eigenes: dict) -> str:
+    """Ein Grund für alle Kostenarten aus dem Kostenprofil ohne Rechnung.
+
+    Ein einmal gespeichertes Kostenprofil hat eine Zeile je Kostenart; je
+    Kostenart ein eigener Grund wäre eine lange Liste. ``eigenes`` sagt je
+    Name, ob das Profil dieses Mieters sie umlegt oder nur das eines anderen
+    Mieters im Haus; dann gilt für diesen Mieter die Vorgabe Wohnfläche.
+    Eine Rechnung nur für eine andere Wohnung zählt nicht, deshalb nennt der
+    Grund das ganze Haus und diese Wohnung.
+    """
+    selbst = [n for n in namen if eigenes[n]]
+    nachbar = [n for n in namen if not eigenes[n]]
+    if not nachbar:
+        woher = 'Laut seinem Kostenprofil zahlt der Mieter daran einen Anteil.'
+    elif not selbst:
+        woher = ('Andere Mieter im Haus zahlen laut ihrem Kostenprofil daran einen Anteil; '
+                 'dieser Mieter hat dafür kein eigenes Kostenprofil und zahlt deshalb nach '
+                 'Wohnfläche mit.')
+    else:
+        woher = (f'An {_aufzaehlung(selbst)} zahlt der Mieter laut seinem Kostenprofil einen '
+                 f'Anteil. An {_aufzaehlung(nachbar)} zahlt er nach Wohnfläche mit: Dafür hat '
+                 'er kein eigenes Kostenprofil, aber andere Mieter im Haus.')
+    if len(namen) == 1:
+        schluss = ('Kommt die Rechnung noch, warten Sie mit der Abrechnung. Fällt die Kostenart '
+                   'nicht an, stellen Sie sie im Kostenprofil dieses Mieters auf „Wird diesem '
+                   'Mieter nicht berechnet“.')
+    else:
+        schluss = ('Kommt eine Rechnung noch, warten Sie mit der Abrechnung. Fällt eine dieser '
+                   'Kostenarten nicht an, stellen Sie sie im Kostenprofil dieses Mieters auf '
+                   '„Wird diesem Mieter nicht berechnet“.')
+    return (f'Für {_aufzaehlung(namen)} ist im Zeitraum noch keine Rechnung für das ganze Haus '
+            f'oder diese Wohnung erfasst. {woher} {schluss}')
+
+
 def vorschlag(tenant_id: int, heute: date) -> dict:
     """``{'beginn', 'ende', 'gruende'}``; ohne Vorschlag sind beide ``None``."""
     from nebenkostenfix.models import CostInvoice, Tenant, TenantBillingReport, db
@@ -206,6 +276,10 @@ def vorschlag(tenant_id: int, heute: date) -> dict:
                CostInvoice.apartment_id == vorgang.wohnung.id)).all()
     ohne_rechnung = sorted({r.category.name for r in vorjahr
                             if r.category.name not in im_zeitraum and zaehlt(r.category)})
+    # Die Soll-Liste: was im Vorjahr schon genannt ist, steht hier nicht noch einmal.
+    soll = {k.name: k.id in vorgang.profile
+            for k in im_profil_umgelegt(vorgang.immobilie_id, beginn, ziel) if zaehlt(k)}
+    profil_ohne_rechnung = sorted(set(soll) - im_zeitraum - set(ohne_rechnung))
 
     if not rechnungen:
         return _ohne(gruende + [f'Für {_d(beginn)}–{_d(ziel)} ist noch keine Rechnung erfasst. '
@@ -222,13 +296,17 @@ def vorschlag(tenant_id: int, heute: date) -> dict:
                        f'Deshalb endet der Vorschlag am {_d(ende)}.')
     else:
         ende = ziel
-        # F-126: neben dem Vorjahreshinweis wäre „decken ab“ ein Widerspruch.
-        gruende.append('Die vorhandenen Rechnungen decken den ganzen Zeitraum ab.' if not ohne_rechnung
+        # F-126: neben dem Vorjahreshinweis wäre „decken ab“ ein Widerspruch,
+        # ebenso neben einer Kostenart aus dem Profil ohne jede Rechnung.
+        gruende.append('Die vorhandenen Rechnungen decken den ganzen Zeitraum ab.'
+                       if not (ohne_rechnung or profil_ohne_rechnung)
                        else 'Jede Kostenart mit Rechnung ist für den ganzen Zeitraum belegt.')
     if ohne_rechnung:
-        gruende.append(f'Für {", ".join(f"„{n}“" for n in ohne_rechnung)} gab es im Jahr '
+        gruende.append(f'Für {_aufzaehlung(ohne_rechnung)} gab es im Jahr '
                        'davor eine Rechnung, für diesen Zeitraum noch nicht. Kommt sie noch, '
                        'warten Sie mit der Abrechnung; sonst fehlen diese Kosten.')
+    if profil_ohne_rechnung:
+        gruende.append(_soll_hinweis(profil_ohne_rechnung, soll))
 
     for z in sorted(vorgang.zaehler, key=lambda z: z.nummer or ''):
         if not (ist_heizwaermezaehler(z) and z.staende

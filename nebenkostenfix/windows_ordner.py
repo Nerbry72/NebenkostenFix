@@ -36,6 +36,7 @@ from __future__ import annotations
 import codecs
 import configparser
 import os
+import re
 import sys
 import uuid
 from pathlib import Path
@@ -44,8 +45,14 @@ from nebenkostenfix import marke
 
 APP_NAME = marke.PRODUKT
 ALTER_NAME = marke.ALTER_NAME
-# Trenner der Sicherungsziele in der INI: fest ';' (Windows-Pfade haben ':')
+# Nur noch zum Lesen des Altformats: ältere Versionen schrieben alle Ziele in
+# eine Zeile ``Sicherungsziele``, getrennt an ';'. Ein Ordnername darf unter
+# Windows aber ';' enthalten; geschrieben wird deshalb ein Schlüssel je Ziel.
 ZIELTRENNER = ';'
+ALTER_ZIELSCHLUESSEL = 'Sicherungsziele'
+# Sicherungsziel1, Sicherungsziel2, ... in der gewählten Reihenfolge.
+ZIELSCHLUESSEL = 'Sicherungsziel'
+_ZIELNUMMER = re.compile(r'sicherungsziel([0-9]+)', re.IGNORECASE)
 
 
 def _known_folder_dokumente() -> Path | None:  # pragma: no cover - Windows
@@ -238,12 +245,43 @@ def _alte_einstellungen_uebernehmen() -> None:
     _ini_schreiben(neu, _ini_parser(alt))
 
 
+def _zielschluessel(parser: configparser.ConfigParser) -> list[tuple[int, str]]:
+    """Die Schlüssel ``Sicherungsziel<N>`` in [Daten], nach N sortiert."""
+    if not parser.has_section('Daten'):
+        return []
+    gefunden = []
+    for name in parser.options('Daten'):
+        treffer = _ZIELNUMMER.fullmatch(name)
+        if treffer:
+            gefunden.append((int(treffer.group(1)), name))
+    return sorted(gefunden)
+
+
+def _ziele_lesen(parser: configparser.ConfigParser) -> list[str]:
+    schluessel = _zielschluessel(parser)
+    if schluessel:
+        werte = (parser.get('Daten', name, raw=True) for _, name in schluessel)
+    else:
+        # Altformat einer älteren Version: eine Zeile, getrennt an ';'.
+        alt = parser.get('Daten', ALTER_ZIELSCHLUESSEL, raw=True, fallback='') or ''
+        werte = alt.split(ZIELTRENNER)
+    return [w.strip() for w in werte if w.strip()]
+
+
+def _ziele_schreiben(parser: configparser.ConfigParser, ziele) -> None:
+    for _, name in _zielschluessel(parser):
+        parser.remove_option('Daten', name)
+    parser.remove_option('Daten', ALTER_ZIELSCHLUESSEL)
+    for nummer, ziel in enumerate((str(z) for z in ziele if str(z).strip()), start=1):
+        parser['Daten'][f'{ZIELSCHLUESSEL}{nummer}'] = ziel
+
+
 def einstellungen_lesen() -> dict:
     _alte_einstellungen_uebernehmen()
     datei = einstellungen_datei()
     parser = _ini_parser(datei)
     abschnitt = parser['Daten'] if parser.has_section('Daten') else {}
-    ziele = [z for z in (abschnitt.get('Sicherungsziele', '') or '').split(ZIELTRENNER) if z]
+    ziele = _ziele_lesen(parser)
     return {
         'datenordner': abschnitt.get('Ordner') or None,
         'sicherungsziele': ziele,
@@ -263,7 +301,7 @@ def einstellungen_schreiben(**werte) -> None:
     if 'datenordner' in werte:
         parser['Daten']['Ordner'] = str(werte['datenordner'])
     if 'sicherungsziele' in werte:
-        parser['Daten']['Sicherungsziele'] = ZIELTRENNER.join(werte['sicherungsziele'])
+        _ziele_schreiben(parser, werte['sicherungsziele'])
     if 'onedrive_bestaetigt' in werte:
         parser['Daten']['OneDriveBestaetigt'] = '1' if werte['onedrive_bestaetigt'] else '0'
     if 'server' in werte:

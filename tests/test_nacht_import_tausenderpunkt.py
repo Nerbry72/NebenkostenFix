@@ -59,13 +59,16 @@ def test_betrag_mit_einem_tausenderpunkt(roh, erwartet):
 
 
 def test_nur_drei_ziffern_hinter_einem_punkt_trennen_tausender():
-    """Neben „1.200“ lesen sich die anderen Schreibweisen wie bisher."""
+    """Neben „1.200“ lesen sich die anderen Schreibweisen wie bisher.
+
+    „0.125“ und „1,234“ wurden früher still auf 0,13 € und 1,23 € gerundet;
+    sie werden jetzt abgewiesen (``tests/test_import_tausenderformat.py``).
+    """
     assert ti.als_betrag('1.200', 'Betrag') == Decimal('1200.00')
     wie_bisher = [
         ('1.234.567', '1234567.00'), ('1.234,56', '1234.56'), ('1234.56', '1234.56'),
         ('12.5', '12.50'), ('1.20', '1.20'), ('1234.500', '1234.50'), (1234.5, '1234.50'),
-        (1200.0, '1200.00'), (486, '486.00'), ('1.200,00', '1200.00'), ('0.125', '0.13'),
-        ('1,234', '1.23'),
+        (1200.0, '1200.00'), (486, '486.00'), ('1.200,00', '1200.00'),
     ]
     for roh, erwartet in wie_bisher:
         assert ti.als_betrag(roh, 'Betrag') == Decimal(erwartet), roh
