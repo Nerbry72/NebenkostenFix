@@ -300,6 +300,17 @@ def extern_erlaubt(adresse: str) -> bool:
                for ziel in (marke.REPO_URL, marke.KOFI_URL))
 
 
+# Die freigegebenen Sicherungsziele dieser Sitzung (F-76). Nicht über
+# BACKUP_ZIELE: dessen Trenner ist unter Windows ';', und ';' darf in einem
+# Ordnernamen stehen. Ein Zeilenumbruch nie (Steuerzeichen sind in
+# Windows-Pfaden verboten). Gelesen in backup.erlaubte_wurzeln.
+SITZUNGSZIELE = 'NK_SICHERUNGSZIELE'
+
+
+def sitzungsziele_setzen(ziele) -> None:
+    os.environ[SITZUNGSZIELE] = '\n'.join(str(z) for z in ziele)
+
+
 # --- Brücke für das Fenster (NK-152) ---------------------------------------
 
 class Bruecke:
@@ -392,7 +403,7 @@ class Bruecke:
         if ordner not in ziele:
             ziele.append(ordner)
             windows_ordner.einstellungen_schreiben(sicherungsziele=ziele)
-        os.environ['BACKUP_ZIELE'] = os.pathsep.join(ziele)
+        sitzungsziele_setzen(ziele)
         return ordner
 
     def server_verbinden(self, adresse: str):
@@ -451,7 +462,7 @@ def neustart_umgebung(umgebung=None) -> dict:
     """Die Umgebung des neuen Prozesses: ohne das, was ``anwendung_laden``
     für diesen Lauf gesetzt hat."""
     umgebung = dict(os.environ if umgebung is None else umgebung)
-    for name in ('NK_DESKTOP', 'DATA_DIR', 'BACKUP_ZIELE'):
+    for name in ('NK_DESKTOP', 'DATA_DIR', 'BACKUP_ZIELE', SITZUNGSZIELE):
         umgebung.pop(name, None)
     umgebung['PYINSTALLER_RESET_ENVIRONMENT'] = '1'
     return umgebung
@@ -874,7 +885,7 @@ def anwendung_laden(datenordner: Path):
     os.environ.pop('DATABASE_URL', None)
     ziele = windows_ordner.einstellungen_lesen()['sicherungsziele']
     if ziele:
-        os.environ['BACKUP_ZIELE'] = os.pathsep.join(ziele)
+        sitzungsziele_setzen(ziele)
     import app as app_modul  # noqa: E402 -- erst nach der Umgebung
     return app_modul
 

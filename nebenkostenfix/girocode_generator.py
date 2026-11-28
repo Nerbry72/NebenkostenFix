@@ -45,7 +45,10 @@ def iban_pruefen(iban):
     if not sauber:
         raise EingabeFehler('Die IBAN ist leer. Tragen Sie sie ein oder '
                             'lassen Sie das Feld frei.', 'iban')
-    if not re.fullmatch(r'[A-Z]{2}\d{2}[A-Z0-9]{10,30}', sauber):
+    # [0-9] statt \d: \d passt in Python auf jede Unicode-Ziffer (arabisch-
+    # indisch, Vollbreite), und int() rechnet sie still um. Die Banking-App
+    # liest nur ASCII-Ziffern; gespeichert wird, was hier geprüft wurde.
+    if not re.fullmatch(r'[A-Z]{2}[0-9]{2}[A-Z0-9]{10,30}', sauber):
         raise EingabeFehler(
             'Diese IBAN hat keine gültige Form: sie beginnt mit zwei '
             'Buchstaben und zwei Ziffern, gefolgt von der Kontonummer '

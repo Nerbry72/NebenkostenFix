@@ -24,9 +24,12 @@ Die Tabellen-Erfassung der Rechnungen (``/api/import/rechnungen/tabelle``)
 schickt ihre Zeilen direkt, ohne Datei -- derselbe Prüf- und Anlegeweg.
 
 Datum: ``31.12.2025``, ``31.12.25``, ``2025-12-31`` oder eine Excel-Datumszelle.
-Betrag: ``1.234,56``, ``1234,56``, ``1234.56``, ``1.200``, mit oder ohne ``€``.
-Ein einzelner Punkt mit genau drei Ziffern dahinter trennt bei Beträgen
-Tausender (``1.200`` = 1.200,00 €), bei Zählerständen bleibt er Dezimalpunkt.
+Betrag: ``1.234,56``, ``1234,56``, ``1234.56``, ``1.200``, ``1,234.56``, mit
+oder ohne ``€``. Stehen Komma und Punkt beide da, trennt der letzte die
+Nachkommastellen. Ein einzelner Punkt mit genau drei Ziffern dahinter trennt
+bei Beträgen Tausender (``1.200`` = 1.200,00 €), bei Zählerständen bleibt er
+Dezimalpunkt. Was sich nicht eindeutig lesen lässt, wird abgewiesen (Regel
+bei ``_zahlentext``).
 """
 
 from __future__ import annotations
@@ -47,7 +50,7 @@ from pathlib import Path
 from sqlalchemy.exc import SQLAlchemyError
 
 from nebenkostenfix import betrkv, zeit
-from nebenkostenfix.geld import GeldFehler, runde
+from nebenkostenfix.geld import GeldFehler, dec, runde
 
 MAX_ZEILEN = 5000
 ARBEIT = 'import-arbeit'
@@ -270,37 +273,107 @@ def als_datum(wert, titel: str) -> date:
     raise ZeilenFehler(f'{titel}: „{text}“ ist kein Datum (z. B. 31.12.2025).')
 
 
-# Ein Betrag wie „1.200“ oder „-12.500“: genau ein Punkt, davor eine bis drei
-# Ziffern ohne führende Null, dahinter genau drei. Als Geld kann der Punkt
-# hier nur Tausender trennen, drei Nachkommastellen hat kein Betrag.
-_EIN_TAUSENDERPUNKT = re.compile(r'[-+]?[1-9]\d{0,2}\.\d{3}')
+# Regel für Komma und Punkt in Zahltexten aus der Tabelle (Beträge, Flächen,
+# Zählerstände). „€“/„EUR“, Leerzeichen und Hochkommas fallen vorher weg,
+# ein Vorzeichen vorn bleibt stehen.
+#
+#   1. Komma und Punkt kommen beide vor: Der **letzte** Trenner trennt die
+#      Nachkommastellen, der andere Tausender. „1.234,56“ und „1,234.56“
+#      sind beide 1234,56. Der Dezimaltrenner darf nur einmal stehen, die
+#      Gruppen davor sind erst 1-3 Ziffern und dann je genau drei.
+#   2. Nur Kommas oder nur Punkte, mehr als einer: alle trennen Tausender,
+#      in denselben Dreiergruppen („1.234.567“, „1,234,567“).
+#   3. Genau ein Komma: Dezimalkomma („1,5“, „1234,56“).
+#   4. Genau ein Punkt: Dezimalpunkt („1234.56“, Zählerstand „123.456“).
+#      Nur bei Beträgen trennt ein Punkt mit genau drei Ziffern dahinter
+#      (davor 1-3 Ziffern ohne führende Null) Tausender: „1.200“ ist 1200 €,
+#      drei Nachkommastellen hat kein Betrag.
+#
+# Was gegen 1. oder 2. verstößt („1,234,56“, „1.23.45“, „1,234.567.89“),
+# wird mit Meldung abgewiesen statt still umgedeutet. Für Beträge gilt
+# zusätzlich: Ein einzelnes Komma mit genau drei Ziffern dahinter und 1-3
+# Ziffern ohne führende Null davor („1,000“) ist nicht eindeutig --
+# englisch tausend, deutsch ein Euro mit drei Nachkommastellen -- und wird
+# abgewiesen; ein getippter Betrag, der beim Runden auf Cent seinen Wert
+# änderte („0,125“), ebenso (``als_betrag``).
+_EIN_TAUSENDERPUNKT = re.compile(r'[1-9][0-9]{0,2}\.[0-9]{3}')
+_EIN_TAUSENDERKOMMA = re.compile(r'[1-9][0-9]{0,2},[0-9]{3}')
+_GRUPPEN = {trenner: re.compile(r'[0-9]{1,3}(?:' + re.escape(trenner) + r'[0-9]{3})+')
+            for trenner in ',.'}
+
+
+class _Zahlformat(ValueError):
+    """Ein Zahltext, der sich nicht eindeutig lesen lässt; Text für die Meldung."""
+
+
+_TRENNER_UNKLAR = ('lässt sich nicht eindeutig lesen. Tausender werden in Dreiergruppen '
+                   'getrennt, die Nachkommastellen stehen hinter dem letzten Trenner '
+                   '(z. B. 1.234,56 oder 1,234.56).')
+
+
+def _tausender_weg(ganz: str, trenner: str) -> str:
+    if not _GRUPPEN[trenner].fullmatch(ganz):
+        raise _Zahlformat(_TRENNER_UNKLAR)
+    return ganz.replace(trenner, '')
 
 
 def _zahlentext(text: str, *, betrag: bool = False) -> str:
     """Text einer Zahl aus der Tabelle, so dass ``Decimal``/``float`` ihn lesen.
 
-    Mit ``betrag=True`` gilt ein einzelner Punkt mit genau drei Ziffern
-    dahinter als Tausenderpunkt („1.200“ ist 1200). Ohne den Schalter bleibt
-    er ein Dezimalpunkt -- ein Zählerstand „123.456“ m³ hat drei
-    Nachkommastellen.
+    Liest nach der Regel oben und wirft ``_Zahlformat``, wenn die Trenner
+    sich nicht eindeutig lesen lassen. ``betrag=True`` schaltet den
+    einzelnen Tausenderpunkt („1.200“) und die Prüfung auf „1,000“ zu.
     """
     text = text.replace('€', '').replace('EUR', '').replace(' ', '').replace(' ', '')
     text = text.replace("'", '')
-    if ',' in text:
-        return text.replace('.', '').replace(',', '.')
-    if text.count('.') > 1 or (betrag and _EIN_TAUSENDERPUNKT.fullmatch(text)):
-        return text.replace('.', '')
-    return text
+    vorzeichen, rest = (text[0], text[1:]) if text[:1] in ('-', '+') else ('', text)
+    komma, punkt = rest.count(','), rest.count('.')
+    if komma and punkt:
+        dezimal = ',' if rest.rfind(',') > rest.rfind('.') else '.'
+        tausender = '.' if dezimal == ',' else ','
+        if rest.count(dezimal) > 1:
+            raise _Zahlformat(_TRENNER_UNKLAR)
+        ganz, nachkomma = rest.split(dezimal)
+        return f'{vorzeichen}{_tausender_weg(ganz, tausender)}.{nachkomma}'
+    if komma > 1 or punkt > 1:
+        return vorzeichen + _tausender_weg(rest, ',' if komma else '.')
+    if komma:
+        if betrag and _EIN_TAUSENDERKOMMA.fullmatch(rest):
+            raise _Zahlformat('ist nicht eindeutig: Ein Komma mit drei Ziffern dahinter kann '
+                              'Tausender oder Nachkommastellen trennen. Schreiben Sie z. B. '
+                              '1000 oder 1.000 für tausend Euro und 1,00 für einen Euro.')
+        return vorzeichen + rest.replace(',', '.')
+    if betrag and _EIN_TAUSENDERPUNKT.fullmatch(rest):
+        return vorzeichen + rest.replace('.', '')
+    return vorzeichen + rest
 
 
 def als_betrag(wert, titel: str) -> Decimal:
+    """Ein Betrag auf Cent.
+
+    Eine Excel-Zahlzelle (``float``) wird gerundet wie bisher: Eine Formel
+    wie ``=100/3`` zeigt 33,33 und speichert mehr Stellen. Ein getippter
+    Text mit mehr Nachkommastellen, als ein Cent-Betrag hat, wird nicht
+    still gerundet, sondern abgewiesen („1234.500“ geht, „0,125“ nicht).
+    """
     if isinstance(wert, bool):
         raise ZeilenFehler(f'{titel}: hier steht ja/nein statt eines Betrags.')
-    roh = repr(wert) if isinstance(wert, float) else _zahlentext(als_text(wert), betrag=True)
+    if isinstance(wert, float):
+        roh = repr(wert)
+    else:
+        try:
+            roh = _zahlentext(als_text(wert), betrag=True)
+        except _Zahlformat as grund:
+            raise ZeilenFehler(f'{titel}: „{als_text(wert)}“ {grund}') from None
     try:
-        return runde(roh)
+        betrag = runde(roh)
+        genau = dec(roh)
     except GeldFehler:
         raise ZeilenFehler(f'{titel}: „{als_text(wert)}“ ist kein Betrag (z. B. 1.234,56).') from None
+    if not isinstance(wert, float) and betrag != genau:
+        raise ZeilenFehler(f'{titel}: „{als_text(wert)}“ hat mehr als zwei Nachkommastellen. '
+                           'Bitte geben Sie den Betrag auf den Cent genau an (z. B. 1.234,56).')
+    return betrag
 
 
 def als_zahl(wert, titel: str) -> float:
@@ -308,6 +381,8 @@ def als_zahl(wert, titel: str) -> float:
         return float(wert)
     try:
         zahl = float(_zahlentext(als_text(wert)))
+    except _Zahlformat as grund:
+        raise ZeilenFehler(f'{titel}: „{als_text(wert)}“ {grund}') from None
     except ValueError:
         raise ZeilenFehler(f'{titel}: „{als_text(wert)}“ ist keine Zahl.') from None
     if zahl != zahl or zahl in (float('inf'), float('-inf')):

@@ -143,7 +143,8 @@ import sys
 import tarfile
 import tempfile
 import zipfile
-from datetime import datetime
+import zlib
+from datetime import datetime, timezone
 from pathlib import Path
 
 from flask import jsonify, request
@@ -544,6 +545,68 @@ def behaelter(archiv: Path) -> str:
     return 'zip' if zipfile.is_zipfile(archiv) else 'tar'
 
 
+def _ist_ganzzahl(wert) -> bool:
+    return isinstance(wert, int) and not isinstance(wert, bool)
+
+
+def _ist_zeitpunkt(wert) -> bool:
+    """Ein ISO-Zeitpunkt als Text, wie ihn sicherung_erstellen schreibt."""
+    if not isinstance(wert, str):
+        return False
+    try:
+        datetime.fromisoformat(wert)
+    except ValueError:
+        return False
+    return True
+
+
+def _dateiangabe_stimmt(eintrag) -> bool:
+    return (isinstance(eintrag, dict) and isinstance(eintrag.get('pfad'), str)
+            and isinstance(eintrag.get('sha256'), str))
+
+
+def _manifest_pruefen(archiv: Path, manifest) -> dict:
+    """Ein Manifest, das nicht von dieser Anwendung stammt oder dem Angaben
+    fehlen, wird hier zum SicherungsFehler -- nicht spaeter in Liste, Status
+    oder Einspielen zum KeyError oder TypeError.
+
+    Geprueft wird nur die Form. Ob Format und Schemastand bekannt sind,
+    entscheidet _stempel_pruefen mit eigener Meldung. Fehlt nur die Kennung
+    'anwendung', bleibt das Manifest lesbar (alte Sicherungen bleiben
+    einspielbar); traegt es eine andere, ist es ein fremdes Paket.
+    """
+    fremd = SicherungsFehler(f"{archiv.name} ist keine Sicherung dieser Anwendung.")
+    if not isinstance(manifest, dict):
+        raise fremd
+    if manifest.get('anwendung', ANWENDUNG) != ANWENDUNG:
+        raise fremd
+    falsch = []
+    if not _ist_ganzzahl(manifest.get('format')):
+        falsch.append('format')
+    if not _ist_zeitpunkt(manifest.get('erstellt_am')):
+        falsch.append('erstellt_am')
+    stempel = manifest.get('alembic_revision')
+    if stempel is not None and not isinstance(stempel, str):
+        falsch.append('alembic_revision')
+    if not _dateiangabe_stimmt(manifest.get('datenbank')):
+        falsch.append('datenbank')
+    belege = manifest.get('belege')
+    if not isinstance(belege, list) or not all(map(_dateiangabe_stimmt, belege)):
+        falsch.append('belege')
+    zusatz = manifest.get('zusatz') or []
+    if not isinstance(zusatz, list) or not all(map(_dateiangabe_stimmt, zusatz)):
+        falsch.append('zusatz')
+    zusammenfassung = manifest.get('zusammenfassung')
+    if not (isinstance(zusammenfassung, dict)
+            and _ist_ganzzahl(zusammenfassung.get('belege_anzahl'))):
+        falsch.append('zusammenfassung')
+    if falsch:
+        raise SicherungsFehler(
+            f"{archiv.name}: im Manifest fehlen Angaben oder sind unlesbar "
+            f"({', '.join(falsch)}). Das ist keine Sicherung dieser Anwendung.")
+    return manifest
+
+
 def manifest_lesen(archiv) -> dict:
     """Holt nur das Manifest aus dem Archiv, ohne es auszupacken.
 
@@ -581,21 +644,30 @@ def manifest_lesen(archiv) -> dict:
                 eintrag = paket.getinfo(MANIFEST_NAME)
                 if eintrag.file_size > 64 * 1024 * 1024:
                     raise SicherungsFehler(f"{archiv.name}: das Manifest ist unplausibel groß.")
-                return json.loads(paket.read(eintrag).decode('utf-8'))
+                manifest = json.loads(paket.read(eintrag).decode('utf-8'))
         except KeyError:
             raise ohne
-        except (zipfile.BadZipFile, ValueError, OSError) as fehler:
+        except (zipfile.BadZipFile, ValueError, OSError, EOFError, RuntimeError,
+                NotImplementedError, zlib.error) as fehler:
+            # RuntimeError: Manifest-Eintrag mit Passwort verschluesselt;
+            # NotImplementedError: unbekannte Kompression; zlib.error:
+            # beschaedigte Deflate-Daten (auch eigene Pakete nach Bitfaeule).
             raise SicherungsFehler(f"{archiv.name} ist kein lesbares Paket: {fehler}")
+        return _manifest_pruefen(archiv, manifest)
     try:
         with tarfile.open(archiv, 'r:gz') as tar:
             eintrag = tar.extractfile(MANIFEST_NAME)
             if eintrag is None:
                 raise ohne
-            return json.loads(eintrag.read().decode('utf-8'))
-    except tarfile.TarError as fehler:
-        raise SicherungsFehler(f"{archiv.name} ist kein lesbares tar.gz: {fehler}")
+            manifest = json.loads(eintrag.read().decode('utf-8'))
     except KeyError:
         raise ohne
+    except (tarfile.TarError, ValueError, OSError, EOFError, zlib.error) as fehler:
+        # ValueError: kaputtes JSON oder kein UTF-8; EOFError/OSError: ein
+        # abgeschnittenes oder gar kein gzip; zlib.error: beschaedigte
+        # Deflate-Daten, die tarfile nicht selbst in ReadError fasst.
+        raise SicherungsFehler(f"{archiv.name} ist kein lesbares tar.gz: {fehler}")
+    return _manifest_pruefen(archiv, manifest)
 
 
 def _stempel_pruefen(app, manifest: dict) -> None:
@@ -1222,14 +1294,26 @@ def standardziel(app) -> str:
 # der Betreiber in BACKUP_ZIELE eintraegt (mit dem Pfadtrenner des Systems
 # getrennt, unter Linux ':' , unter Windows ';'). Ein NAS bindet man als
 # Verzeichnis ein und traegt es dort ein; die Oberflaeche bietet nur an,
-# was auf der Liste steht.
+# was auf der Liste steht. Die Desktop-App reicht die im Dialog gewaehlten
+# Ordner ueber NK_SICHERUNGSZIELE weiter, ein Ziel je Zeile: Unter Windows
+# darf ein Ordnername ';' enthalten, einen Zeilenumbruch nie.
 ARCHIVNAME = re.compile(
     r'^(sicherung|NebenkostenFix)[A-Za-z0-9_.-]*\.(tar\.gz|nkbak|nkfix)$')
+SITZUNGSZIELE = 'NK_SICHERUNGSZIELE'
+SITZUNGSTRENNER = '\n'
+
+
+def _freigegebene_eintraege() -> list[str]:
+    """BACKUP_ZIELE (Betreiber, os.pathsep) und NK_SICHERUNGSZIELE (Desktop-App,
+    ein Ziel je Zeile), in dieser Reihenfolge."""
+    eintraege = (os.environ.get('BACKUP_ZIELE') or '').split(os.pathsep)
+    eintraege += (os.environ.get(SITZUNGSZIELE) or '').split(SITZUNGSTRENNER)
+    return eintraege
 
 
 def erlaubte_wurzeln(app) -> list[Path]:
     """Die Verzeichnisse, unter denen Sicherungen liegen duerfen: der
-    Datenordner (mit ``backups``), dazu BACKUP_ZIELE."""
+    Datenordner (mit ``backups``), dazu BACKUP_ZIELE und NK_SICHERUNGSZIELE."""
     from nebenkostenfix import datenordner
 
     try:
@@ -1237,7 +1321,7 @@ def erlaubte_wurzeln(app) -> list[Path]:
     except datenordner.DatenordnerFehler:
         daten = datenbankpfad(app).parent
     wurzeln = [Path(os.path.realpath(daten))]
-    for eintrag in (os.environ.get('BACKUP_ZIELE') or '').split(os.pathsep):
+    for eintrag in _freigegebene_eintraege():
         eintrag = eintrag.strip()
         if not eintrag:
             continue
@@ -1293,14 +1377,25 @@ def _archiv_aufloesen(app, ziel, name) -> Path:
 def _kurzbericht(archiv: Path, stempel: set) -> dict:
     """Die Zeile fuer die Liste: was in einem Archiv steckt."""
     manifest = manifest_lesen(archiv)
+    erstellt = manifest.get('erstellt_am')
+    belege = (manifest.get('zusammenfassung') or {}).get('belege_anzahl')
+    schemastand = manifest.get('alembic_revision')
+    # Ein Klartext-Manifest ist in manifest_lesen schon geprueft; der Kopf
+    # einer verschluesselten Datei ist es nicht. Ohne lesbaren Zeitpunkt
+    # laesst sich weder sortieren noch erinnern.
+    if (not _ist_zeitpunkt(erstellt)
+            or not (belege is None or _ist_ganzzahl(belege))
+            or not (schemastand is None or isinstance(schemastand, str))):
+        raise SicherungsFehler(
+            f"{archiv.name}: die Angaben zur Sicherung sind unlesbar.")
     return {
         'name': archiv.name,
         'pfad': str(archiv),
-        'erstellt_am': manifest['erstellt_am'],
+        'erstellt_am': erstellt,
         'groesse': lesbare_groesse(archiv.stat().st_size),
-        'belege': manifest['zusammenfassung']['belege_anzahl'],
-        'schemastand': manifest['alembic_revision'],
-        'einspielbar': manifest['alembic_revision'] in stempel,
+        'belege': belege,
+        'schemastand': schemastand,
+        'einspielbar': schemastand in stempel,
         'verschluesselt': bool(manifest.get('verschluesselt')),
     }
 
@@ -1352,6 +1447,16 @@ def _erinnerung(letzte: dict | None) -> dict:
                     'damit Ihre Daten einen Schaden überleben.',
         }
     erstellt = datetime.fromisoformat(letzte['erstellt_am'])
+    if erstellt.tzinfo is None:
+        # Ohne Zeitzone gilt Ortszeit; sonst scheitert das Abziehen unten.
+        # Liegt der Zeitpunkt ausserhalb dessen, was die Ortszeit umrechnen
+        # kann (Jahr 1: OverflowError oder, je nach Ortszeit, ValueError
+        # "year 0 is out of range"; unter Windows vor 1970: OSError), gilt
+        # UTC. Jahre nicht begrenzen: ein Pi ohne Uhr datiert auf 1970.
+        try:
+            erstellt = erstellt.astimezone()
+        except (OverflowError, OSError, ValueError):
+            erstellt = erstellt.replace(tzinfo=timezone.utc)
     tage = (datetime.now().astimezone() - erstellt).days
     if tage >= ERINNERUNG_AB_TAGE:
         return {

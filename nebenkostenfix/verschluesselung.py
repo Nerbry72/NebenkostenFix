@@ -97,6 +97,8 @@ def _kopf_lesen(datei) -> tuple[bytes, dict]:
         kopf = json.loads(roh.decode('utf-8'))
     except (UnicodeDecodeError, ValueError) as fehler:
         raise VerschluesselungsFehler('Der Kopf der Datei ist beschädigt.') from fehler
+    if not isinstance(kopf, dict):
+        raise VerschluesselungsFehler('Der Kopf der Datei ist beschädigt.')
     if kopf.get('verfahren') != 'scrypt+aes-256-gcm':
         raise VerschluesselungsFehler('Unbekanntes Verschlüsselungsverfahren.')
     return KENNUNG + laenge_roh + roh, kopf
@@ -110,7 +112,10 @@ def metadaten_lesen(pfad) -> dict:
     """
     with open(pfad, 'rb') as datei:
         _, kopf = _kopf_lesen(datei)
-    return dict(kopf.get('metadaten') or {})
+    metadaten = kopf.get('metadaten') or {}
+    if not isinstance(metadaten, dict):
+        raise VerschluesselungsFehler('Der Kopf der Datei ist beschädigt.')
+    return dict(metadaten)
 
 
 def verschluesseln(quelle, ziel, passphrase: str, metadaten: dict | None = None) -> Path:
